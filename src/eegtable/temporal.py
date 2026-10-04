@@ -227,30 +227,23 @@ def hjorth_mobility(
     groups: Mapping[str, Sequence[str]] | None = None,
     include_global: bool = True,
 ) -> FeatureTable:
-    r"""Hjorth mobility: the signal's mean frequency, estimated in the time domain.
+    r"""Hjorth mobility expressed on a frequency-equivalent scale.
 
     .. math:: \mathrm{mobility} = \frac{1}{2\pi}
               \sqrt{\frac{\operatorname{Var}(\mathrm{d}x/\mathrm{d}t)}
               {\operatorname{Var}(x)}}
 
-    **Reported in hertz.** The derivative is taken with respect to time, not per
-    sample, and the result is divided by :math:`2\pi`, so a 10 Hz sine gives 10.0
-    at every sampling rate. The usual ``std(diff(x)) / std(x)`` omits both and
-    returns :math:`2\pi f / f_s`, which makes the same recording resampled to a
-    different rate report a different number -- a real hazard when features are
-    pooled across datasets.
+    The derivative is approximated by ``diff(x) * sfreq`` and the result is
+    divided by :math:`2\pi`, giving hertz rather than conventional mobility's
+    inverse-second scale. A well-sampled sinusoid approaches its frequency.
+    Finite differences have gain :math:`\sin(\pi f/f_s)/(\pi f/f_s)` relative
+    to a continuous derivative, so sampling rate and bandwidth still affect
+    the estimate.
 
-    The derivative is a finite difference, whose gain is ``sin(pi f / f_s)``
-    rather than ``pi f / f_s``, so content close to Nyquist is reported a little
-    low: a 25 Hz sine sampled at 128 Hz gives 23.5 Hz, not 25. The shortfall is
-    under 2% while the signal stays below a tenth of the sampling rate, and it
-    is a property of the time-domain estimator, not of this implementation --
-    use :func:`~eegtable.spectral_centroid` if you need the spectrum's own answer.
-
-    This is the time-domain counterpart of :func:`~eegtable.spectral_centroid`,
-    and the two agree on a pure oscillation. They diverge on broadband signals,
-    where mobility weights the spectrum by :math:`f^2` and the centroid by
-    :math:`f`: mobility is the root-mean-square frequency, the centroid the mean.
+    For a stationary signal with a well-resolved spectrum, this scale
+    approximates the power-weighted root-mean-square frequency.
+    :func:`~eegtable.spectral_centroid` instead reports the power-weighted mean
+    frequency within its selected band. These summaries need not agree.
 
     Hjorth activity is the variance of the signal, which :func:`~eegtable.variance`
     already computes; it is not duplicated under a second name.
@@ -269,8 +262,8 @@ def hjorth_mobility(
     Returns
     -------
     FeatureTable
-        Mobility in Hz. NaN where the window holds fewer than three finite samples
-        or the signal does not vary.
+        Mobility in Hz. NaN with fewer than two finite first differences or
+        non-positive signal variance. Differences across gaps are excluded.
 
     References
     ----------
@@ -289,15 +282,15 @@ def hjorth_complexity(
     groups: Mapping[str, Sequence[str]] | None = None,
     include_global: bool = True,
 ) -> FeatureTable:
-    r"""Hjorth complexity: how far the signal departs from a pure sine.
+    r"""Ratio of derivative mobility to signal mobility.
 
     .. math:: \mathrm{complexity} =
               \frac{\mathrm{mobility}(\mathrm{d}x/\mathrm{d}t)}{\mathrm{mobility}(x)}
 
-    Exactly 1 for a pure sine and larger as the spectrum broadens. Dimensionless,
-    and the sampling interval cancels out of the ratio, so unlike
-    :func:`hjorth_mobility` this one is already rate-independent however it is
-    written.
+    A stationary sinusoid approaches one; broadband spectral content can
+    increase the ratio. The explicit sampling-interval factors cancel, so the
+    result is dimensionless. Finite-difference frequency response, window
+    boundaries, and preprocessing can still make it depend on sampling rate.
 
     Parameters
     ----------
@@ -313,8 +306,9 @@ def hjorth_complexity(
     Returns
     -------
     FeatureTable
-        Complexity, dimensionless. NaN where the window holds fewer than four
-        finite samples or either variance in the ratio vanishes.
+        Complexity, dimensionless. NaN with fewer than two finite second
+        differences, insufficient finite signal/first-difference samples, or
+        non-positive signal or first-difference variance.
 
     References
     ----------
@@ -397,9 +391,9 @@ def kurtosis(
 ) -> FeatureTable:
     """Tail weight of the amplitude distribution within each window.
 
-    Excess kurtosis: **zero for a Gaussian**, positive for heavier tails. High
-    values are the usual signature of a transient artifact sitting in an
-    otherwise ordinary segment.
+    Fisher excess kurtosis is zero for a Gaussian population. Large positive
+    sample values can reflect extreme amplitude observations, including
+    artifacts, but are not specific to an artifact mechanism.
 
     Parameters
     ----------
@@ -429,11 +423,10 @@ def line_length(
 ) -> FeatureTable:
     """Mean absolute rate of change within each window.
 
-    **Per second, not per sample.** The conventional ``mean(abs(diff(x)))`` is an
-    amplitude per sample, so the same recording at another sampling rate reports a
-    different number; this multiplies by the sampling rate and reports V/s, which
-    does not move. It is otherwise the same quantity, and dividing by the sampling
-    rate recovers the per-sample form if you need to compare against one.
+    Computed as ``mean(abs(diff(x))) * sfreq`` over finite adjacent differences.
+    EEG input in volts gives V/s. This scales differences by elapsed time;
+    finite sampling and filtering can still change the estimate when a signal
+    is resampled. Dividing by ``sfreq`` recovers the per-sample form.
 
     Parameters
     ----------
@@ -465,17 +458,17 @@ def zero_crossing_rate(
 ) -> FeatureTable:
     """Sign changes per second within each window.
 
-    **A rate, not a count**, so windows of different lengths and recordings at
-    different sampling rates are comparable. A crossing is a change of sign
-    between consecutive finite samples; a sample of exactly zero is treated as
-    continuing the run it sits in rather than as two crossings.
+    A crossing is a sign change between successive nonzero finite samples in
+    one contiguous finite segment. Zeros retain the previous sign, and missing
+    samples reset it. The count is divided by the full sampled window duration.
+    Expressing a count per second does not remove sampling, bandwidth, or
+    window-boundary effects.
 
-    For a *band-limited* zero-mean Gaussian signal this is approximately twice
-    :func:`~eegtable.hjorth_mobility` (Rice's formula), within a few percent while
-    the content stays below roughly a third of the sampling rate. The agreement
-    degrades as the band approaches Nyquist, and does not hold at all for raw
-    white noise, whose consecutive samples are independent rather than
-    band-limited: there the rate is simply half the sampling rate.
+    For a sufficiently smooth stationary zero-mean Gaussian process, Rice's
+    formula relates the continuous crossing rate to twice the corresponding
+    frequency-scaled Hjorth mobility. Discrete crossings and finite-difference
+    mobility only approximate that relation; it need not hold near Nyquist or
+    for non-Gaussian signals.
 
     Parameters
     ----------

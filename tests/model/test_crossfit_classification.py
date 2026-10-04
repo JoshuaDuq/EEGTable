@@ -54,6 +54,18 @@ def test_an_estimator_without_predict_proba_reports_none_not_a_decision_function
     assert all(p.y_prob is None for p in predictions)
 
 
+def test_svm_preserves_held_out_decision_scores() -> None:
+    pipeline = Pipeline([("classifier", SVC())])
+    folds = loso_folds(GROUPS)
+    predictions = cross_fit_classification(
+        folds, X, Y, GROUPS, pipeline, {}, inner=STRATIFIED, seed=0
+    )
+    for fold, prediction in zip(folds, predictions, strict=True):
+        reference = SVC().fit(X[fold.train], Y[fold.train])
+        assert prediction.y_prob is None
+        np.testing.assert_allclose(prediction.y_score, reference.decision_function(X[fold.test]))
+
+
 def test_labels_stay_integers_through_the_fold_loop() -> None:
     for prediction in cross_fit_classification(
         loso_folds(GROUPS), X, Y, GROUPS, PIPE, GRID, inner=STRATIFIED, seed=0

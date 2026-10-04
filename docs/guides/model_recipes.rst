@@ -5,6 +5,10 @@ Modeling recipes and result bundles
 recipe. Install the modeling dependencies with
 ``pip install "eegtable[model]"``. The array-based APIs remain in
 ``eegtable.model``; reading recipes and writing bundles belong to the runner.
+The current recipe supports one continuous regression target or binary
+classification. Signal-level learned features, residualization, permutation
+nulls, prediction intervals, and importance analyses use the Python APIs in
+:doc:`modeling` and :doc:`learned_features`.
 
 Start, validate, run
 --------------------
@@ -61,8 +65,10 @@ ones. Row order may differ because the join uses identity keys.
 
 Regression requires finite numeric targets. Classification currently requires
 both classes coded exactly ``0`` and ``1``. Group-row recipes do not accept
-covariates. For epoch rows, ``analysis.covariates`` appends numeric covariates
-through the existing fold-local preprocessing pipeline.
+covariates. For epoch rows, ``analysis.covariates`` appends finite numeric
+covariates through the existing fold-local preprocessing pipeline. Covariate
+encoding is explicit; the design builder does not encode categories. A sample
+count is the number of table rows, not the sum of ``n_trials`` in group inputs.
 
 Feature selection and quality
 -----------------------------
@@ -88,13 +94,18 @@ The recipe requires an explicit, nonempty ``model.grid``. Candidates are
 scalar YAML values, and parameter names must belong to the selected pipeline.
 Useful estimator parameter names are:
 
-.. list-table:: Supported estimators
+.. rubric:: Supported estimators
+
+.. list-table::
    :header-rows: 1
    :widths: 25 25 50
 
    * - Task
      - Estimator
      - Example grid parameters
+   * - regression
+     - ``scaled_ridge``
+     - ``regressor__alpha`` (dimensionless)
    * - regression
      - ``ridge``
      - ``regressor__alpha``
@@ -114,13 +125,23 @@ Useful estimator parameter names are:
      - ``random_forest``
      - ``rf__n_estimators``, ``rf__max_depth``
 
-Choose the grid for the scientific question and sample size. The template's
-ridge grid is an example, not a data-adaptive penalty rule. Backend parameter
-and fitting errors surface. SVM probability calibration through the
-estimator's hidden cross-validation is rejected because it cannot enforce
-the configured group boundaries. SVM recipes report predicted-label metrics.
-Probability columns and probability-based metrics require an estimator that
-provides probabilities under this workflow.
+The template uses ``scaled_ridge``: at every inner fit and outer refit, alpha
+is multiplied by the training row count and retained column count after
+preprocessing. The grid therefore uses neither held-out rows nor the full
+cohort's feature count. ``ridge`` uses ordinary scikit-learn alpha values.
+Choose the grid for the scientific question and sample size, following
+`scikit-learn's Ridge objective
+<https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html>`_.
+Backend parameter and fitting errors surface. SVM probability calibration
+through the estimator's hidden cross-validation is rejected because it cannot enforce
+the configured group boundaries. SVM recipes retain raw decision scores for
+AUC and average precision, as supported by
+`scikit-learn's ROC AUC metric
+<https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html>`_.
+Decision scores are separate from probabilities. Probability columns require
+an estimator that provides them under this workflow; their presence does not
+establish calibration. Multiclass targets are rejected regardless of the
+selected estimator's backend capabilities.
 
 ``preprocessing`` configures the existing pipeline's feature and subject
 missingness limits, optional supervised feature selection percentile, and
@@ -136,21 +157,32 @@ Nested group splits
 holds out disjoint sets of groups. Every input sample receives exactly one
 outer-test prediction. ``validation.inner_splits`` is enforced inside every
 outer training set; it is never reduced to fit a smaller cohort. At least
-three independent groups are required. Classification additionally requires
+three distinct groups are required. Classification additionally requires
 both classes in every inner training and validation split.
 
 Hyperparameter tuning reruns the full pipeline inside those inner splits.
 The selected pipeline is then refitted on the outer training rows and applied
 once to the held-out rows. The grouping variable governs both levels.
-``validation.seed`` controls the existing deterministic splitting and
-estimator settings.
+Unstratified group assignments are deterministic. ``validation.seed`` controls
+the stratified inner splits used for classification and estimator randomness.
 
 The recipe defaults to ``neg_mean_squared_error`` for regression and
 ``balanced_accuracy`` for classification. Supported alternatives are
-``neg_mean_absolute_error`` or ``r2`` for regression, and ``accuracy``,
+``neg_mean_absolute_error``, ``r2`` or ``subject_r`` for regression, and ``accuracy``,
 ``roc_auc`` or ``average_precision`` for classification. The tuning statistic
 is recorded separately from the reported metrics. A recipe that repeatedly
 selects a grid boundary warrants a prespecified wider search in a new run.
+
+``subject_r`` selects on within-group trial variation using Fisher-averaged
+correlations. It requires at least three observations with varying targets
+in every group; ``check`` rejects groups that cannot support this statistic.
+Constant predictions contribute zero correlation. Error scorers support one
+sample per participant and targets constant within participants. ``r2`` needs
+at least two samples in each inner validation split; constant validation targets
+also make its interpretation unsuitable for explaining within-group variation.
+Their reports include pooled metrics, per-group metrics and mean squared and
+absolute errors averaged with equal weight per group. Correlations and
+variance scores that cannot be defined remain missing or non-finite.
 
 This structure follows scikit-learn's
 `nested cross-validation example
@@ -162,6 +194,28 @@ Group separation prevents direct sharing of samples from one unit between
 training and testing; it does not establish exchangeability or make an
 inappropriate grouping variable scientifically valid.
 
+Baseline comparisons
+--------------------
+
+Every run evaluates the requested model and a training-fitted dummy baseline
+on exactly the same outer test rows. The dummy predicts the training mean for
+regression and the training class prior for classification, using
+`scikit-learn's dummy estimators
+<https://scikit-learn.org/stable/modules/model_evaluation.html#dummy-estimators>`_.
+
+Epoch recipes with covariates also evaluate a covariate-only baseline:
+``scaled_ridge`` with :func:`~eegtable.model.scaled_ridge_grid` for regression,
+or balanced logistic regression with :func:`~eegtable.model.logistic_grid`
+for classification. This baseline uses the existing covariate imputation and
+scaling, without EEG selection or PCA. It is tuned with the recipe's inner
+splits and scoring statistic, then refitted on the outer training rows.
+The dummy has no parameters to tune.
+
+``benchmarks.tsv`` compares pooled and equal-group metrics, while
+``benchmark_metrics.json`` includes each model's per-group results.
+These comparisons do not select a winning model or perform significance tests.
+Choosing features or recipes from these held-out results requires a fresh evaluation.
+
 Auditable results
 -----------------
 
@@ -170,11 +224,17 @@ lock, and publishes the directory atomically after validation. Bundle files
 include:
 
 * ``predictions.tsv``: original sample identity, model group, observed target,
-  held-out prediction, outer fold and available class probabilities.
+  held-out prediction, outer fold, and available class probabilities and
+  decision scores.
 * ``folds.json``: absolute outer and inner row indices, group labels and each
   outer fold's selected parameters.
-* ``metrics.json``: pooled regression errors and group correlation summaries,
+* ``metrics.json``: pooled regression metrics and equal-group mean errors,
+  with Fisher-averaged ``subject_level_r`` in ``group_mean`` when explicitly selected,
   or pooled and equal-group-mean classification metrics with group details.
+* ``baseline_predictions.tsv`` and ``baseline_folds.json``: baseline model
+  names, held-out predictions, nested splits and selected parameters.
+* ``benchmark_metrics.json`` and ``benchmarks.tsv``:
+  comparisons and per-group results for the requested model and baselines.
 * ``design_features.tsv``, its coverage TSV and JSON: selected feature
   definitions, quality-masked values, preserved coverage and flags.
 * ``design_matrix.npz`` and ``design.json``: the numerical design, target,
@@ -188,9 +248,9 @@ include:
 
 Input, recipe, software and source identities are captured before preparing
 the design or fitting. The runner verifies them again before publication and
-rejects changes during execution. Undefined statistics are preserved as
-``"NaN"`` in JSON rather than assigned a numerical value; inspect the number
-of samples and groups supporting each reported statistic.
+rejects changes during execution. Non-finite statistics are preserved as
+``"NaN"``, ``"Infinity"``, or ``"-Infinity"`` in JSON rather than assigned a
+finite score. Inspect the samples and groups supporting each statistic.
 
 The bundle records nested evaluation rather than a single final estimator
 trained on all rows. To audit a prediction, use its outer fold, stored row

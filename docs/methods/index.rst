@@ -8,8 +8,10 @@ Methods
      NaN or set a flag.
    </p>
 
-Each page matches a page in the :doc:`/api/index`. The method page is the
-definition. The API page is the signature.
+Method pages describe estimators, assumptions, units, and undefined results.
+The :doc:`/api/index` documents callable signatures. Computational validity
+and coverage do not establish physiological specificity or statistical
+significance; interpretation depends on preprocessing and the study design.
 
 .. grid:: 1 1 2 2
    :gutter: 3
@@ -40,8 +42,14 @@ definition. The API page is the signature.
       :link: complexity
       :link-type: doc
 
-      Higuchi fractal dimension, sample entropy, multiscale entropy, and
-      GFP-peak microstate segmentation.
+      Entropy, fractal dimension, Lempel--Ziv complexity, DFA, and frozen or
+      fitted microstate templates.
+
+   .. grid-item-card:: Cycle features
+      :link: cycles
+      :link-type: doc
+
+      ByCycle waveform shape, cycle counts, and consistency-based burst labels.
 
 Cross-fitting, permutation nulls, and conformal intervals are in
 :doc:`/guides/modeling`.

@@ -42,6 +42,7 @@ class ClassificationResult:
     y_true: npt.NDArray[np.intp]
     y_pred: npt.NDArray[np.intp]
     y_prob: npt.NDArray[np.float64] | None
+    y_score: npt.NDArray[np.float64] | None
     groups: npt.NDArray[np.object_] | None
     accuracy: float
     balanced_accuracy: float
@@ -97,6 +98,7 @@ def _subset_classification_metrics(
     y_true: npt.NDArray[np.intp],
     y_pred: npt.NDArray[np.intp],
     y_prob: npt.NDArray[np.float64] | None = None,
+    y_score: npt.NDArray[np.float64] | None = None,
 ) -> dict[str, float]:
     acc = float(accuracy_score(y_true, y_pred)) if len(y_true) > 0 else np.nan
     # 0/0 is undefined, not zero: a held-out subject with no positive trials has no
@@ -119,10 +121,12 @@ def _subset_classification_metrics(
 
     auc = np.nan
     ap = np.nan
-    if y_prob is not None and len(np.unique(y_true)) == 2:
-        positive_probability = y_prob[:, 1] if y_prob.ndim == 2 else y_prob
-        auc = float(roc_auc_score(y_true, positive_probability))
-        ap = float(average_precision_score(y_true, positive_probability))
+    scores = y_score
+    if scores is None and y_prob is not None:
+        scores = y_prob[:, 1] if y_prob.ndim == 2 else y_prob
+    if scores is not None and len(np.unique(y_true)) == 2:
+        auc = float(roc_auc_score(y_true, scores))
+        ap = float(average_precision_score(y_true, scores))
 
     return {
         "accuracy": acc,
@@ -141,6 +145,7 @@ def classification_metrics(
     y_pred: npt.NDArray[np.intp],
     *,
     y_prob: npt.NDArray[np.float64] | None = None,
+    y_score: npt.NDArray[np.float64] | None = None,
     groups: npt.NDArray[np.object_] | None = None,
 ) -> ClassificationResult:
     # The confusion matrix, specificity and the positive class of precision and recall all
@@ -158,6 +163,10 @@ def classification_metrics(
             raise ValueError("y_prob must have shape (n_trials,) or (n_trials, 2).")
         if not np.isfinite(y_prob).all():
             raise ValueError("y_prob must be finite for every trial; no trials may be dropped.")
+    if y_score is not None:
+        y_score = np.asarray(y_score, dtype=float)
+        if y_score.shape != (len(y_t),) or not np.isfinite(y_score).all():
+            raise ValueError("y_score must be finite with shape (n_trials,).")
     cm = confusion_matrix(y_t, y_p, labels=[0, 1]).astype(np.intp)
 
     if groups is not None:
@@ -168,7 +177,10 @@ def classification_metrics(
         for subj in np.unique(groups_arr):
             mask = groups_arr == subj
             sub_prob = y_prob[mask] if y_prob is not None else None
-            per_subject[str(subj)] = _subset_classification_metrics(y_t[mask], y_p[mask], sub_prob)
+            sub_score = y_score[mask] if y_score is not None else None
+            per_subject[str(subj)] = _subset_classification_metrics(
+                y_t[mask], y_p[mask], sub_prob, sub_score
+            )
 
         def _mean_metric(key: str) -> float:
             vals = [m[key] for m in per_subject.values() if key in m and np.isfinite(m[key])]
@@ -179,6 +191,7 @@ def classification_metrics(
             y_true=y_t,
             y_pred=y_p,
             y_prob=y_prob,
+            y_score=y_score,
             groups=groups_arr,
             accuracy=_mean_metric("accuracy"),
             balanced_accuracy=_mean_metric("balanced_accuracy"),
@@ -193,11 +206,12 @@ def classification_metrics(
             mean_subject_auc=mean_auc,
         )
 
-    global_m = _subset_classification_metrics(y_t, y_p, y_prob)
+    global_m = _subset_classification_metrics(y_t, y_p, y_prob, y_score)
     return ClassificationResult(
         y_true=y_t,
         y_pred=y_p,
         y_prob=y_prob,
+        y_score=y_score,
         groups=None,
         accuracy=global_m["accuracy"],
         balanced_accuracy=global_m["balanced_accuracy"],

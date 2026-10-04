@@ -45,6 +45,8 @@ _GROUP_KEY = "group"
 _ROW_UID = "__eegtable_row_id"
 # Tables written before the rename carry the old column name; they stay readable.
 _LEGACY_ROW_UID = "__eegfeat_row_id"
+# The descriptors eegfeat's reader kept as text, whatever they looked like.
+_LEGACY_TEXT_COLUMNS = ("recording", "event")
 
 
 def _row_uids(
@@ -314,6 +316,23 @@ def _read_targets(
     return pd.concat([identifiers, descriptors], axis=1)
 
 
+def _legacy_sidecar(source: Path, sidecar: dict[str, Any]) -> dict[str, Any]:
+    # A bundle written by eegfeat, before the schema and its manifests: the same values and
+    # coverage files, which stay readable so that results computed from them can be reproduced.
+    # Its reader took "recording" and "event" as text and parsed everything else; it had no
+    # checksums to verify.
+    path = source.with_suffix(".json")
+    coverage = source.stem + "_coverage.tsv"
+    if sidecar.get("coverage") != coverage or not (source.parent / coverage).is_file():
+        raise ValueError(f"{path}: invalid legacy feature bundle file manifest.")
+    row_columns = sidecar.get("row_columns")
+    if not isinstance(row_columns, list):
+        raise ValueError(f"{path}: legacy feature bundle declares no descriptor columns.")
+    validate_names(row_columns, "descriptor columns")
+    text_columns = [column for column in row_columns if column in _LEGACY_TEXT_COLUMNS]
+    return {**sidecar, "row_text_columns": text_columns}
+
+
 def _read_sidecar(source: Path) -> dict[str, Any]:
     path = source.with_suffix(".json")
     try:
@@ -326,6 +345,8 @@ def _read_sidecar(source: Path) -> dict[str, Any]:
             else ""
         )
         raise ValueError(f"{path} is not a feature sidecar ({exc}).{hint}") from exc
+    if isinstance(sidecar, dict) and "schema" not in sidecar and "eegfeat_version" in sidecar:
+        return _legacy_sidecar(source, sidecar)
     if not isinstance(sidecar, dict) or sidecar.get("schema") != 2:
         raise ValueError(f"{path}: unsupported feature bundle schema; regenerate the bundle.")
     text_columns = sidecar.get("row_text_columns")

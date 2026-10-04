@@ -1,17 +1,20 @@
 Complexity and Microstates
 ==========================
 
-Their definitions are in :doc:`/methods/complexity`. Microstate segmentation
-requires the ``microstates`` extra.
+Definitions, input semantics, and estimator limitations are in
+:doc:`/methods/complexity`. Univariate measures use waveforms from ``Signal``
+or envelopes from ``BandSignal`` and retain one row per epoch.
 
-Entropy and Fractal Dimension
------------------------------
+Univariate Complexity and Scaling
+---------------------------------
 
 .. autofunction:: eegtable.higuchi_fractal_dimension
 
 .. autofunction:: eegtable.sample_entropy
 
 .. autofunction:: eegtable.multiscale_entropy
+
+The following functions require ``eegtable[complexity]`` for AntroPy.
 
 .. autofunction:: eegtable.permutation_entropy
 
@@ -21,6 +24,11 @@ Entropy and Fractal Dimension
 
 Microstates
 -----------
+
+Template fitting requires ``eegtable[microstates]``. ``MicrostateModel`` keeps
+the fitted or externally supplied templates separate from subsequent
+assignment; ``microstates.segment`` fits and assigns in one call. Temporal
+summaries consume the resulting ``MicrostateSegmentation``.
 
 .. autoclass:: eegtable.MicrostateModel
    :members:

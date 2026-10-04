@@ -58,10 +58,10 @@ def mean_psd(
 ) -> FeatureTable:
     """Frequency-weighted mean power spectral density in each band.
 
-    The band value is a trapezoidally weighted mean over the frequencies in the
-    band, which makes it an estimate of the integral over the band divided by
-    its width. On a log-spaced grid a plain mean would weight the bottom of
-    every band far too heavily.
+    With complete data, the value is the piecewise-linear band integral divided
+    by the bandwidth. Exact band boundaries are interpolated. Non-finite bins
+    are omitted and the remaining frequency weights are renormalized, so a
+    partial estimate does not equal the full-band integral divided by its width.
 
     Parameters
     ----------
@@ -145,17 +145,18 @@ def mean_tfr_power(
 ) -> FeatureTable:
     """Frequency-weighted mean of wavelet time-frequency power in each band.
 
-    The value is a smoothed spectral density in V²/Hz, because
-    :meth:`~eegtable.Spectra.from_tfr` divides MNE's Morlet power by the sampling
-    rate; without that step the same recording reports a different number at
-    every sampling rate. It is averaged over the band rather than integrated, so it stays a density
-    comparable to :func:`mean_psd`; integrating it would give wavelet-smoothed
-    band power in V².
+    :meth:`~eegtable.Spectra.from_tfr` divides MNE's Morlet power by the original
+    sampling rate. The band mean is reported on a smoothed density scale in
+    V²/Hz for EEG input in volts. Wavelet smoothing and time reduction can make
+    it differ from :func:`mean_psd` for the same recording. Non-finite bins are
+    omitted and the remaining frequency weights are renormalized.
 
     With a ``baseline`` and ``normalize="db"`` this is the decibel of the
     **window-mean** power. :func:`~eegtable.erds_mean` averages a per-sample dB
-    trace instead, which for near-exponential instantaneous power sits about
-    2.5 dB lower. The two are both ERDS in decibels and are not interchangeable.
+    trace from Hilbert band power instead. For identical positive power samples,
+    the mean log power is no greater than the log of mean power; the population
+    gap is about 2.51 dB for exponential power. Different spectral estimators and
+    temporal support also affect comparisons between these functions.
     """
     _require_representation(spectra, "time_frequency_power", "mean_tfr_power")
     return expand(
@@ -186,18 +187,18 @@ def periodic_power(
     peak_rejection_z: float = 2.5,
     max_iterations: int = 3,
 ) -> FeatureTable:
-    """Frequency-weighted mean power above the aperiodic (1/f) component in each band.
+    """Frequency-weighted mean ratio to the fitted aperiodic component.
 
     Every epoch, channel and window is divided by its own fitted aperiodic
     component, as :func:`~eegtable.aperiodic_ratio` does, and the band value is the
     frequency-weighted mean of that ratio, weighted as :func:`mean_psd` weighs
-    power. A pure power law gives 1.0 in every band. A broadband change the fitted
-    line can follow, a gain or a tilt of the whole spectrum such as a movement or
-    muscle artifact produces, is absorbed by the fit and leaves this value
-    unchanged; an oscillation changes it. Band power reports the sum of both.
+    power. A pure power law gives 1.0 in every band. A power-law gain that the
+    fitted line can follow is absorbed by the fit. Artifacts need not follow
+    that model; this ratio does not provide artifact correction.
 
-    The ratio is dimensionless, so a power spectral density and time-frequency
-    power of the same signal give the same value.
+    The ratio is dimensionless and invariant to a positive overall power scale.
+    PSD and time-frequency estimates can still differ because their spectral
+    smoothing and temporal reductions differ.
 
     Parameters
     ----------

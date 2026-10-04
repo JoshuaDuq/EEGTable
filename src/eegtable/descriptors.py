@@ -27,27 +27,24 @@ def peak_frequency(
     groups: Mapping[str, Sequence[str]] | None = None,
     include_global: bool = True,
 ) -> FeatureTable:
-    """Frequency of the dominant oscillation within a band.
+    """Frequency of the strongest qualifying spectral peak within a band.
 
-    A bare argmax is a poor peak estimator on real spectra, so three corrections
-    are applied by default and each can be switched off:
+    The default search applies aperiodic adjustment, smoothing, and a prominence
+    criterion. Each setting can be disabled:
 
     - ``aperiodic_adjusted`` divides out the fitted 1/f component first, via
-      :func:`~eegtable.aperiodic.aperiodic_ratio`, so the peak is measured against
-      the local aperiodic floor. Without it a steep spectrum reports the low edge
-      of the band whatever the oscillation is doing. The fit spans ``fit_range``,
-      which deliberately reaches outside the band: a 1/f slope estimated from a
-      five-hertz window is not a 1/f slope.
+      :func:`~eegtable.aperiodic_ratio`, so the peak is measured relative to the
+      fitted background. An unadjusted maximum can be driven by low-frequency
+      background power. The default fit range extends outside the analysis band;
+      a narrow fit range can poorly constrain the background.
     - ``smoothing_hz`` averages over a centred window of that width before the
-      search, so a single noisy bin cannot win. The average ignores non-finite
-      bins and renormalizes rather than closing the gap and averaging across it.
-      The 1 Hz default suits broad endogenous peaks. A steady-state or otherwise
-      entrained response is a line a few bins wide, and 1 Hz of smoothing blurs
-      it into a neighbouring rhythm: on a public SSVEP recording the defaults
-      reported the alpha peak instead of the 12 Hz flicker. For narrow lines set
-      ``smoothing_hz=0.0`` and choose a band that excludes the neighbours.
+      search. It omits non-finite bins and renormalizes the retained integration
+      weights, while preserving missing bins. Smoothing can attenuate narrow
+      peaks or merge nearby maxima; choose its width for the intended spectral
+      resolution. Zero disables smoothing.
     - ``min_prominence`` selects local maxima using SciPy's topographic
-      prominence in log10 power. The strongest qualifying peak is reported.
+      prominence in log10 power. The qualifying peak with greatest smoothed
+      linear power is retained. Interpolation also uses linear power.
       When none qualifies, the value is NaN and ``"no_peak"`` is set.
       Missing frequency bins separate the search into contiguous finite runs.
 
@@ -71,8 +68,9 @@ def peak_frequency(
         Minimum topographic prominence in log10 power. Zero selects the bare
         in-band argmax, which may be an edge rather than a local peak.
     interpolate : bool, default True
-        Refine the result by parabolic interpolation through the maximum and its
-        neighbours, so it is not quantized to the frequency grid.
+        Refine the result with a parabola through the retained linear-power peak
+        and its neighbors, using their actual frequency coordinates. This does
+        not establish the accuracy of a physiological peak frequency.
     fit_range : tuple of float, optional
         Frequency range for the aperiodic fit. Defaults to
         ``(min(2.0, band.fmin), max(40.0, band.fmax))``. Requires

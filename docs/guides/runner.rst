@@ -8,8 +8,10 @@ Command Line Runner
      TOML recipe. Each written table loads back as a <code>FeatureTable</code>.
    </p>
 
-A recipe sets spectral estimation, band-pass filtering, and trial grouping.
-``eegtable run`` applies that recipe to every recording.
+A recipe sets feature measures, analysis windows, spectral estimation,
+band-signal construction, and trial grouping. ``eegtable run`` applies that
+recipe to every recording. Prepare the epochs beforehand, either in MNE or
+with :doc:`preprocessing`; extraction does not perform raw preprocessing.
 
 Quick Start
 -----------
@@ -31,12 +33,16 @@ Quick Start
    ``resting``
       Every family that needs no event.
 
-**check** writes nothing. It loads the recipe and runs the first recording, then times that
-recording (see `Checking a Recipe`_). It catches:
+**check** writes nothing. It computes and times the first recording (see
+`Checking a Recipe`_) and checks the channels used by ROIs and asymmetry pairs
+in every recording's header. It catches:
 
 - an ROI that names a missing channel,
 - a window outside the epochs,
 - a Morlet wavelet longer than the epoch.
+
+Passing ``check`` does not verify all recordings' windows, numerical data,
+metadata, or preprocessing manifests. Those are validated during their run.
 
 The Recipe
 ----------
@@ -78,7 +84,9 @@ A recipe is a TOML file.
    measure = "itpc"
    bands = ["theta"]
 
-.. list-table:: Sections
+.. rubric:: Sections
+
+.. list-table::
    :header-rows: 1
    :widths: 18 82
 
@@ -109,6 +117,7 @@ A recipe is a TOML file.
    * - ``[trials]``
      - How cross-trial measures group epochs: ``by`` = ``"all"`` (one group),
        ``"event"`` (by event name) or ``"metadata"`` with a ``column``.
+       Every epoch must have a nonmissing value when grouping by metadata.
    * - ``[microstates]``
      - Parameters of :func:`~eegtable.microstates.segment`, fitted once per recording and shared by
        every microstate measure.
@@ -379,8 +388,9 @@ a new pool. The failure sidecar and run log make the interrupted work explicit.
 Outputs
 -------
 
-The input tree is mirrored under the output root. For
-``sub-01/eeg/sub-01_task-rest_epo.fif``:
+The input tree is mirrored under the output root. Only the row kinds produced
+by the recipe are written. With both epoch and cross-trial measures, the input
+``sub-01/eeg/sub-01_task-rest_epo.fif`` produces:
 
 .. code-block:: text
 
@@ -400,9 +410,18 @@ The input tree is mirrored under the output root. For
   ``read_table`` checks against the sidecar, then the features.
 - ``_crosstrial`` holds measures estimated across trials (``itpc``, ``ppc``,
   ``envelope_correlation``, ``spectral_connectivity``, ``wpli`` and their graph
-  summaries), keyed by ``group``.
+  summaries), keyed by ``group``, with ``recording`` and ``n_trials`` descriptors.
+  The runner does not aggregate epoch metadata into these rows; add explicitly
+  matched group outcomes and subject IDs as described in :doc:`cohorts`.
 - The two files are separate. See :ref:`concepts-row-kinds`.
 - Missing values are written ``n/a``.
+- Values and coverage payloads are protected by SHA-256 checksums in schema 2
+  sidecars. Table readers validate them before returning results. The legacy
+  ``eegfeat`` format described in :doc:`tables` lacks these checksums; merely
+  loading it does not establish current extraction provenance.
+
+The filenames follow TSV/JSON sidecar conventions. These outputs are not a
+validated BIDS derivative.
 
 Loading Results
 ~~~~~~~~~~~~~~~
@@ -442,6 +461,9 @@ Overwriting and Failures
 - A run refuses to write over earlier results unless given ``--overwrite``, which also removes
   result files the new recipe no longer produces.
 - A recording that fails is logged with its error and traceback, and the run moves on.
+- Each recording's results are staged and read back before publication. A
+  computation or validation failure during an overwrite retains its previous
+  complete results and records the new failure.
 - ``_failed.json`` records the failure beside the results it did not produce, and a later
   success removes it.
 - The run log is rewritten after every recording, with ``finished`` false until the run ends,
@@ -462,11 +484,12 @@ each recording in one of five states:
    No results, and the last run failed on it. The reason is that run's error, read from
    the recording's ``_failed.json``, so it survives another run into the same output root.
 ``stale``
-   The results were computed by a different recipe, or the input file changed after they
-   were written.
+   The recipe, recording identity, software environment, implementation, input
+   content, or linked preprocessing manifest changed.
 ``partial``
-   Files of a run are gone: a table lacks its coverage file or sidecar, or a table the
-   run wrote is missing.
+   A table, coverage file, or sidecar is missing, unreadable, unsupported, or
+   fails its integrity checks. Invalid upstream preprocessing evidence also
+   makes the result partial.
 
 **What "this recipe" means**
 
@@ -496,8 +519,34 @@ Command Reference
    eegtable check RECIPE [--quick] [--workers N] [--n-jobs N]
    eegtable status RECIPE [--json]
    eegtable init [PATH] [--template basic|task|resting]
+   eegtable report RECIPE OUTPUT [--rows epochs|groups] [--by COLUMN ...]
+                                [--min-coverage FRACTION] [--reject-flag FLAG]
 
 ``--n-jobs`` is passed to MNE's filtering and spectral estimation.
+``--workers`` defaults to 1 for ``run``. For ``check``, it controls only the
+projection and defaults to the CPU count capped by the recording count.
+``report`` requires every selected recording to be ``done`` and the requested
+row kind to exist; see :doc:`cohorts`.
+
+Python API
+~~~~~~~~~~
+
+The same workflow is available without the command-line front end:
+
+.. code-block:: python
+
+   from eegtable.runner import check, load_recipe, run, status
+
+   recipe = load_recipe("recipe.toml")
+   checked = check(recipe, quick=True)
+   outcome = run(recipe, resume=True, workers=4)
+   states = status(recipe)
+
+``run`` returns a ``RunResult`` in input order, with individual recording
+results, failures, and skipped recordings. Per-recording errors remain in
+those results; inspect ``outcome.ok`` and each failed result's ``error`` and
+``traceback``. Configuration and discovery failures raise before the batch
+starts. Set ``overwrite=True`` explicitly to replace stale or partial results.
 
 Exit Status
 ~~~~~~~~~~~
@@ -527,10 +576,15 @@ Things to Know
 --------------
 
 - With ``exclude_bads``, each recording keeps its own good channels, so channel-level
-  columns differ between recordings. Interpolate bad channels upstream, or use ROI and
-  global levels, for one column set across a study.
-- Band signals are cached per recording for reuse across entries. On 22 s epochs of
-  60 channels at 500 Hz, spectral measures peaked near 1.4 GB and each band-signal band
-  added about 1.3 GB. With ``--workers``, each worker needs that much.
+  columns can differ between recordings. Interpolating bad EEG upstream can
+  preserve a common sensor set. ROI and global names can match even when their
+  contributing channels differ, so inspect retained channels and regex ROI
+  membership before treating those estimates as comparable.
+- Band signals are cached per recording for reuse across entries. Memory grows
+  with the epoch count, channels, samples, requested bands, and time-frequency
+  grid. Every worker holds its own recording and caches.
 - Microstate templates are fitted per recording, not across a group.
-- Only FIF epochs files (``mne.read_epochs``) are read.
+- Only FIF epochs files (``mne.read_epochs``) are read. The default pattern
+  selects ``*_epo.fif``; set ``inputs.pattern`` explicitly for other supported
+  epoch names or compressed FIF files. Match each recording's primary file,
+  rather than also matching its split companions.

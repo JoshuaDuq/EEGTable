@@ -81,6 +81,7 @@ intersphinx_mapping = {
     "scipy": ("https://docs.scipy.org/doc/scipy", None),
     "pandas": ("https://pandas.pydata.org/docs", None),
     "mne": ("https://mne.tools/stable", None),
+    "sklearn": ("https://scikit-learn.org/stable", None),
 }
 
 # ---------------------------------------------------------------------------

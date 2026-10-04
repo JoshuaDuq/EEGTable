@@ -102,8 +102,9 @@ def lempel_ziv_complexity(
 
     Samples at or above each channel/window's median or mean become 1; the
     others become 0. AntroPy normalizes the substring count by
-    ``n / log2(n)``. A one-symbol sequence has no defined binary normalization
-    and raises ``ValueError``.
+    ``n / log2(n)``. EEGTable requires both symbols to occur and raises
+    ``ValueError`` for a one-symbol sequence, rather than using AntroPy's
+    observed-alphabet normalization with an alphabet of size one.
     """
     import antropy
 
@@ -340,13 +341,15 @@ def higuchi_fractal_dimension(
     The curve is re-traced at a range of strides :math:`k`, and its mean length
     :math:`L(k)` falls as :math:`k^{-D}`. The dimension :math:`D` is the slope of
     :math:`\log L(k)` against :math:`-\log k`, and it measures how much structure
-    survives coarse sampling: about 1 for a smooth oscillation, about 1.5 for
-    Brownian motion, about 2 for white noise.
+    survives coarse sampling. Smooth curves tend toward dimension one;
+    irregular sampled traces can yield larger estimates. This finite-stride
+    regression is not clipped to the ideal graph-dimension interval ``[1, 2]``
+    or proof of fractal scaling. Sampling rate, window length, and stride range
+    affect it.
 
-    It is not an alternative spelling of :func:`~eegtable.sample_entropy`. Sample
-    entropy asks how predictable the signal is from its own recent past; this
-    asks how its length scales, and the two order real recordings differently.
-    It is also far cheaper: linear in the window length rather than quadratic.
+    This geometric scaling estimate differs from the recurrence estimate in
+    :func:`~eegtable.sample_entropy`. For fixed ``k_max``, its cost is linear
+    in window length, whereas sample-entropy pair counting is quadratic.
 
     Parameters
     ----------
@@ -355,8 +358,8 @@ def higuchi_fractal_dimension(
     windows : sequence of Window
         Analysis windows.
     k_max : int, default 10
-        Largest stride. The window needs at least ``2 * k_max`` samples, and the
-        estimate settles as ``k_max`` grows; 10 is the common choice.
+        Largest stride, in samples. The window needs at least ``2 * k_max``
+        samples. Compare estimates at consistent sampling rates and stride ranges.
     groups : mapping of str to sequence of str, optional
         ROI name to member channels. None gives one column per channel.
     include_global : bool, default True

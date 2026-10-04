@@ -55,6 +55,7 @@ class FoldClassification:
     y_prob: npt.NDArray[np.float64] | None
     classes: tuple[int, ...]
     best_params: dict[str, object]
+    y_score: npt.NDArray[np.float64] | None = None
 
 
 def _validate_and_resolve_inner_groups(
@@ -491,6 +492,15 @@ def _validate_outer_folds(
                 raise ValueError(f"Fold {fold.index}: train/test run overlap.")
 
 
+def _decision_scores(model: Pipeline, X: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
+    if not hasattr(model, "decision_function"):
+        return None
+    scores = np.asarray(model.decision_function(X), dtype=np.float64)
+    if scores.shape != (len(X),) or not np.isfinite(scores).all():
+        raise ValueError("Binary decision scores must be finite with one value per row.")
+    return scores
+
+
 def _cross_fit_engine(
     task: str,
     folds: Sequence[Fold],
@@ -576,6 +586,7 @@ def _cross_fit_engine(
             y_prob=y_prob,
             classes=classes,
             best_params=fitted.best_params,
+            y_score=_decision_scores(model, fitted.X_test),
         )
 
     results = run_folds(folds, _execute_fold, outer_n_jobs=outer_n_jobs)

@@ -7,8 +7,9 @@ Feature Tables and Files
      Select columns by metadata, write TSV and JSON, and stack recordings.
    </p>
 
-Field definitions and column names are in :doc:`/concepts`. This page is the
-operations on a table.
+Use this guide after :doc:`/quickstart`; the examples reuse ``ef``,
+``epochs``, and ``spectral_features`` defined there. Field definitions and
+column identities are in :doc:`/concepts`.
 
 Querying a table
 ----------------
@@ -20,7 +21,7 @@ Querying a table
        band=ef.Band("alpha", 8.0, 13.0), space_kind="channel"
    )
 
-   # Fraction of finite input behind each cell. Not an artifact score.
+   # Coverage measures finite input, not artifact quality.
    valid_fractions = spectral_features.coverage
 
    if "no_peak" in spectral_features.flags:
@@ -63,14 +64,15 @@ per-epoch tables into a dataset.
 Descriptor column names must be unique, nonempty strings. Invalid names raise
 before any files are written, preventing ambiguous targets when the bundle is
 read back.
-The sidecar records which descriptor columns are text, preserving distinct
+Schema 2 sidecars record which descriptor columns are text, preserving distinct
 labels such as ``"01"`` and ``"1"`` through epoch and group dataset loading.
 Numeric descriptors retain their numerical values.
 
 The functions:
 
 - :func:`eegtable.io.write_table` writes a TSV of values, a ``_coverage.tsv`` of
-  the same shape, and a JSON sidecar.
+  aligned feature matrix and row keys, and a JSON sidecar. The coverage file
+  omits the descriptive columns included in the values file.
 - :func:`eegtable.io.read_table` restores metadata, flags, and row identity.
 - :func:`eegtable.io.read_dataset` stacks per-epoch tables and returns descriptor
   columns separately from features.
@@ -80,8 +82,12 @@ layout is not a validated BIDS derivative.
 
 Schema 2 sidecars include descriptor types and content checksums of the values
 and coverage files.
-Modified payloads and unsupported schemas raise errors. Regenerate older bundles;
-the reader does not load them through a compatibility path. Extraction sidecars
+For schema 2, altered values or coverage payloads, incomplete manifests, and
+unsupported schema versions raise errors. Regenerate bundles for a current,
+checksummed analysis. The existing reader also recognizes historical
+``eegfeat_version`` sidecars without a schema field; those files have neither
+payload checksums nor a complete descriptor type manifest and do not provide
+the same integrity guarantees. Extraction sidecars
 also retain resolved defaults, software/source identities and checked upstream
 preprocessing evidence. See :doc:`cohorts` for quality policies and group samples.
 
@@ -102,7 +108,7 @@ Building a cohort
 
 - ``columns="union"`` keeps every column any recording measured. A recording
   that did not measure a column gets ``NaN`` and zero coverage there.
-- ``columns="identical"`` (the default) requires one schema. A mismatch names
+- ``columns="identical"`` (the ``stack_rows`` default) requires one schema. A mismatch names
   the columns that differ.
 
 .. code-block:: python
@@ -110,6 +116,12 @@ Building a cohort
    cohort_features = ef.stack_rows(
        [sub_01_features, sub_02_features, sub_03_features], columns="union"
    )
+
+``read_dataset`` defaults to ``columns="union"``. Pass
+``columns="identical"`` explicitly when every recording must have the same
+feature schema. Union schemas can contain distinct columns for the same
+readable feature when computation settings or ROI membership differ; inspect
+metadata before modeling.
 
 **Modeling input.** The frame passed to :func:`eegtable.model.build_design` needs
 matching ``recording``, ``epoch``, and ``event`` keys, plus the target and

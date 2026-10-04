@@ -1,7 +1,9 @@
 # Example output
 
 Output of `examples/make_examples.py` from simulated recordings. Five subjects, two runs
-each, sixteen trials per run. Regenerate with
+each, sixteen trials per run, eight EEG channels, and fixed seed 11. The full cohort
+is temporary; the generator copies one showcase recording and model outputs here,
+replacing existing files. Regenerate with
 
 ```bash
 python -m pip install -e ".[model]"
@@ -18,7 +20,8 @@ python examples/make_examples.py
   (`subject`, `run`, `trial`, `intensity`, `rating`, `painful`). The remaining columns are
   features.
 - [`sub-01_task-pain_run-01_features_coverage.tsv`](sub-01_task-pain_run-01_features_coverage.tsv)
-  — same shape. Fraction of finite input behind each cell.
+  — aligned feature columns and row identities, without descriptive columns.
+  Fraction of finite input behind each feature cell.
 - [`sub-01_task-pain_run-01_features.json`](sub-01_task-pain_run-01_features.json) — sidecar.
   For each column, the measure, band, space, window, unit, normalization, computation
   parameters, and hash. Also flags and run provenance.
@@ -44,3 +47,7 @@ permutations.
 
 These numbers describe the simulation. Alpha power falls with stimulus intensity. `rating`
 includes noise that these EEG features do not explain.
+
+The generator uses the explicit `ridge_pipeline` and `ridge_grid` API. The current
+modeling recipe starter uses training-scaled Ridge, so these simulated outputs are
+not a benchmark of that starter. See the [modeling guide](https://joshuaduq.github.io/EEGTable/guides/modeling.html) for current workflows.

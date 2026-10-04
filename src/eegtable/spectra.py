@@ -82,9 +82,9 @@ def gradient_weights(freqs: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     """Central-difference bin widths for a frequency axis.
 
     Identical to :func:`trapezoid_weights` in the interior and twice its value
-    at each endpoint. Spectral descriptors use this weighting, whereas band power
-    uses the trapezoid rule. On a uniform grid every weight here is equal, which is
-    what gives a flat spectrum exactly maximal entropy.
+    at each endpoint. Centroid, bandwidth, and spectral-edge descriptors use
+    these weights; spectral entropy uses equal bin weights. Band power uses
+    piecewise-linear quadrature over exact numerical boundaries.
 
     Parameters
     ----------
@@ -331,14 +331,13 @@ class Spectra:
     ) -> Spectra:
         """Build from an MNE ``EpochsTFR`` by averaging over time windows.
 
-        MNE's Morlet wavelets are scaled to energy 2 (norm sqrt(2)), so the power they
-        return for a stationary signal is the one-sided spectral density at the
-        wavelet's frequency, smoothed over its bandwidth, **times the sampling
-        rate**. The same recording resampled from 250 to 500 Hz reports twice
-        the raw Morlet power. The power is therefore divided by the sampling
-        rate here, so the container holds a smoothed density in V²/Hz that is
-        comparable across recordings and, up to the wavelet's smoothing, with a
-        Welch or multitaper PSD of the same data.
+        MNE's Morlet wavelets have energy 2 (norm sqrt(2)). For stationary
+        signals and predominantly positive-frequency wavelets, coefficient power
+        divided by the original sampling rate has the scale of a one-sided,
+        wavelet-smoothed density. This conversion is applied here and reported
+        in V²/Hz for EEG input in volts. Discrete sampling, low cycle counts,
+        smoothing, and time reduction affect agreement with Welch or multitaper
+        PSD estimates of the same recording.
 
         Parameters
         ----------
@@ -357,14 +356,12 @@ class Spectra:
             decimated rate as its own, and MNE keeps no record of the original,
             so reading it off the object would scale a decimated TFR wrongly.
         statistic : {"mean", "median"}, default "mean"
-            How each window's coefficients are reduced over time. The median
-            resists brief bursts, such as movement or muscle artifact, that hold
-            a minority of the window; it is divided by ln 2 so that for Gaussian
-            data it estimates the same density as the mean. A steady oscillation
-            has constant power, so there the median is the mean and the divided
-            value reads up to 1/ln 2 (1.44 times) above it. Ratios between
-            windows, bands or a 1/f fit cancel the factor only where both sides
-            share the same mix of oscillation and noise.
+            Temporal reduction of supported coefficients. The median is divided
+            by ln 2, calibrating the population median to the mean of an
+            exponential power distribution. This calibration does not hold for
+            every signal: constant coefficient power is multiplied by 1/ln 2.
+            Mean and corrected-median estimates can therefore differ across
+            windows or bands with different power distributions.
 
         Returns
         -------

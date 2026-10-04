@@ -84,26 +84,23 @@ def erds_mean(
 ) -> FeatureTable:
     """Mean of the ERDS trace over the window.
 
-    The conventional summary: negative is desynchronization, positive is synchronization.
+    Negative values indicate lower power relative to baseline; positive values
+    indicate higher power. This summary alone does not test a task effect.
 
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
-    **Decibels are the default because these are single-trial values.** Percent
-    change is right-skewed on a single trial: a trial whose baseline happens to be
-    quiet reports several hundred percent, and a handful of those dominate a mean
-    over forty-five trials. On twenty subjects of a public motor dataset the
-    trial-mean percent ERDS showed mu desynchronization in about half of them; the
-    decibel mean, a symmetric log ratio, showed it in every one. Percent remains
-    available for display and for comparison with the classic literature.
+    Decibels are the default. Percent change summarizes additive changes
+    relative to baseline; decibels summarize multiplicative changes. Both
+    remain sensitive to baseline estimation and the distribution of power.
 
     **Two ways to average decibels.** This function averages the per-sample dB
     trace over the window. :func:`~eegtable.mean_tfr_power` with a baseline and
     ``normalize="db"`` takes the dB of the window-mean power instead. They are not
-    the same number: for the near-exponential distribution of instantaneous power
-    the per-sample mean sits about 2.5 dB lower (the mean of a log is below the log
-    of a mean). Report which one you used.
+    the same estimator. For identical positive power samples, mean log power
+    is no greater than log mean power; an exponential population gives a gap
+    of about 2.51 dB. These functions also use different power estimators:
+    Hilbert band power here and Morlet power in ``mean_tfr_power``.
 
     Parameters
     ----------
@@ -119,8 +116,8 @@ def erds_mean(
     include_global : bool, default True
         Also emit the mean across all channels.
     normalize : {"percent", "db"}, default "db"
-        Decibels, or percent change from baseline. See :func:`erds_mean` for why
-        decibels are the default.
+        Decibels or percent change from baseline; see :func:`erds_mean` for
+        the averaging convention.
 
     Returns
     -------
@@ -149,12 +146,13 @@ def erds_slope(
 ) -> FeatureTable:
     """Least-squares slope of the ERDS trace against time.
 
-    Positive means the response is recovering across the window, negative that it is deepening.
+    Positive slopes indicate increasing baseline-relative power across the
+    window; negative slopes indicate decreasing power. The sign alone does
+    not identify recovery or a task response.
     NaN with fewer than three finite samples.
 
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
     Parameters
     ----------
@@ -170,8 +168,8 @@ def erds_slope(
     include_global : bool, default True
         Also emit the mean across all channels.
     normalize : {"percent", "db"}, default "db"
-        Decibels, or percent change from baseline. See :func:`erds_mean` for why
-        decibels are the default.
+        Decibels or percent change from baseline; see :func:`erds_mean` for
+        the averaging convention.
 
     Returns
     -------
@@ -200,25 +198,14 @@ def erd_magnitude(
 ) -> FeatureTable:
     """Mean depth of the desynchronized part of the trace.
 
-    The mean of ``abs(trace)`` over samples below zero. Exactly ``0.0`` when no sample is
-    negative: no desynchronization is a measurement, not a missing value.
+    The mean of ``abs(trace)`` over finite samples below zero. Returns ``0.0``
+    when usable samples exist but none are negative, and NaN when no sample
+    is usable. Conditioning on negative excursions can produce a positive
+    magnitude during unchanged stationary activity. Interpret it against an
+    appropriate experimental or statistical reference.
 
-    .. warning::
-
-       **Zero is not this measure's null.** Instantaneous band power is close to
-       exponentially distributed, so on a window with no task effect at all the
-       trace is below its own baseline mean about ``1 - 1/e`` of the time. Because this
-       averages only the samples that fall below zero, it is a conditional mean and
-       lands near **55-60%** in percent (about 5.5 dB in decibels) with no effect present;
-       ``0.0`` is reachable only when no sample is negative at all.
-       Measured on stationary noise and on a real recording referenced to its own
-       pre-stimulus baseline, the two agree to within a few tenths of a percent.
-       Compare against a null you construct -- a shuffled or pre-stimulus window
-       -- rather than against zero or against half the window.
-
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
     Parameters
     ----------
@@ -234,8 +221,8 @@ def erd_magnitude(
     include_global : bool, default True
         Also emit the mean across all channels.
     normalize : {"percent", "db"}, default "db"
-        Decibels, or percent change from baseline. See :func:`erds_mean` for why
-        decibels are the default.
+        Decibels or percent change from baseline; see :func:`erds_mean` for
+        the averaging convention.
 
     Returns
     -------
@@ -264,23 +251,15 @@ def erd_duration(
 ) -> FeatureTable:
     """Time spent desynchronized.
 
-    Count of samples below zero divided by the sampling rate. Exactly ``0.0`` when none are.
+    Count of finite samples below zero divided by the sampling rate. Returns
+    ``0.0`` when usable samples exist but none are negative, and NaN when no
+    sample is usable. If instantaneous power is exponential and the baseline
+    equals its population mean, the expected below-baseline fraction is
+    ``1 - 1/e``, approximately 0.632. Estimated baselines and other power
+    distributions change this reference; half the window is not a general null.
 
-    .. warning::
-
-       **Zero is not this measure's null.** Instantaneous band power is close to
-       exponentially distributed, so on a window with no task effect at all the
-       trace is below its own baseline mean about ``1 - 1/e`` of the time. That puts
-       this measure at roughly **63% of the window**, not half, and ``ers_duration`` at
-       the remaining 37%.
-       Measured on stationary noise and on a real recording referenced to its own
-       pre-stimulus baseline, the two agree to within a few tenths of a percent.
-       Compare against a null you construct -- a shuffled or pre-stimulus window
-       -- rather than against zero or against half the window.
-
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
     Parameters
     ----------
@@ -296,8 +275,8 @@ def erd_duration(
     include_global : bool, default True
         Also emit the mean across all channels.
     normalize : {"percent", "db"}, default "db"
-        Decibels, or percent change from baseline. See :func:`erds_mean` for why
-        decibels are the default.
+        Decibels or percent change from baseline; see :func:`erds_mean` for
+        the averaging convention.
 
     Returns
     -------
@@ -326,25 +305,14 @@ def ers_magnitude(
 ) -> FeatureTable:
     """Mean height of the synchronized part of the trace.
 
-    The mean of the trace over samples above zero, and ``0.0`` when none are.
+    The mean of the trace over finite samples above zero. Returns ``0.0`` when
+    usable samples exist but none are positive, and NaN when no sample is
+    usable. Conditioning on positive excursions can produce a positive
+    magnitude during unchanged stationary activity. Interpret it against an
+    appropriate experimental or statistical reference.
 
-    .. warning::
-
-       **Zero is not this measure's null.** Instantaneous band power is close to
-       exponentially distributed, so on a window with no task effect at all the
-       trace is below its own baseline mean about ``1 - 1/e`` of the time. Because this
-       averages only the samples above zero, it is a conditional mean and lands near
-       **90-120%** in percent with no effect present; in percent the long right tail of
-       a power ratio makes it larger than its ERD counterpart, while in decibels it is
-       smaller (about 2.6 dB against 5.5 dB).
-       Measured on stationary noise and on a real recording referenced to its own
-       pre-stimulus baseline, the two agree to within a few tenths of a percent.
-       Compare against a null you construct -- a shuffled or pre-stimulus window
-       -- rather than against zero or against half the window.
-
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
     Parameters
     ----------
@@ -360,8 +328,8 @@ def ers_magnitude(
     include_global : bool, default True
         Also emit the mean across all channels.
     normalize : {"percent", "db"}, default "db"
-        Decibels, or percent change from baseline. See :func:`erds_mean` for why
-        decibels are the default.
+        Decibels or percent change from baseline; see :func:`erds_mean` for
+        the averaging convention.
 
     Returns
     -------
@@ -390,23 +358,15 @@ def ers_duration(
 ) -> FeatureTable:
     """Time spent synchronized.
 
-    Count of samples above zero divided by the sampling rate, and ``0.0`` when none are.
+    Count of finite samples above zero divided by the sampling rate. Returns
+    ``0.0`` when usable samples exist but none are positive, and NaN when no
+    sample is usable. If instantaneous power is exponential and the baseline
+    equals its population mean, the expected above-baseline fraction is
+    ``1/e``, approximately 0.368. Estimated baselines and other power
+    distributions change this reference; half the window is not a general null.
 
-    .. warning::
-
-       **Zero is not this measure's null.** Instantaneous band power is close to
-       exponentially distributed, so on a window with no task effect at all the
-       trace is below its own baseline mean about ``1 - 1/e`` of the time. That puts
-       this measure at roughly **37% of the window**, not half, and ``erd_duration`` at
-       the remaining 63%.
-       Measured on stationary noise and on a real recording referenced to its own
-       pre-stimulus baseline, the two agree to within a few tenths of a percent.
-       Compare against a null you construct -- a shuffled or pre-stimulus window
-       -- rather than against zero or against half the window.
-
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
     Parameters
     ----------
@@ -422,8 +382,8 @@ def ers_duration(
     include_global : bool, default True
         Also emit the mean across all channels.
     normalize : {"percent", "db"}, default "db"
-        Decibels, or percent change from baseline. See :func:`erds_mean` for why
-        decibels are the default.
+        Decibels or percent change from baseline; see :func:`erds_mean` for
+        the averaging convention.
 
     Returns
     -------
@@ -455,9 +415,8 @@ def erds_peak_latency(
     Located by ``argmax(abs(trace))``, so a deep desynchronization outranks a shallower
     synchronization.
 
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
     Parameters
     ----------
@@ -473,8 +432,8 @@ def erds_peak_latency(
     include_global : bool, default True
         Also emit the mean across all channels.
     normalize : {"percent", "db"}, default "db"
-        Decibels, or percent change from baseline. See :func:`erds_mean` for why
-        decibels are the default.
+        Decibels or percent change from baseline; see :func:`erds_mean` for
+        the averaging convention.
 
     Returns
     -------
@@ -510,27 +469,14 @@ def erds_onset_latency(
     persists for the required duration. The criterion is independent of percent
     versus decibel output. NaN when no run lasts that long.
 
-    **The persistence is in cycles of the band's low edge by default**, because
-    the null rate of this detector depends on the band. A narrow band's envelope
-    changes slowly, so consecutive samples are far from independent and a fixed
-    number of milliseconds is a much weaker requirement at 4 Hz than at 30 Hz.
-    Measured on rest epochs of a public motor dataset, where nothing happens, a
-    100 ms requirement produced an onset on essentially every trial in theta, mu
-    and beta; about six cycles of the low edge brought the false-onset rate to
-    roughly 5 percent in every band (1.5 s at 4 Hz, 0.75 s at 8 Hz, 0.46 s at
-    13 Hz, 0.2 s at 30 Hz). That is what the default encodes.
+    The default persistence is six cycles of the band's low-frequency edge.
+    This expresses the duration relative to that edge; envelope autocorrelation
+    and filter bandwidth also affect detection. The persistence rule does not
+    define a significance level or guarantee a false-onset rate. A detected
+    excursion alone is not evidence of a task response.
 
-    .. warning::
-
-       On the same dataset the onset fired on movement trials at the same rate as
-       on rest trials at every persistence, so a single-trial onset is a weak
-       detector even when the group-level desynchronization is unmistakable. Read
-       an onset rate against a null you construct from pre-stimulus or shuffled
-       windows, not as evidence that a response occurred on that trial.
-
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
     Parameters
     ----------
@@ -549,8 +495,8 @@ def erds_onset_latency(
         Decibels, or percent change from baseline. See :func:`erds_mean`.
     min_duration_ms : float, optional
         Shortest excursion that counts as an onset, in milliseconds. When given it
-        replaces ``min_duration_cycles`` for every band. Zero restores the first
-        single-sample crossing, which fires on every trial.
+        replaces ``min_duration_cycles`` for every band. Zero retains the first
+        single-sample crossing when one exists.
     min_duration_cycles : float, default 6.0
         Shortest excursion in cycles of each band's ``fmin``, used when
         ``min_duration_ms`` is None. A band with ``fmin`` of zero has no cycle
@@ -597,11 +543,12 @@ def erds_rebound_latency(
 ) -> FeatureTable:
     """Latency of the maximum of the ERDS trace strictly after the peak latency.
 
-    Evaluates to NaN when no sample follows the peak latency within the analysis window.
+    Returns NaN when no finite sample follows the peak latency within the
+    analysis window. The later maximum need not be positive or exceed baseline;
+    the name does not impose an ERS criterion.
 
-    Band power in each analysis window is expressed relative to ``baseline``,
-    per epoch and per channel, so every trial is referenced to its own
-    pre-stimulus power and no cross-trial leakage arises.
+    Power is referenced to the supplied baseline separately for each epoch
+    and channel. The baseline need not be a pre-stimulus interval.
 
     Parameters
     ----------
@@ -617,8 +564,8 @@ def erds_rebound_latency(
     include_global : bool, default True
         Also emit the mean across all channels.
     normalize : {"percent", "db"}, default "db"
-        Decibels, or percent change from baseline. See :func:`erds_mean` for why
-        decibels are the default.
+        Decibels or percent change from baseline; see :func:`erds_mean` for
+        the averaging convention.
 
     Returns
     -------

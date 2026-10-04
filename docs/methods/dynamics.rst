@@ -1,9 +1,9 @@
 Dynamics Methods
 ================
 
-Amplitude change within an epoch, bursts of the analytic envelope, and
-time-domain summaries of the waveform. Inputs are :class:`~eegtable.Signal` and
-:class:`~eegtable.BandSignal`.
+This page defines baseline-relative band-power dynamics, envelope bursts, and
+time-domain waveform summaries. Inputs are :class:`~eegtable.Signal` and
+:class:`~eegtable.BandSignal`. Each result retains one row per epoch.
 
 Signatures are in :doc:`/api/dynamics`.
 
@@ -69,6 +69,10 @@ Summaries
 ~~~~~~~~~
 
 Summaries use the finite samples :math:`\{t_k\}` inside the analysis window.
+Latency is reported in seconds on the input time axis. The slope unit is dB/s
+or percent/s. Channel summaries are computed before ROI/global averaging, so
+an ROI latency is a mean of channel latencies rather than a peak of an averaged
+trace.
 
 .. list-table::
    :header-rows: 1
@@ -98,7 +102,7 @@ Summaries use the finite samples :math:`\{t_k\}` inside the analysis window.
        :math:`|P(t) - B| > \sigma_B`. See below.
    * - ``rebound_latency``
      - Time of the maximum of :math:`\text{ERDS}` strictly after
-       ``peak_latency``.
+       ``peak_latency``. That maximum need not be positive.
 
 Onset rule
 ~~~~~~~~~~
@@ -110,65 +114,27 @@ Onset rule
   baseline power.
 - A non-finite sample breaks the run.
 - The test uses raw power, before percent or decibel conversion.
+- A band beginning at zero requires an explicit ``min_duration_ms`` because
+  its low edge cannot define a cycle duration.
+- No qualifying run returns NaN. The persistence rule is a detection setting;
+  it does not set a significance level or guarantee a false-onset rate.
 
-.. warning::
+Interpretation
+~~~~~~~~~~~~~~
 
-   Under no task effect these summaries are not centered on zero, and the
-   duration summaries are not half the window. Instantaneous band power is
-   close to exponential, so the trace sits below its baseline mean a fraction
-   :math:`1 - e^{-1}` of the time.
+Negative and positive excursions occur during stationary activity. The
+conditional ERD and ERS magnitudes average only one side of zero and therefore
+can both be positive under a no-change condition. Durations need not divide
+the window equally. For example, if instantaneous power is exponential and
+the baseline equals its population mean, the expected fraction below baseline
+is :math:`1-e^{-1}\approx0.632`. An estimated baseline, non-Gaussian activity,
+and temporal dependence change this reference calculation.
 
-   .. list-table::
-      :header-rows: 1
-      :widths: 25 25 25 25
-
-      * - Measure
-        - No effect, dB (default)
-        - No effect, percent
-        - Value if the trace were symmetric about zero
-      * - ``erd_duration``
-        - :math:`\approx 63\%` of the window
-        - :math:`\approx 63\%` of the window
-        - half the window
-      * - ``ers_duration``
-        - :math:`\approx 37\%` of the window
-        - :math:`\approx 37\%` of the window
-        - half the window
-      * - ``erd_magnitude``
-        - :math:`\approx 5.5` dB
-        - :math:`\approx 55\text{–}60\%`
-        - 0
-      * - ``ers_magnitude``
-        - :math:`\approx 2.6` dB
-        - :math:`\approx 90\text{–}120\%`
-        - 0
-      * - ``erds_onset_latency``
-        - fires on some trials, at a rate that depends on bandwidth
-        - fires on some trials, at a rate that depends on bandwidth
-        - NaN when nothing happens
-
-   Why the onset rule is in cycles:
-
-   - A single sample exceeds a one-standard-deviation criterion about 14% of
-     the time by chance.
-   - On rest epochs of a public motor dataset, a fixed 100 ms run still
-     produced an onset on essentially every trial in theta, mu, and beta.
-   - A narrow-band envelope moves slowly, so neighbouring samples are
-     dependent.
-   - About six cycles of the band's low edge brought that false-onset rate to
-     roughly 5% in each of those bands, which is why the default length is in
-     cycles.
-   - On that dataset the onset rate on movement trials matched the rate on
-     rest trials.
-
-   How to compare:
-
-   - Compare a condition with a null from shuffled labels or from
-     pre-stimulus windows.
-   - Durations scale with window length, and magnitudes depend on the
-     distribution of power.
-   - Two windows of different length need that comparison before they are
-     compared with each other.
+The six-cycle onset default expresses persistence relative to the band's low
+edge. Filter bandwidth and envelope autocorrelation affect its behavior;
+the rule is not an inferential test. Compare conditions using an appropriate
+experimental or statistical reference, and report the baseline, window
+duration, scale, and onset criterion.
 
 Scale
 ~~~~~
@@ -176,14 +142,10 @@ Scale
 Every ``erds_*`` function reports decibels by default. Percent is available
 with ``normalize="percent"``.
 
-**Why decibels.**
-
-- Percent change on a single trial is right-skewed.
-- A quiet baseline turns an ordinary fluctuation into several hundred
-  percent, and those trials dominate a mean.
-- On twenty subjects of a public motor dataset, the trial-mean percent ERDS
-  showed mu desynchronization in about half of the subjects. The decibel mean
-  showed it in all twenty.
+Percent change gives equal increments for equal additive power changes
+relative to baseline. Decibels give equal increments for equal multiplicative
+changes. Either scale remains sensitive to baseline estimation; the choice
+changes the summary and its interpretation.
 
 **Order of averaging.** Two decibel quantities in the library average in a
 different order.
@@ -191,14 +153,19 @@ different order.
 - The ``erds_*`` functions average the per-sample dB trace.
 - :func:`~eegtable.mean_tfr_power` with a baseline and ``normalize="db"`` takes
   the decibel of the window-mean power.
-- For near-exponential instantaneous power the per-sample mean sits about
-  2.5 dB below the decibel of the mean.
-- On real data the two correlate only moderately across trials.
-- Report which one was used.
+- For the same positive power samples and baseline, Jensen's inequality makes
+  the mean log power no greater than the log of mean power. An exponential
+  population gives a gap of about 2.51 dB, before finite-sample effects.
+- ``erds_*`` uses Hilbert band power, whereas ``mean_tfr_power`` uses Morlet
+  power, so their difference also reflects the spectral estimator and support.
 
 **Reference.** The ERD/ERS terms and the baseline-referenced interpretation
 follow Pfurtscheller and Lopes da Silva (1999). The relative baseline guard,
-the onset rule, and the rebound rule are defined above.
+the onset rule, and the rebound rule are EEGTable choices defined above. The
+`MNE ERDS example
+<https://mne.tools/stable/auto_examples/time_frequency/time_frequency_erds.html>`__
+demonstrates baseline-relative time-frequency power and a separate statistical
+analysis.
 
 Oscillatory Bursts
 ------------------
@@ -213,8 +180,8 @@ Detection
    ``threshold=0.75``) or an array supplied by the caller.
 
    - The quantile is computed separately for each epoch and channel.
-   - It is calibrated on the baseline when one is given, and on the analysis
-     windows otherwise.
+   - It is calibrated on the baseline when one is given, and on the union of
+     analysis-window samples otherwise. Overlapping samples are counted once.
    - A sample is above threshold when :math:`E(t) > \theta`.
    - A non-finite sample is not above threshold, so it ends a run.
 
@@ -243,7 +210,7 @@ An externally supplied threshold array is broadcast to
 Summaries
 ~~~~~~~~~
 
-Five summaries are taken from the retained runs.
+Five summary outputs describe the retained runs and threshold exceedance.
 
 .. list-table::
    :header-rows: 1
@@ -269,6 +236,12 @@ Five summaries are taken from the retained runs.
 - ``duration_mean`` and ``amp_mean`` are NaN.
 - ``fraction_above`` is 0 when no sample exceeds :math:`\theta`.
 
+A window with no finite sample, or a non-finite threshold, returns NaN for all
+five summaries. Rates use the full sampled window duration, including gaps;
+the exceedance fraction uses only finite samples. When thresholds are estimated
+from the analysis windows, changes in amplitude also change the threshold.
+Use a calibration interval appropriate to the intended comparison.
+
 **Reference.** Whitten et al. (2011) and Hughes et al. (2012) detect
 oscillations by fitting a 1/f background, applying a chi-square threshold to
 power, and requiring a minimum number of cycles (BOSC). The detector here uses
@@ -287,6 +260,9 @@ also included.
 
 - On a :class:`~eegtable.Signal` the input is the waveform.
 - On a :class:`~eegtable.BandSignal` the input is the envelope.
+- Dimensional unit labels assume EEG amplitudes in volts. Variance uses V²;
+  amplitude summaries use V; area uses V·s; line length uses V/s. Skewness,
+  excess kurtosis, and Hjorth complexity are dimensionless.
 
 **Missing values and coverage.**
 
@@ -358,9 +334,16 @@ Hjorth parameters
 - Mobility uses the sample difference scaled by the sampling rate, so the
   derivative is per second.
 - Mobility is divided by :math:`2\pi` and reported in hertz.
-- Mobility therefore does not depend on the sampling rate, apart from the
-  finite-difference gain :math:`\sin(\pi f/f_s)/(\pi f/f_s)` near Nyquist.
+- This division changes conventional Hjorth mobility, whose unit is inverse
+  seconds, to a frequency-equivalent scale. For a well-sampled sinusoid it
+  approaches the sinusoid's frequency.
+- Finite differences introduce a gain
+  :math:`\sin(\pi f/f_s)/(\pi f/f_s)` relative to a continuous derivative.
+  Sampling rate and signal bandwidth therefore still affect the estimate.
 - Complexity is a ratio of mobilities, so unscaled differences suffice.
+- Mobility needs two finite differences and positive signal variance;
+  complexity also needs two finite second differences and positive
+  first-difference variance. Constant or insufficient windows return NaN.
 
 .. code-block:: python
 
@@ -385,6 +368,10 @@ is its time.
 
 **Naming.** The window name is not read as a component label. There is no
 inference of N2, P300, or any other named component.
+
+Without a prominence criterion, an edge extremum is allowed. Ties return the
+first qualifying sample. Latency is quantized to the input time grid; no
+temporal interpolation is performed.
 
 **Prominence.** When ``prominence`` is set:
 

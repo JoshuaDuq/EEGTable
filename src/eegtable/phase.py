@@ -35,9 +35,11 @@ def itpc(
        \\mathrm{ITPC} = \\frac{1}{T} \\sum_t
        \\left| \\frac{1}{N} \\sum_n e^{i \\phi_n(t)} \\right|
 
-    One means the phase is identical on every trial at that latency, zero that it
-    is uniformly distributed. Trials are averaged first and time second; reversing
-    the order measures something else.
+    Identical trial phases give one; exact cancellation of the sampled unit
+    vectors gives zero. Independent uniform phases generally give a positive
+    finite-sample estimate. Trials are averaged first and time second; reversing
+    the order defines a different measure. Latencies with fewer than
+    ``min_valid_trials`` defined phases are omitted from the window mean.
 
     **This is estimated across trials, so the result has one row per trial group,
     not one per epoch.** The returned table carries ``row_labels`` and cannot be
@@ -60,6 +62,10 @@ def itpc(
         ROI name to member channels. None gives one column per channel.
     include_global : bool, default True
         Also emit the mean across all channels.
+    min_valid_trials : int, default 2
+        Minimum number of defined trial phases at each latency. Must be at least
+        two. Windows without a qualifying latency return NaN and are flagged
+        ``insufficient_trials``.
 
     Returns
     -------
@@ -112,10 +118,12 @@ def ppc(
     """Pairwise phase consistency across trials.
 
     PPC averages the cosine of every unordered trial-phase difference at each
-    latency, then averages over the requested window. Unlike ITPC, its expected
-    value is not inflated solely by a smaller number of trials. PPC estimates
-    squared population phase locking and is not numerically interchangeable with
-    ITPC.
+    latency, then averages over the requested window. It estimates squared
+    population phase locking without the PLV-squared finite-sample bias under
+    independent identically distributed trial phases. Finite-sample values can
+    be negative, and trial count still affects uncertainty. Latencies with fewer
+    than ``min_valid_trials`` defined phases are omitted. The result has one row
+    per trial group and is not numerically interchangeable with ITPC.
     """
     if min_valid_trials < 2:
         raise ValueError(f"min_valid_trials must be at least 2, got {min_valid_trials}.")
@@ -169,14 +177,17 @@ def pac(
        \\mathrm{MVL} = \\frac{\\left| \\sum_t A(t) e^{i \\phi(t)} \\right|}{\\sum_t A(t)}
 
     where :math:`\\phi` is the phase of ``phase_signal`` and :math:`A` the envelope
-    of ``amplitude_signal``. Normalizing by the summed amplitude makes the value
-    independent of overall power, so it is comparable across channels and trials;
-    without it the result scales with amplitude and is not.
+    of ``amplitude_signal``. With ``normalize=True``, division by summed
+    amplitude makes the value invariant to an overall positive amplitude scale
+    and bounds it between zero and one. With ``normalize=False``, the modulus
+    of the weighted sum is divided by the number of valid samples and retains
+    the amplitude unit.
 
-    Computed within each trial, so it carries no cross-trial leakage and the
-    result has one row per epoch. No surrogate correction is applied: a raw
-    coupling value is biased upward by amplitude and phase autocorrelation, so
-    compare against a null you construct rather than reading it absolutely.
+    Computed within each trial, with one row per epoch. Finite windows and
+    temporal dependence can produce nonzero estimates without coupling;
+    amplitude normalization alone does not remove this bias. No surrogate
+    correction is applied. See :func:`pac_surrogates` for inference under an
+    explicitly chosen temporal-shift null.
 
     Parameters
     ----------
@@ -187,8 +198,8 @@ def pac(
     windows : sequence of Window
         Analysis windows.
     normalize : bool, default True
-        Divide by the summed amplitude. Leave True unless you specifically want
-        the unnormalized resultant.
+        Divide by the summed amplitude. False returns the modulus of the mean
+        amplitude-weighted phase vector.
     groups : mapping of str to sequence of str, optional
         ROI name to member channels. None gives one column per channel.
     include_global : bool, default True

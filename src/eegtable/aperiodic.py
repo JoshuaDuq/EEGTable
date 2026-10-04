@@ -47,11 +47,12 @@ def aperiodic(
     Fits ``log10(P) = offset + slope * log10(f)`` over ``fit_range``, then
     iteratively discards points lying more than ``peak_rejection_z`` robust
     deviations **above** the fit and refits. Only positive residuals are
-    rejected, because oscillatory peaks sit above the aperiodic line and would
-    otherwise tilt it; troughs carry no such bias.
+    rejected. Peaks above the background can bias the fitted slope; their
+    influence depends on location and shape. Negative residuals are retained.
 
-    A log-spaced frequency grid is well suited to this fit, since it spaces the
-    abscissae evenly in ``log10(f)``.
+    Each retained frequency bin has equal regression weight. Grid density,
+    fit range, filtering, and departures from a straight power law can affect
+    the fit. This estimator does not fit a knee or Gaussian peaks.
 
     Parameters
     ----------
@@ -71,7 +72,11 @@ def aperiodic(
     Returns
     -------
     FeatureTable
-        Columns for ``slope`` (negative for a typical spectrum) and ``offset``.
+        Columns for ``slope``, ``offset``, and ``r_squared``. Slope is negative
+        for a decreasing power law. Fit quality is scored only on retained bins;
+        it does not assess the full spectral decomposition. Fewer than five
+        usable bins yields NaN parameters. Constant retained log power gives
+        undefined ``r_squared`` even when slope and offset can be estimated.
     """
     _validate_fit_settings(peak_rejection_z, max_iterations)
     band = _validate_fit_band(spectra, fit_range)
@@ -135,12 +140,12 @@ def aperiodic_ratio(
     peak_rejection_z: float = 2.5,
     max_iterations: int = 3,
 ) -> Spectra:
-    """Divide out the fitted aperiodic component, leaving the periodic residual.
+    """Divide the spectrum by its fitted aperiodic component.
 
     Returns spectra in which a pure power law is flat at 1.0, so an oscillation is
-    measured against the local 1/f floor rather than against zero. This is what
-    makes peak finding work on real data: a steep spectrum puts its largest raw
-    value at the low edge of any band, whatever the oscillation is doing.
+    measured relative to the fitted background. This is a dimensionless ratio,
+    rather than a subtracted periodic PSD. An unadjusted spectral maximum can
+    be driven by low-frequency background power.
 
     The fit is the same iterative, positive-residual-rejecting fit used by
     :func:`aperiodic`. A cell whose fit cannot be estimated is entirely NaN and
@@ -272,10 +277,9 @@ def _r_squared(
 ) -> float:
     """Fit quality over the points the line was actually fitted to.
 
-    Rejected peaks are excluded on purpose: an alpha peak is not a failure of the
-    aperiodic model, so scoring against it would read low for every healthy
-    spectrum. What this does catch is a bend the line cannot follow -- a knee
-    inside the fit range -- which is the failure that silently biases the exponent.
+    Rejected peaks are excluded, so this statistic describes the retained
+    straight-line fit. A bend within the fitted range can reduce its value and
+    bias the slope; the statistic alone does not validate the decomposition.
     """
     picks = np.flatnonzero(keep)
     if picks.size < _MIN_FIT_POINTS or not np.isfinite(slope) or not np.isfinite(offset):

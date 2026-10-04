@@ -5,100 +5,122 @@
 [![MNE-Python ≥ 1.8](https://img.shields.io/badge/mne--python-≥1.8-blue.svg)](https://mne.tools/stable/)
 [![Docs](https://img.shields.io/badge/docs-Sphinx-blue.svg)](https://joshuaduq.github.io/EEGTable/)
 
-**Spectral**, **temporal**, **connectivity**, and **complexity** features for **MNE** objects, returned as `FeatureTable`, with reproducible cohort analysis and grouped model evaluation.
+EEGTable extracts labelled EEG features from MNE objects and supports reproducible cohort analysis, regression, and binary classification. Spectral, temporal, connectivity, complexity, cycle, and microstate measures return structured `FeatureTable` objects.
 
-Every column keeps its band, window, spatial unit, normalization, coverage, and computation parameters, and its name carries the same fields:
+Each table retains feature definitions, physical units, computation parameters, row identities, finite-input coverage, and quality flags. Modeling supports group-disjoint evaluation and training-fold preprocessing and tuning.
 
-```text
-eeg_erds-mean_alpha_central_stimulus_db_pd6572187a139
-│   │         │     │       │        │  └─ parameter hash (first 12 hex of SHA-256)
-│   │         │     │       │        └─ normalization (raw, log10, log_ratio, db, percent)
-│   │         │     │       └─ time window, or "all"
-│   │         │     └─ channel, ROI, or "global"
-│   │         └─ band, or "broadband"
-│   └─ measure
-└─ domain
-```
+**Current version:** `0.1.0.dev0` (development release). Install from source and record the source revision used in an analysis.
 
-**Documentation:** [joshuaduq.github.io/EEGTable](https://joshuaduq.github.io/EEGTable/)
+[Documentation](https://joshuaduq.github.io/EEGTable/) · [Methods](https://joshuaduq.github.io/EEGTable/methods/index.html) · [API reference](https://joshuaduq.github.io/EEGTable/api/index.html) · [Validation evidence](https://joshuaduq.github.io/EEGTable/guides/validation.html)
 
-## Install
+## Installation
 
-Python 3.11 or newer. Not on PyPI; install from source.
+Python 3.11 or newer is required. From a macOS or Linux terminal:
 
 ```bash
 git clone https://github.com/JoshuaDuq/EEGTable.git
 cd EEGTable
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
+source .venv/bin/activate
 python -m pip install -e ".[model]"
 ```
 
-Core dependencies are `numpy`, `scipy`, `pandas`, and `mne`. Optional extras:
+On Windows PowerShell, activate with `.\.venv\Scripts\Activate.ps1`. The core package requires NumPy ≥ 1.26, SciPy ≥ 1.11, pandas ≥ 2.0 and < 3.0, and MNE ≥ 1.8. The `model` extra adds modeling and YAML recipes; it is optional for core feature extraction.
 
-| Extra | Adds |
+| Extra | Capability |
 | :--- | :--- |
-| `model` | Pipelines, grouped cross-fitting, metrics, nulls, uncertainty |
-| `connectivity` | Spectral connectivity and wPLI via `mne-connectivity` |
-| `microstates` | Microstate segmentation |
-| `spectral-model` | Fixed/knee spectral parameterization via specparam |
+| `model` | Estimator pipelines, grouped evaluation, metrics, nulls, and uncertainty |
+| `connectivity` | Spectral connectivity, wPLI, and per-epoch time-frequency connectivity via MNE-Connectivity |
+| `microstates` | Microstate template fitting and segmentation via scikit-learn |
+| `spectral-model` | Fixed/knee spectral parameterization via the pinned specparam release |
 | `irasa` | Aperiodic/oscillatory separation via NeuroDSP |
 | `cycles` | Cycle waveform and burst features via ByCycle |
-| `complexity` | Permutation entropy, Lempel–Ziv complexity and DFA via AntroPy |
+| `complexity` | Permutation entropy, Lempel–Ziv complexity, and DFA via AntroPy |
 | `pac` | PAC surrogate inference via Tensorpac |
-| `riemann` | Training-fitted covariance and tangent-space decoding via pyRiemann |
+| `riemann` | Covariance and tangent-space modeling via pyRiemann |
 | `bids` | Native BIDS discovery and loading via MNE-BIDS |
-| `importance` | SHAP (permutation importance is in `model`) |
-| `preprocessing` | Raw-to-epochs workflow for one recording or a cohort |
-| `preprocessing-auto` | PyPREP, ICLabel, Picard, autoreject |
+| `importance` | SHAP explanations; permutation importance is included in `model` |
+| `preprocessing` | Raw-to-epochs workflow; requires MNE ≥ 1.13.2 |
+| `preprocessing-auto` | PyPREP, ICLabel, Picard, and autoreject integrations |
 | `preprocessing-gui` | MNE Qt viewers for interactive review |
-| `docs`, `dev` | Documentation build; tests, typing, lint |
+| `docs`, `dev` | Documentation build; tests, typing, and lint |
+
+Combine extras for the intended workflow, for example `python -m pip install -e ".[preprocessing,preprocessing-auto,model]"`. See [Installation](https://joshuaduq.github.io/EEGTable/install.html) for complete dependencies and platform instructions.
 
 ## Quick start
+
+This example uses a preprocessed epochs file with at least one second of data per epoch, sampling frequency above 90 Hz, and the EEG channels `C3`, `Cz`, and `C4`. MNE represents EEG amplitudes in volts. Choose bands, windows, references, and estimator settings for your study.
 
 ```python
 import mne
 import eegtable as ef
 
+from eegtable.io import write_table
+
 epochs = mne.read_epochs("sub-01_epo.fif", preload=True)
+epochs.pick("eeg", exclude="bads")
 
 alpha = ef.Band("alpha", 8.0, 13.0)
-baseline = ef.Window("baseline", -0.5, -0.1)
-stimulus = ef.Window("stimulus", 0.1, 0.6)
 rois = {"central": ["C3", "Cz", "C4"]}
-
-spectrum = epochs.compute_psd(method="welch", fmin=1.0, fmax=45.0)
+segment_samples = round(epochs.info["sfreq"])
+welch_parameters = {
+    "fmin": 1.0,
+    "fmax": 45.0,
+    "n_fft": segment_samples,
+    "n_per_seg": segment_samples,
+    "n_overlap": segment_samples // 2,
+    "window": "hamming",
+    "average": "mean",
+    "remove_dc": True,
+}
+spectrum = epochs.compute_psd(method="welch", **welch_parameters)
 spectra = ef.Spectra.from_spectrum(
     spectrum,
     recording="sub-01",
-    estimator_parameters={"method": "welch", "fmin": 1.0, "fmax": 45.0},
+    estimator_parameters={"method": "welch", **welch_parameters},
 )
-power = ef.integrated_band_power(spectra, bands=[alpha], groups=rois, normalize="log10")
+features = ef.integrated_band_power(spectra, bands=[alpha], groups=rois)
 
-signal = ef.BandSignal.from_epochs(epochs, alpha, recording="sub-01", pad_sec=0.5)
-erds = ef.erds_mean([signal], baseline=baseline, windows=[stimulus], groups=rois)
-
-features = ef.concat([power, erds])
-features.to_dataframe()
+frame = features.to_dataframe()
+paths = write_table(features, "sub-01_features.tsv", rows=epochs.metadata)
 ```
 
-`estimator_parameters` goes into the column hash. MNE does not store Welch `n_per_seg`, `n_overlap`, or `window` on a `Spectrum`, so record every setting that varies. Otherwise two different estimates share a column name.
+Raw integrated PSD power has units of V². `normalize="log10"` is available for log-scaled power. The Welch settings are declared once and retained in the feature identity: MNE does not retain all estimator arguments on its `Spectrum` object. For multitaper PSD, compute and declare `normalization="full"`.
 
-More workflows: [Quick Start](https://joshuaduq.github.io/EEGTable/quickstart.html). Tables, files, and stacking: [Feature Tables and Files](https://joshuaduq.github.io/EEGTable/guides/tables.html).
+The [Quick start](https://joshuaduq.github.io/EEGTable/quickstart.html) adds Morlet power, bursts, and ERD/ERS. [Tables and files](https://joshuaduq.github.io/EEGTable/guides/tables.html) explains selection, serialization, and stacking.
 
-## Command line
+## Data and provenance
 
-**Batch runner.** One TOML recipe applied to a folder of epochs files. Each written table loads back as a `FeatureTable`.
+A feature name contains six readable fields and a digest of the complete column specification:
+
+```text
+eeg_<measure>_<band>_<space>_<window>_<normalization>_p<12-hex-digest>
+```
+
+Structured metadata is authoritative; `FeatureTable.select()` uses that metadata. The digest also distinguishes estimator settings, frequency bounds, ROI membership, and other computation parameters that are absent from the readable fields.
+
+- **Epoch rows** retain `(recording, original epoch index, event)` identities.
+- **Trial-group rows** describe estimates across trials, such as ITPC and epoch-averaged connectivity. They are written separately and have a dedicated `eegtable.group` design interface.
+- **Coverage** measures finite-input availability. It does not measure artifact removal or signal quality. Morlet temporal support is recorded separately on `Spectra`.
+- **Files** contain values and coverage TSVs plus a JSON sidecar. Newly written schema 2 bundles include descriptor types and payload checksums. Extraction provenance records resolved settings, input identities, software/source identities, and available preprocessing evidence.
+
+See [Data concepts](https://joshuaduq.github.io/EEGTable/concepts.html) and [Reproducible cohorts](https://joshuaduq.github.io/EEGTable/guides/cohorts.html).
+
+## Command-line workflows
+
+Apply a TOML extraction recipe to preprocessed epochs files:
 
 ```bash
-eegtable init recipe.toml     # commented recipe; --template task or resting
-eegtable check recipe.toml    # validate and time the first recording; writes nothing
-eegtable run recipe.toml      # every recording
-eegtable status recipe.toml   # what is done, and what to run next
+eegtable init recipe.toml
+eegtable check recipe.toml
+eegtable run recipe.toml
+eegtable status recipe.toml
 eegtable report recipe.toml quality.html --by recording
 ```
 
-**Preprocessing.** Optional raw-to-epochs cleaning from one YAML recipe, with review gates you can require, auto-accept, or skip.
+`init` also provides `--template task` and `--template resting`. `check` validates the recipe and computes the first recording without writing feature bundles. See the [Runner guide](https://joshuaduq.github.io/EEGTable/guides/runner.html).
+
+Preprocess raw recordings with a YAML recipe and explicit review policies:
 
 ```bash
 eegtable preprocess init preprocessing.yaml --mode events
@@ -106,13 +128,13 @@ eegtable preprocess check preprocessing.yaml
 eegtable preprocess run preprocessing.yaml
 ```
 
-Recipes, flags, exit codes, and the review workflow are in the [Runner](https://joshuaduq.github.io/EEGTable/guides/runner.html) and [Preprocessing](https://joshuaduq.github.io/EEGTable/guides/preprocessing.html) guides. [`tui/`](tui) is an optional preprocessing terminal front end (Go 1.24+).
+See [Preprocessing](https://joshuaduq.github.io/EEGTable/guides/preprocessing.html) for review decisions, checkpoint verification, and event/fixed-length workflows, and [Native BIDS input](https://joshuaduq.github.io/EEGTable/guides/bids.html) for BIDS recordings. The optional [`tui/`](tui) preprocessing interface requires Go 1.24 or newer.
 
 ## Modeling
 
-`eegtable.model` builds a design from per-epoch tables and evaluates it with group-disjoint nested validation. Preprocessing and tuning are fit inside each training fold, and permutation nulls cover the full procedure. Ridge, elastic net, random forest, logistic regression, SVM, and ensembles are included. See [Predictive Modeling](https://joshuaduq.github.io/EEGTable/guides/modeling.html).
+`eegtable.model` supports regression and binary classification with group-disjoint outer folds and optional inner tuning. Ridge, elastic net, random forest, logistic regression, SVM, and ensembles are available. Preprocessing is fitted within training folds; nested tuning uses training groups. Permutation inference must repeat the chosen fitting procedure under a null whose exchangeability assumptions match the study.
 
-Reusable microstate templates and fold-fitted CSP, microstate, covariance and tangent-space transforms support analysis across recordings without fitting on held-out data. `eegtable.group` provides a separate design interface for trial-group estimates. Fixed quality policies preserve coverage, flags and exclusion evidence in the design.
+Training-fitted CSP, microstate, covariance, and tangent-space transforms support learned features. Fixed quality policies retain coverage, flags, and exclusion evidence. Predicting new participants, predicting new runs of known participants, and estimating within-participant associations require different split and scoring choices.
 
 ```bash
 eegtable model init model.yaml
@@ -120,37 +142,48 @@ eegtable model check model.yaml
 eegtable model run model.yaml
 ```
 
-Saved feature bundles require checksummed schema 2 manifests. Input content, resolved defaults, software and source identity govern extraction status. Regenerate older outputs; modified or incomplete bundles raise errors.
+Model recipes support participant-level targets and explicit within-participant correlation scoring. Runs include a dummy baseline and, when covariates are supplied, a covariate-only baseline on the same held-out rows, with machine-readable comparisons. The starter uses Ridge penalties scaled inside each training fit. SVM outputs retain decision scores for AUC; these are not calibrated probabilities.
 
-## What it computes
+[Predictive modeling](https://joshuaduq.github.io/EEGTable/guides/modeling.html) · [Learned features](https://joshuaduq.github.io/EEGTable/guides/learned_features.html) · [Model recipes](https://joshuaduq.github.io/EEGTable/guides/model_recipes.html)
 
-| Family | Functions |
+## Methods and scientific evidence
+
+| Family | Selected entry points |
 | :--- | :--- |
-| Power | `mean_psd`, `integrated_band_power`, `mean_tfr_power`, `periodic_power`, `band_ratio`, `asymmetry` |
-| Spectral shape | `peak_frequency`, `spectral_centroid`, `spectral_bandwidth`, `spectral_edge`, `spectral_entropy`, `aperiodic`, `aperiodic_ratio` |
-| Spectral separation | `spectral_parameterization`, `irasa` |
-| Time domain | `variance`, `mean_amplitude`, `peak_to_peak`, `area_under_curve`, `peak_amplitude`, `peak_latency`, `amplitude_quantile`, `kurtosis`, `skewness`, `line_length`, `root_mean_square`, `zero_crossing_rate`, `hjorth_mobility`, `hjorth_complexity` |
-| Bursts and ERDS | `burst_count`, `burst_rate`, `burst_duration`, `burst_amplitude`, `fraction_above_threshold`, `erds_mean`, `erds_slope`, `erd_magnitude`, `erd_duration`, `ers_magnitude`, `ers_duration`, `erds_onset_latency`, `erds_peak_latency`, `erds_rebound_latency` |
-| Phase and connectivity | `itpc`, `ppc`, `envelope_correlation`, `spectral_connectivity`, `spectral_connectivity_time`, `wpli`, `pac`, `pac_surrogates`, `global_efficiency`, `clustering_coefficient` |
+| Power and spectral shape | `integrated_band_power`, `mean_tfr_power`, `peak_frequency`, `spectral_entropy`, `aperiodic` |
+| Spectral separation | `spectral_parameterization`, `irasa`, `periodic_power` |
+| Time domain | `variance`, `peak_amplitude`, `peak_latency`, `area_under_curve`, `hjorth_mobility`, `hjorth_complexity` |
+| Bursts and ERD/ERS | `burst_rate`, `burst_duration`, `erds_mean`, `erds_onset_latency`, `erds_rebound_latency` |
+| Phase and connectivity | `itpc`, `ppc`, `pac`, `pac_surrogates`, `envelope_correlation`, `spectral_connectivity`, `spectral_connectivity_time`, `wpli` |
 | Complexity | `sample_entropy`, `multiscale_entropy`, `higuchi_fractal_dimension`, `permutation_entropy`, `lempel_ziv_complexity`, `detrended_fluctuation` |
-| Cycle waveforms | `cycle_features` |
-| Microstates | `segment`, `microstate_coverage`, `microstate_duration`, `microstate_occurrence`, `microstate_transitions` |
-| Spatial filters | `CommonSpatialPattern`, `csp_features` |
+| Cycles and microstates | `cycle_features`, `MicrostateModel`, `segment`, `microstate_coverage`, `microstate_transitions` |
+| Spatial and graph summaries | `CommonSpatialPattern`, `csp_features`, `global_efficiency`, `clustering_coefficient` |
+| Quality and reliability | `QualityPolicy`, `apply_quality`, `feature_quality`, `cohort_quality`, `intraclass_reliability` |
 
-Definitions are in [Methods](https://joshuaduq.github.io/EEGTable/methods/index.html). Signatures are in the [API Reference](https://joshuaduq.github.io/EEGTable/api/index.html). Numerical and boundary tests cover the new APIs; public-dataset evidence for established methods is in [Validation](https://joshuaduq.github.io/EEGTable/guides/validation.html). Each dataset validation run saves its own immutable evidence snapshot.
+[Method definitions](https://joshuaduq.github.io/EEGTable/methods/index.html) describe formulas, units, assumptions, and missing-value behavior. [Public-dataset validation](https://joshuaduq.github.io/EEGTable/guides/validation.html) distinguishes numerical agreement, estimator comparisons, physiological effects, and decoding. Its saved results identify the tested source and environment; they do not establish every method's validity for every study or automatically cover subsequent code changes.
 
-## Development
+For publications, record the EEGTable version and source revision, dependency versions, preprocessing, reference, estimator settings, bands/windows/ROIs, exclusions, split units, tuning, null scheme, and random seeds. Retain recipes, sidecars, and validation snapshots with the analysis. Cite the underlying methods and packages used; references appear in the method guides.
+
+The [`examples/`](examples) directory contains reproducible simulated outputs. [`paradigm_specific/`](paradigm_specific) contains study-specific raw-to-BIDS scripts outside the public package API.
+
+## Development and documentation
 
 ```bash
-python -m pip install -e ".[dev,model,connectivity,microstates,importance,preprocessing,preprocessing-auto,bids,spectral-model,irasa,cycles,complexity,pac,riemann,docs]"
+python -m pip install -e ".[dev,docs,model,connectivity,microstates,importance,preprocessing,preprocessing-auto,bids,spectral-model,irasa,cycles,complexity,pac,riemann]"
 python -m pytest
 python -m ruff check src tests
 python -m black --check src tests
 python -m mypy
-EEGTABLE_DATASETS=1 python -m pytest tests/validation -ra   # public-dataset suite, ~350 MB on first run
+python -m sphinx -b html -W --keep-going docs docs/_build/html
 ```
 
-[`paradigm_specific/`](paradigm_specific) holds this study's raw-to-BIDS conversion scripts. They need the `bids` extra, and `eegtable` does not import them.
+Public-dataset checks are opt-in and download recordings on first use:
+
+```bash
+EEGTABLE_DATASETS=1 python -m pytest tests/validation -ra
+```
+
+Each dataset run writes its own evidence snapshot and updates the documentation's generated validation tables. See the [Validation guide](https://joshuaduq.github.io/EEGTable/guides/validation.html) for dependencies and execution details.
 
 ## License
 

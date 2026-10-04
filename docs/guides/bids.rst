@@ -2,10 +2,12 @@ BIDS EEG ingestion
 ==================
 
 ``eegtable.bids`` discovers and reads raw EEG recordings through MNE-BIDS.
-Install ``eegtable[bids]``; preprocessing also needs ``eegtable[preprocessing]``.
-The supported EEG recording formats are BrainVision ``.vhdr``, EDF ``.edf``,
-BDF ``.bdf``, and EEGLAB ``.set``. The dataset must contain
+Install ``eegtable[bids]``, or ``eegtable[bids,preprocessing]`` for the complete
+preprocessing workflow. Discovery selects BrainVision ``.vhdr``, EDF ``.edf``,
+BDF ``.bdf``, and EEGLAB ``.set`` EEG recordings. The dataset must contain
 ``dataset_description.json`` and the required recording and channel sidecars.
+This integration reads raw EEG and its metadata; it does not convert datasets
+to BIDS or validate every requirement of the BIDS specification.
 
 Explicit discovery and reading
 ------------------------------
@@ -22,9 +24,11 @@ Explicit discovery and reading
        sessions=("a",),
    ))
    recording = read_bids(paths[0])
+   print(recording.event_id)  # names and codes to use for annotation epochs
 
 ``BIDSQuery`` optionally selects ``subjects``, ``sessions``, ``tasks``,
-``acquisitions``, and ``runs``. Supply nonempty tuples of unprefixed string labels:
+``acquisitions``, and ``runs``. Supply nonempty tuples of unique, unprefixed
+alphanumeric string labels:
 ``"01"``, not ``"sub-01"``. Discovery calls
 ``mne_bids.find_matching_paths`` with EEG datatype and suffix restrictions,
 excludes sidecars and derivative directories, returns deterministic path order,
@@ -57,7 +61,8 @@ Channel correspondence
 ----------------------
 
 The reader uses ``on_ch_mismatch="raise"``. A recording whose channel names do
-not agree with ``channels.tsv`` fails. Supply an explicit canonical permutation
+not agree with ``channels.tsv`` fails. By default, the returned channels follow
+the sidecar's order. Supply an explicit canonical permutation
 to compare recordings in the same sensor order:
 
 .. code-block:: python
@@ -88,11 +93,18 @@ Preprocessing in memory
    ))
    result = preprocess_bids(recording, settings)
 
+The example assumes ``left`` and ``right`` are present in
+``recording.event_id``. Use the mapping for the recording being read rather
+than guessing codes from ``trial_type`` alone. ``preprocess_bids`` returns
+epochs, an event ledger, and provenance without writing files; it uses the same
+explicit ``decisions`` contract as :func:`eegtable.preprocessing.preprocess`.
+
 The same numerical preprocessing stages handle ordinary and BIDS recordings.
-BIDS event metadata is matched to selected annotations on original acquisition
-samples and event identity, before event-delay correction, cropping, rejection,
-or resampling. The optional sidecar ``sample`` column must agree with onset on
-the acquisition sampling grid. Every selected event needs exactly one matching
+BIDS event metadata is matched to the original acquisition samples. Annotation
+identity disambiguates multiple sidecar events at the same sample. Matching
+uses the original samples before applying event-delay correction, cropping,
+rejection, or resampling. The optional sidecar ``sample`` column must agree with
+onset on the acquisition sampling grid. Every selected event needs exactly one matching
 metadata row; ambiguous duplicates fail. An unselected event occurring at the
 same sample does not replace a selected trial's metadata.
 MNE-BIDS may name annotations ``trial_type/value`` when one category contains
@@ -155,13 +167,26 @@ Run the normal commands:
    eegtable preprocess check preprocessing.yaml
    eegtable preprocess run preprocessing.yaml
 
-The check command validates the BIDS sidecars and event sample alignment.
+The check command validates the BIDS sidecars and event sample alignment,
+alongside the normal ``load``, ``prepare``, and ``events`` checks. Later-stage
+and review requirements follow :doc:`preprocessing`.
 The checkpointed workflow persists BIDS metadata in its state and final epochs.
 Load-checkpoint identities include canonical order, the MNE-BIDS version, and
 the relevant sidecar hashes: recording JSON, channels, events TSV/JSON,
 participants TSV/JSON, dataset description, geometry, and scans when present.
-Changing a sidecar invalidates the load checkpoint and requires the existing
-explicit reset workflow. Source recordings are unchanged.
+Changing a sidecar invalidates the load checkpoint. Reset that recording from
+``load``, then rerun and review its new checkpoints:
+
+.. code-block:: console
+
+   eegtable preprocess reset preprocessing.yaml --from load --recording LABEL
+   eegtable preprocess run preprocessing.yaml --recording LABEL
+
+BIDS checkpoint identities include absolute root and recording paths, so moving
+the BIDS source tree also requires resetting the load checkpoint. The workflow
+does not modify source recordings or sidecars. Exports mirror the recording
+tree but use EEGTable's native FIF/TSV/JSON bundle; they are not a validated BIDS
+derivative.
 
 MNE-BIDS examples
 -----------------

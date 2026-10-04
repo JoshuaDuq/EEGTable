@@ -157,7 +157,7 @@ def _analysis(value: object) -> ModelAnalysis:
 def _model(value: object, task: str) -> EstimatorSettings:
     record = _mapping(value, "model", {"estimator", "grid"}, {"estimator", "grid"})
     choices = {
-        "regression": {"ridge", "elasticnet", "random_forest"},
+        "regression": {"ridge", "scaled_ridge", "elasticnet", "random_forest"},
         "classification": {"logistic", "svm", "random_forest"},
     }
     estimator = _text(record["estimator"], "model.estimator")
@@ -196,7 +196,7 @@ def _validation(value: object, task: str) -> ValidationSettings:
         "scoring", "neg_mean_squared_error" if task == "regression" else "balanced_accuracy"
     )
     scorers = {
-        "regression": {"neg_mean_squared_error", "neg_mean_absolute_error", "r2"},
+        "regression": {"neg_mean_squared_error", "neg_mean_absolute_error", "r2", "subject_r"},
         "classification": {"balanced_accuracy", "accuracy", "roc_auc", "average_precision"},
     }
     if scoring not in scorers[task]:

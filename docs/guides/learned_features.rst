@@ -1,17 +1,28 @@
 Learned spatial features
 ========================
 
-CSP filters, microstate templates, and tangent-space references are learned
-from multiple epochs. Fit them inside each training split when evaluating
-prediction. A table assembled from separately cross-fitted CSP features remains
+CSP filters, microstate templates, sensor subspaces, and tangent-space references
+are estimated from epochs. Fit them inside each training split when evaluating
+prediction, including the inner splits used to select hyperparameters.
+A table assembled from separately cross-fitted CSP features remains
 unsafe for classifier cross-validation, because other folds' feature fits can
 encode the current test labels; ``build_design`` continues to reject it.
 
 Install ``eegtable[model]`` for pipelines and ``eegtable[riemann]`` for pyRiemann
 covariance and tangent-space estimation. These APIs accept finite real epochs,
 with the same sensor names, sensor order, sampling frequency, and preprocessing
-across recordings. Choose the frequency band and crop the analysis window on
-the ``Signal`` before evaluation.
+across recordings. Each evaluator takes one :class:`~eegtable.Signal`, with data
+shaped ``(epochs, channels, times)`` and one target and group label per epoch.
+It requires at least two channels and two time samples, with nonzero temporal
+variance in every epoch. Choose a prespecified frequency band and crop the
+analysis window on the ``Signal``. Selecting those settings from held-out
+performance requires an additional training-only selection procedure.
+
+Signal classification supports only integer labels coded ``0`` and ``1``.
+Signal regression accepts one finite continuous target per epoch. Backend
+support for multiclass classification or multioutput regression does not
+extend these evaluators' contract. These pipelines are Python APIs; the
+current YAML recipes accept precomputed feature tables (:doc:`model_recipes`).
 
 Training fits and new recordings
 --------------------------------
@@ -102,8 +113,15 @@ Every inner training split refits the spatial features, scaling, and classifier.
 After tuning, the selected pipeline refits on the outer training rows and
 predicts only the held-out rows. Classification tunes balanced accuracy by
 default. Results are the existing ``FoldClassification`` containers: original
-row indices, observed labels, predictions, probabilities when available,
-classes, and selected parameters. An empty grid performs an untuned outer fit.
+row indices, observed labels, predictions, probabilities and decision scores
+when available, classes, and selected parameters. An empty grid performs an
+untuned outer fit. All returned predictions must be finite and aligned.
+
+Probabilities follow ``FoldClassification.classes == (0, 1)``. SVMs expose
+decision scores with ``y_prob=None``; those scores can supply AUC and average
+precision without probability calibration (:doc:`modeling`). Preserve score
+and probability arrays when combining folds; ``fold_results`` collects labels
+and predictions but does not collect either of those arrays.
 
 For microstates, replace the feature step with:
 
@@ -143,8 +161,8 @@ by default. ``estimator="scm"`` uses empirical covariance and fails when epochs
 are too short or singular. Shrinkage never recreates removed sensor dimensions.
 New recordings outside the training sensor subspace are rejected.
 
-``TangentSpaceTransformer`` adds pyRiemann's tangent mapping. Its reference is
-the Riemannian mean of training covariances, and ``tsupdate=False`` prevents
+``TangentSpaceTransformer`` adds pyRiemann's tangent mapping. Its default
+reference is the Riemannian mean of training covariances, and ``tsupdate=False`` prevents
 the held-out batch from updating that reference. Transforming a single epoch
 or including it in a batch gives the same vector.
 

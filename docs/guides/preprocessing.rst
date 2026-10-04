@@ -17,9 +17,11 @@ Install the ``preprocessing`` extra.
   ``preprocessing-gui`` is installed.
 - **Suffixes**: ``.fif``, ``.fif.gz``, ``.edf``, ``.bdf``, ``.vhdr``, and ``.set``.
 
-A stage runs when its setting is present. ``null``, an empty list, or a
-disabled review leaves that stage out. Amplitudes are volts, times are seconds,
-and frequencies are hertz.
+Optional stages run only when enabled by their settings: for example,
+``artifact: null`` skips artifact correction, and ``filter.notch_freqs: []``
+skips the notch. ``eegtable preprocess steps`` lists the complete stage graph
+and the stages this recipe enables. Amplitudes are volts, times are seconds,
+and frequencies are hertz. BIDS input is described in :doc:`bids`.
 
 Quick Start
 -----------
@@ -114,14 +116,19 @@ and the ``inputs.root`` to set.
 - **status on one recording**: every stage with its state.
 - **--recording LABEL**: limits a command to one recording. On a cohort it is
   required for ``step``, ``next``, ``inspect``, and ``reset``.
+  Labels are the derived export names when unique, otherwise the relative
+  bundle paths shown by ``status``.
 
 A later ``run`` reuses a checkpoint whose recipe and parents still match.
 
 - **Reuse check**: only the checkpoint's identity is checked. A payload is read
   and hashed when a stage consumes it.
-- **status --verify**: re-reads every completed checkpoint of one recording
-  (``--recording``), or of every recording with ``--json``.
-- **Source recording**: read and hashed once per ``run``.
+- **status --verify**: re-reads and verifies every completed checkpoint for
+  all selected recordings, in either text or JSON mode. ``--recording`` limits it.
+- **Source recording**: read and fingerprinted once per recording per ``run``.
+  ``status`` uses the saved source fingerprint; even ``--verify`` verifies
+  checkpoint payloads rather than rereading the acquisition recording. A later
+  ``run`` detects changes to that recording and refuses stale checkpoints.
 - **External inputs**: montage, event, and metadata files are hashed when
   checking checkpoint identities. Editing a file in place makes its stage
   (``prepare`` for montages, ``events`` for events or metadata) and dependent
@@ -131,8 +138,8 @@ A later ``run`` reuses a checkpoint whose recipe and parents still match.
   ``artifact-reference`` when artifact fitting re-references the data, so
   changing those electrodes also invalidates that reference and its fitted
   artifact model. Restored electrode names are recorded once in provenance.
-- **Pending review file**: a file the run already wrote is kept, with any edits
-  in it.
+- **Pending review file**: reviewer edits are kept while its ``parent_id``
+  still matches the current parent. A changed parent requires a new review.
 - **next**: runs one pending stage.
 - **step STAGE**: runs that stage and requires its parents.
 - **reset --from STAGE**: retires that stage and every stage that depends on
@@ -196,6 +203,29 @@ Python
        outcome = run_until(open_workflow(config), "review-raw")
        print(label, outcome.state, outcome.next_action)
 
+For an in-memory recording, :func:`eegtable.preprocessing.preprocess` takes
+``ProcessingSettings`` and returns a ``PreprocessingResult`` with ``epochs``,
+the event ledger, provenance, and an optional autoreject repair ledger. It
+copies the input and writes no checkpoints or exports.
+
+.. code-block:: python
+
+   from eegtable.preprocessing import ProcessingSettings, preprocess
+   from eegtable.preprocessing.config import EventEpochSettings, EventSettings
+
+   settings = ProcessingSettings(epochs=EventEpochSettings(
+       events=EventSettings(source="annotations", event_id={"stimulus": 1}),
+       tmin=-0.5,
+       tmax=1.5,
+   ))
+   result = preprocess(raw, settings)
+
+This function has no unattended review policy. Raw and epoch review run only
+when ``decisions`` contains ``"review-raw"`` or ``"review-epochs"``. An enabled
+artifact correction requires an explicit ``"review-artifact"`` decision with
+the fitted model's ``fit_id``. Use the separate fit/review/apply numerical
+functions when the decision depends on inspecting that fit.
+
 The Recipe
 ----------
 
@@ -240,12 +270,14 @@ Sections
    * - Section
      - Keys
    * - ``input``
-     - - ``path``, one recording. Or ``root`` and ``pattern``, a directory and a
-         glob below it; ``pattern`` has no default.
+     - - ``kind: files`` (default): ``path``, one recording. Or ``root`` and
+         ``pattern``, a directory and a glob below it; ``pattern`` has no default.
        - Exactly one of ``path`` and ``root``.
        - Every match must be a recording (``.fif``, ``.fif.gz``, ``.edf``,
          ``.bdf``, ``.vhdr``, ``.set``); another suffix is an error.
        - Hidden files and directories are skipped.
+       - ``kind: bids``: ``root`` plus optional entity filters and
+         ``canonical_channels``; see :doc:`bids`.
    * - ``output``
      - - ``directory``, and with ``path`` an optional ``name``.
        - Without ``name``, the export is named after the file with its suffix and
@@ -260,6 +292,9 @@ Sections
        - ``suggested`` saves the detectors' verdict as the decision when the
          gate is reached without one, bound to the same parent checkpoint as a
          saved review.
+       - ``raw_review: disabled`` leaves detector candidates unapplied.
+         Existing bad labels and explicitly configured ``channels.bads`` and
+         ``annotations.bad_spans`` still apply.
    * - ``channels``
      - - ``rename``, ``types``, ``drop``, ``bads``, ``interpolate_bads``.
        - ``montage``: a standard name, or ``{path: ...}`` to a digitized FIF or
@@ -304,7 +339,8 @@ Sections
          with ``duration``, ``overlap``, ``start``, ``stop``.
        - Both accept ``padding``, ``baseline``, and ``detrend`` (``constant`` or
          ``linear``).
-       - Event epochs also accept ``metadata``, a TSV with one row per event.
+       - Event epochs also accept ``metadata``, a TSV with one row per input
+         event, in the resolved event array's order before epoch rejection.
        - ``metadata`` and ``events.path`` accept ``{name}`` (the export name)
          and ``{parent}`` (the recording's directory), resolved per recording.
    * - ``epochs.events``
@@ -312,6 +348,10 @@ Sections
        - ``event_id`` maps names to codes.
        - ``stim`` also takes ``stim_channel``, ``shortest_event``, and
          ``min_duration``. ``file`` takes ``path``.
+       - A ``file`` source is a native MNE event file read by
+         ``mne.read_events``, rather than a BIDS ``events.tsv`` sidecar.
+         Event samples must be unique, strictly increasing, and inside the
+         original recording before and after delay correction.
        - ``delay`` subtracts ``round(delay * sfreq)`` samples from every event,
          so a positive value moves events earlier.
    * - ``rejection``
@@ -400,7 +440,7 @@ previous enabled parent. ``apply-artifact`` waits for both ``epoch`` and
    * - Stage
      - What it does
    * - ``load``
-     - Read the file and reject non-finite data.
+     - Read the file; validate sampling and reject non-finite EEG/EOG/ECG data.
    * - ``prepare``
      - Rename and type channels, derive bipolar EOG or ECG, drop channels, set
        the montage, merge bad labels, and apply the projector policy.
@@ -432,8 +472,11 @@ previous enabled parent. ``apply-artifact`` waits for both ``epoch`` and
        From here on a checkpoint holds epochs, not the continuous data.
    * - ``apply-artifact``
      - Apply the reviewed operator. The fit is not repeated.
-   * - ``fit-rejection``, ``reject``
-     - Peak-to-peak and flat thresholds, or autoreject, on the analysis window.
+   * - ``fit-rejection``
+     - Fit autoreject on the analysis window. Threshold rejection skips this stage.
+   * - ``reject``
+     - Apply peak-to-peak and flat thresholds, or the fitted autoreject operator,
+       on the analysis window.
    * - ``review-epochs``
      - Drop epochs by original event row.
    * - ``interpolate``
@@ -458,7 +501,23 @@ Timing and Sampling
 - **final_sfreq**: in the manifest, the epoch rate after resampling.
 - **Fixed-length epochs**: an epoch of ``duration`` seconds has
   ``round(duration * sfreq)`` samples, so its last time is
-  ``(n_samples - 1) / sfreq``.
+  ``(n_samples - 1) / sfreq``. Duration and the stride ``duration - overlap``
+  must align to acquisition samples; a duration must contain at least two samples.
+- **Decimation**: selecting every ``factor``-th sample does not itself filter.
+  The configured low-pass cutoff must be at most one third of the target rate,
+  with its full transition ending below the new Nyquist frequency.
+- **Polyphase resampling**: downsampling only. The padded epoch must map to
+  an integer number of output samples, its starting time must lie on the new
+  grid, and padding must cover the antialiasing FIR's half-support. Adjust
+  padding or the target rate when ``check`` rejects the grid.
+- **Final bounds**: cropping uses available samples without extrapolation.
+  The final endpoints may differ from the requested bounds by up to one output
+  sample; the manifest records the actual bounds and rate.
+
+The sampling choices follow MNE's `Filtering and resampling tutorial
+<https://mne.tools/stable/auto_tutorials/preprocessing/30_filtering_resampling.html>`_.
+EEGTable adds explicit guards for the low-pass transition, epoch grid, and
+resampling padding.
 
 Review
 ------
@@ -474,7 +533,7 @@ The pending file for a gate is
 ``<bundle directory>/.preprocessing/<name>/decisions/review-<target>.pending.yaml``,
 YAML with a comment above each field.
 
-- Leave ``parent_id``.
+- Leave ``parent_id`` and, for artifact review, ``fit_id`` as written.
 - Replace every ``null``.
 - Run ``review`` for that gate: a filled pending file is used before the viewer
   is opened.
@@ -597,10 +656,12 @@ directory without ``<name>_preprocessing.json`` has no finished export.
    * - File
      - Contents
    * - ``<name>_epo.fif``
-     - Double-precision epochs. ``info["description"]`` names the manifest.
+     - Double-precision epochs, with split FIF companions when needed.
+       ``info["description"]`` names the manifest and provenance identity.
    * - ``<name>_events.tsv``
-     - One row per original event, with ``retained``, ``epoch_row``, and
-       ``drop_reason``.
+     - One row per resolved input event or fixed-window event, with
+       ``original_row``, original and corrected samples, acquisition sample rate,
+       ``retained``, ``epoch_row``, and ``drop_reason``. BIDS metadata is also retained.
    * - ``<name>_repairs.tsv``
      - Present when autoreject ran. Per-epoch channel repairs.
    * - ``<name>_report.html``
@@ -640,3 +701,14 @@ Notes
   the epochs. The feature runner's passband check does not see that hole.
 - ``check`` runs ``load``, ``prepare``, and ``events`` in memory. Later stages
   are checked when they run.
+- Padding can cause otherwise usable events near the recording boundary to
+  be dropped. BAD annotations overlapping a padded epoch also drop it.
+- Exports use a native FIF/TSV/JSON layout; they are not a validated BIDS
+  derivative. :doc:`cohorts` explains the extraction and quality-report handoff.
+
+The stage choices are grounded in MNE's official tutorials for `bad-channel
+handling <https://mne.tools/stable/auto_tutorials/preprocessing/15_handling_bad_channels.html>`_
+and `ICA artifact correction
+<https://mne.tools/stable/auto_tutorials/preprocessing/40_artifact_correction_ica.html>`_.
+In particular, ICA is fitted on a separately high-pass-filtered copy, then the
+reviewed fit is applied to the analysis epochs.

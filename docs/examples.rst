@@ -10,7 +10,10 @@ Example Output
 
 The files are in the `examples/ directory
 <https://github.com/JoshuaDuq/EEGTable/tree/main/examples>`_.
-Regenerate them with
+The simulation uses eight EEG channels and a fixed random seed (11).
+The complete cohort is generated in a temporary directory; only the showcase
+recording and model outputs are copied here. Existing output files are
+replaced when you regenerate them with
 
 .. code-block:: bash
 
@@ -36,7 +39,8 @@ it to every epochs file and writes, per recording,
        ``intensity``, ``rating``, ``painful``). The remaining columns are
        features.
    * - ``*_features_coverage.tsv``
-     - Same shape. Fraction of finite input behind each cell.
+     - Aligned feature columns and row identities; descriptive columns are
+       omitted. Fraction of finite input behind each feature cell.
    * - ``*_features.json``
      - Sidecar. For each column, the measure, band, space, window, unit,
        normalization, computation parameters, and hash. Also flags and run
@@ -78,4 +82,7 @@ within-subject permutations.
    These numbers describe the simulation. Alpha power falls with stimulus
    intensity. ``rating`` includes noise that these EEG features do not explain.
 
-The calls that produce the model files are in :doc:`/guides/modeling`.
+The generator uses the explicit ``ridge_pipeline`` and ``ridge_grid`` API.
+The current modeling recipe starter instead uses training-scaled Ridge; the
+saved example is not a benchmark of that starter. Its calls are in
+``examples/make_examples.py``; see :doc:`/guides/modeling` for current workflows.

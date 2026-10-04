@@ -200,6 +200,200 @@ def test_model_run_handles_group_rows_without_epoch_broadcast(tmp_path):
     assert len(frame) == 48
 
 
+def test_model_run_supports_one_group_sample_per_participant(tmp_path):
+    paths = []
+    rng = np.random.default_rng(31)
+    for subject in range(8):
+        values = rng.normal(size=(1, 2))
+        table = FeatureTable(
+            values=values,
+            coverage=np.ones((1, 2)),
+            meta=(_feature_meta("signal"), _feature_meta("noise")),
+            row_labels=("rest",),
+        )
+        source = tmp_path / f"sub-{subject}_features.tsv"
+        write_table(
+            table,
+            source,
+            rows=pd.DataFrame(
+                {
+                    "recording": [f"sub-{subject}"],
+                    "subject_id": [f"s{subject}"],
+                    "outcome": [values[0, 0] + 0.2 * values[0, 1]],
+                    "n_trials": [20],
+                }
+            ),
+        )
+        paths.append(source.name)
+    record = {
+        "version": 1,
+        "inputs": {"paths": paths, "rows": "groups"},
+        "analysis": {"task": "regression", "target": "outcome"},
+        "model": {"estimator": "ridge", "grid": {"regressor__alpha": [0.1, 1.0]}},
+        "validation": {"inner_splits": 2},
+        "output": "results",
+    }
+    path = tmp_path / "model.yaml"
+    path.write_text(yaml.safe_dump(record))
+    load, check, run = _api()
+    recipe = load(path)
+    assert check(recipe).n_rows == 8
+    result = run(recipe)
+    metrics = json.loads((result.output / "metrics.json").read_text())
+    assert np.isfinite(metrics["overall"]["mean_absolute_error"])
+    assert len(metrics["per_group"]) == 8
+    assert np.isfinite(metrics["group_mean"]["mean_absolute_error"])
+
+
+def test_model_recipe_svm_reports_auc_without_probabilities(tmp_path):
+    path, record = _recipe(tmp_path, task="classification")
+    record["model"] = {"estimator": "svm", "grid": {"svm__C": [1.0]}}
+    record["validation"]["scoring"] = "roc_auc"
+    path.write_text(yaml.safe_dump(record))
+    load, _, run = _api()
+    result = run(load(path))
+    predictions = pd.read_csv(result.output / "predictions.tsv", sep="\t")
+    assert "decision_score" in predictions
+    assert "probability_1" not in predictions
+    metrics = json.loads((result.output / "metrics.json").read_text())
+    assert metrics["group_mean"]["auc"] > 0.9
+
+
+@pytest.mark.parametrize("task", ["regression", "classification"])
+def test_model_benchmark_uses_identical_held_out_rows_and_training_only_dummy(tmp_path, task):
+    path, _ = _recipe(tmp_path, task=task)
+    load, _, run = _api()
+    result = run(load(path))
+    predictions = pd.read_csv(result.output / "predictions.tsv", sep="\t")
+    baselines = pd.read_csv(result.output / "baseline_predictions.tsv", sep="\t")
+    dummy = baselines[baselines.model == "dummy"]
+    pd.testing.assert_frame_equal(
+        dummy[["row", "fold", "y_true"]].reset_index(drop=True),
+        predictions[["row", "fold", "y_true"]],
+    )
+    for fold, rows in dummy.groupby("fold"):
+        training_target = predictions.loc[predictions.fold != fold, "y_true"]
+        expected = training_target.mean() if task == "regression" else training_target.mode()[0]
+        np.testing.assert_allclose(rows.y_pred, expected)
+    folds = json.loads((result.output / "baseline_folds.json").read_text())
+    assert all(not fold["inner_splits"] and not fold["best_params"] for fold in folds["dummy"])
+    metrics = json.loads((result.output / "benchmark_metrics.json").read_text())
+    if task == "regression":
+        error = np.mean((dummy.y_true - dummy.y_pred) ** 2)
+        assert metrics["dummy"]["overall"]["mean_squared_error"] == pytest.approx(error)
+        assert all(group["pearson_r"] == "NaN" for group in metrics["dummy"]["per_group"])
+    else:
+        from sklearn.metrics import roc_auc_score
+
+        assert metrics["dummy"]["overall"]["auc"] == pytest.approx(
+            roc_auc_score(dummy.y_true, dummy.probability_1)
+        )
+    comparison = pd.read_csv(result.output / "benchmarks.tsv", sep="\t")
+    assert set(comparison.model) == {"model", "dummy"}
+    assert not (result.output / "report.html").exists()
+    manifest = json.loads((result.output / "manifest.json").read_text())
+    assert {"benchmarks.tsv", "baseline_predictions.tsv"} <= set(manifest["files"])
+    assert "report.html" not in manifest["files"]
+
+
+@pytest.mark.parametrize("task", ["regression", "classification"])
+@pytest.mark.parametrize("constant", [False, True])
+def test_model_benchmark_includes_covariate_only_predictions(tmp_path, task, constant):
+    from eegtable.io import read_table
+
+    path, record = _recipe(tmp_path, task)
+    for name in record["inputs"]["paths"]:
+        source = tmp_path / name
+        table = read_table(source)
+        descriptors = pd.read_csv(source, sep="\t")[["recording", "subject_id", "outcome", "event"]]
+        descriptors["stimulus"] = (
+            1.0 if constant else descriptors.outcome + np.arange(len(descriptors)) / 100
+        )
+        write_table(table, source, rows=descriptors)
+    record["analysis"]["covariates"] = ["stimulus"]
+    path.write_text(yaml.safe_dump(record))
+    load, _, run = _api()
+    result = run(load(path))
+    baselines = pd.read_csv(result.output / "baseline_predictions.tsv", sep="\t")
+    covariates = baselines[baselines.model == "covariates"]
+    assert len(covariates) == 48
+    assert np.isfinite(covariates.y_pred).all()
+    assert set(baselines.model) == {"dummy", "covariates"}
+
+
+def test_model_recipe_accepts_training_scaled_ridge_and_subject_r(tmp_path):
+    path, record = _recipe(tmp_path)
+    record["model"]["estimator"] = "scaled_ridge"
+    record["validation"]["scoring"] = "subject_r"
+    path.write_text(yaml.safe_dump(record))
+    load, check, run = _api()
+    recipe = load(path)
+    assert check(recipe).n_folds == 4
+    result = run(recipe)
+    metrics = json.loads((result.output / "metrics.json").read_text())
+    assert np.isfinite(metrics["group_mean"]["subject_level_r"])
+    assert "subject_level_r" not in metrics["overall"]
+
+
+def test_regression_summary_weights_groups_equally_and_labels_subject_r(tmp_path):
+    from eegtable.runner.model_run import _metrics
+
+    path, record = _recipe(tmp_path)
+    record["validation"]["scoring"] = "subject_r"
+    path.write_text(yaml.safe_dump(record))
+    load, _, _ = _api()
+    frame = pd.DataFrame(
+        {
+            "model_group": ["a"] * 3 + ["b"] * 9,
+            "y_true": np.r_[np.arange(3), np.arange(9)],
+            "y_pred": np.r_[np.arange(3), np.arange(8, -1, -1)],
+        }
+    )
+    metrics = _metrics(load(path), frame)
+    assert metrics["group_mean"]["subject_level_r"] == pytest.approx(0.0)
+    assert metrics["group_mean"]["mean_squared_error"] == pytest.approx(40 / 3)
+    assert metrics["overall"]["mean_squared_error"] == pytest.approx(20.0)
+    assert "subject_level_r" not in metrics["overall"]
+
+
+def test_subject_r_check_refuses_constant_targets_within_a_group(tmp_path):
+    from eegtable.io import read_table
+
+    path, record = _recipe(tmp_path)
+    source = tmp_path / record["inputs"]["paths"][0]
+    table = read_table(source)
+    descriptors = pd.read_csv(source, sep="\t")[["recording", "subject_id", "outcome", "event"]]
+    descriptors["outcome"] = 1.0
+    write_table(table, source, rows=descriptors)
+    record["validation"]["scoring"] = "subject_r"
+    path.write_text(yaml.safe_dump(record))
+    load, check, _ = _api()
+    with pytest.raises(ValueError, match="subject_r.*vary"):
+        check(load(path))
+
+
+@pytest.mark.parametrize("n_rows", [2, 3])
+def test_subject_r_check_requires_three_varying_targets_per_group(tmp_path, n_rows):
+    from eegtable.io import read_table
+
+    path, record = _recipe(tmp_path)
+    for name in record["inputs"]["paths"]:
+        source = tmp_path / name
+        table = read_table(source).take(np.arange(n_rows))
+        descriptors = pd.read_csv(source, sep="\t")[
+            ["recording", "subject_id", "outcome", "event"]
+        ].iloc[:n_rows]
+        write_table(table, source, rows=descriptors)
+    record["validation"]["scoring"] = "subject_r"
+    path.write_text(yaml.safe_dump(record))
+    load, check, _ = _api()
+    if n_rows == 2:
+        with pytest.raises(ValueError, match="subject_r.*three"):
+            check(load(path))
+    else:
+        assert check(load(path)).n_rows == 12
+
+
 def test_model_run_rejects_existing_results(tmp_path):
     path, _ = _recipe(tmp_path)
     load, _, run = _api()

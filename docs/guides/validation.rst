@@ -1,215 +1,208 @@
 Validation on Public Datasets
 =============================
 
-.. raw:: html
+.. rst-class:: hero-lede
 
-   <p class="hero-lede">
-     The unit tests check each formula on synthetic signals. This page answers a
-     different question: pointed at <strong>real recordings</strong> nobody tuned it on,
-     does EEGTable compute the right numbers and find what the literature says is there?
-   </p>
+   Numerical comparisons, physiological contrasts, and held-out prediction
+   checks on public EEG recordings, with saved evidence for each run.
 
 .. include:: ../validation/summary.inc
 
-**Generated parts.** The summary line, the scorecard, and the table of every check are
-written by the validation suite each time it runs. The tests declare what they establish and
-record what they observe, so those parts cannot drift from the code.
+Evidence scope
+--------------
 
-**Hand-written parts.** The sections in between are written from those results and from
-exploratory analyses the suite does not re-run.
+The generated summary, scorecard, and check table describe the saved validation
+run. ``docs/validation/results.json`` records its timestamp, source hash,
+software versions, criteria, observations, and pass/fail outcomes. The same
+run is archived under ``docs/validation/runs/<run-id>/results.json``.
+These artifacts establish what was tested in that environment; they do not
+establish the validity of every public API or cover later source changes.
 
-**Decoding evidence.** Held-out balanced accuracy describes performance on these
-recordings. It is not assigned a binomial p-value: overlapping training sets and
-temporally dependent EEG epochs do not establish independent Bernoulli trials.
-`Noirhomme et al. (2014)
-<https://pmc.ncbi.nlm.nih.gov/articles/PMC4053638/>`_ demonstrate why binomial tests
-can misstate the significance of cross-validated accuracy. Group inference needs
-a null procedure whose exchangeability assumptions match the study design.
+Synthetic unit tests separately check formulas and boundary conditions.
+Public-dataset tests examine selected estimators and effects in real
+recordings. The narrative below summarizes those checks and their limits.
+A partial run replaces the current summary with only that run's evidence; it
+does not merge results from older runs.
+
+Some implementation choices were informed by these datasets. Repeated success
+on them is regression evidence, rather than independent prospective validation.
+Study-specific windows, channel choices, targets, and exclusion rules still
+need scientific justification.
 
 .. _validation-scorecard:
 
-Scorecard
----------
+Reading the scorecard
+---------------------
 
-One row per public function, one column per kind of evidence.
-
-- **Check mark with a count**: the number of claims of that kind, all of which passed on
-  real data (a parametrized claim counts once).
-- **Dash**: no check of that kind exists for that function.
+One row per tested public function, one column per evidence category. Counts
+refer to distinct claims; multiple parameterized cases of a claim count once.
+A dash means no recorded check in that category. Read the individual criteria
+and outcomes below before interpreting a count as coverage of a method.
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 80
+   :widths: 24 76
 
-   * - Kind
-     - What a check of this kind establishes
+   * - Category
+     - What the check establishes
    * - Formula
-     - The value equals an independent NumPy, SciPy or closed-form computation on the
-       same data, to floating-point precision.
+     - Agreement with an independent NumPy, SciPy, or closed-form calculation
+       on the same input, within the stated numerical tolerance.
    * - Other estimator
-     - The value agrees with a different estimator or library of the same quantity
-       (Welch against multitaper, Hilbert against wavelet, ``mne_connectivity``).
+     - Agreement with a named alternative estimator or package under the
+       tested settings and tolerance.
    * - Known physiology
-     - A textbook effect comes out of the recording, at the level it is known to hold.
+     - A specified physiological contrast in the selected recordings,
+       channels, windows, and analysis units.
    * - Decoding
-     - A leakage-safe model recovers a contrast strong enough that a correct pipeline must.
+     - Held-out prediction performance under the recorded split and fitting
+       procedure. This does not establish causal interpretation.
    * - Behaviour
-     - A documented refusal, identity, null rate or command-line behaviour holds.
+     - A documented error, identity check, null behavior, or command-line
+       operation under the tested condition.
 
 .. include:: ../validation/scorecard.inc
 
-What was confirmed
-------------------
+Observed patterns
+-----------------
 
-Across four public datasets:
+The saved check table gives the quantitative criteria and observations.
+The main tested contrasts are:
 
-- Every closed-form measure matched its reference computation.
-- Every cross-estimator comparison agreed.
-- The following effects came out of the data:
+- **Motor recordings:** movement-related mu/beta desynchronization, reduced
+  beta bursts, and movement prediction with sensorimotor power or cross-fitted
+  CSP. These findings concern movement versus rest; they do not establish
+  robust left-versus-right-hand discrimination.
+- **Visual entrainment:** spectral peaks and harmonics at the driven SSVEP
+  frequencies, trial phase consistency, and occipital coherence.
+- **Evoked responses:** N1, P3, and error-related responses in the selected ERP
+  CORE participant, together with direct numerical comparisons to MNE's peak
+  methods.
+- **Sleep staging:** spectral and complexity differences across stages in the
+  selected Sleep-EDF recordings, held-out staging, and depth regression.
+  Conclusions depend on the derivation and target definition.
+- **Connectivity and microstates:** numerical comparisons to MNE-Connectivity,
+  effects of pairwise orthogonalization, and descriptive microstate
+  segmentation on the selected resting data.
 
-- **Motor cortex.** Hand movement desynchronizes mu and beta over the hand areas in all
-  twenty PhysioNet subjects, deepens and lengthens the desynchronized part of the ERDS trace,
-  and suppresses beta bursts. Movement decodes from sensorimotor power within and across
-  subjects, and cross-fitted CSP separates it in every subject.
-- **Visual entrainment.** The 12 Hz and 15 Hz flicker lines and their second harmonics
-  separate the two SSVEP conditions on every trial, phase-lock across trials only when
-  driven, and raise occipital coherence at the driven frequency.
-- **Evoked potentials.** On ERP CORE the single-trial N1 latency clusters near 180 ms, the
-  P3 area is positive on most trials, and wrong button presses produce an error-related
-  negativity at FCz about 11 microvolts below correct ones.
-- **Sleep depth.** From wake to N3 the slow-wave fraction rises while alpha, beta, the
-  spectral edge, centroid, entropy, Hjorth mobility, sample entropy and fractal dimension all
-  fall and the aperiodic slope steepens. Deep sleep decodes across subjects at 0.96 balanced
-  accuracy, and sleep depth regresses with a subject-level correlation near 0.9 against a
-  permutation null at zero.
-- **Connectivity and microstates.** Neighbouring electrodes' alpha envelopes correlate far
-  more than distant ones until orthogonalized, all eight spectral connectivity methods
-  reproduce ``mne_connectivity``, and four resting microstates explain most of the variance
-  with durations of tens of milliseconds.
-- **MNE's own implementations.** Peak latency and amplitude equal ``Evoked.get_peak`` on
-  every ERP CORE channel, and orthogonalized envelope correlation equals mne-connectivity's
-  per-trial estimate to rounding. Rerun with EEGTable's band power in place of its own
-  features, MNE's sleep-staging tutorial scores the held-out night within 0.01 of its own
-  accuracy; in MNE's CSP decoding example, EEGTable's CSP separates movement from rest within
-  0.03 of ``mne.decoding.CSP``, the gap being its relative rather than absolute log power.
-
-What the data changed
+Interpretation limits
 ---------------------
 
-Two defaults were changed, one estimator fixed and two notes added because real recordings
-showed the previous behaviour would mislead a user who trusted it.
+**Statistical inference.** Cross-validated predictions have overlapping
+training sets, and EEG epochs can be temporally dependent. Held-out balanced
+accuracy alone does not justify a binomial p-value. Use a null procedure whose
+exchangeability units match the study design and repeat preprocessing, tuning,
+and fitting within that procedure. See :doc:`modeling` and the analysis by
+`Noirhomme et al. (2014)
+<https://doi.org/10.1016/j.nicl.2014.04.004>`_.
 
-- **CSP fits average-referenced data.** MNE's CSP decoding example failed with EEGTable's CSP:
-  an average reference, like removed ICA components, leaves the class covariance
-  rank-deficient, and the fit refused it unless shrinkage was added. It now solves in the
-  data's own subspace, as MNE's CSP does.
-- **ERDS reports decibels.** Single-trial percent change is right-skewed by quiet-baseline
-  trials; on the percent scale only about half the motor subjects showed mu desynchronization
-  in the trial mean, on the decibel scale all twenty did. Every ``erds_*`` function now
-  defaults to ``normalize="db"``; percent remains available.
-- **Onset persistence is in cycles.** At a fixed 100 ms the onset latency fired on essentially
-  every beta rest trial, where nothing happened. Six cycles of the band's low edge brings the
-  beta false-onset rate to about 5 percent, and is now the default.
-- **Two decibel definitions are named.** ``erds_mean`` averages a per-sample dB trace;
-  ``mean_tfr_power`` with a baseline takes dB of the window-mean power, about 2.5 dB higher.
-  Both docstrings and the methods page now say so.
-- **Peak smoothing has a caveat.** The 1 Hz default reported alpha instead of the 12 Hz
-  flicker; the docstring now says to turn smoothing off for narrow entrained lines.
+**Baseline and normalization.** ``erds_mean`` averages a per-sample dB trace;
+``mean_tfr_power`` takes dB after window reduction. The values therefore differ
+even when both use the same baseline. The default onset persistence is six
+cycles of the band's low edge; this is a detection rule, not a universal
+false-positive guarantee. See :doc:`/methods/dynamics`.
 
-What was not found, and is not asserted
----------------------------------------
+**Unresolved effects.** Exploratory analyses accompanying development did not
+establish robust contralateral motor dominance, a group-level post-movement
+beta rebound, or reliable single-trial onset discrimination in these motor
+recordings. These observations are not all rerun as suite assertions and should
+not be treated as general absence-of-effect findings.
 
-- **No contralateral dominance** of motor desynchronization across twenty subjects, on any
-  scale or electrode choice, and left against right hand decodes near chance. The dataset is
-  known for weak lateralization; the suite reports what is there.
-- **Raw phase-amplitude coupling** did not resolve slow-oscillation to spindle coupling
-  against a time-shifted surrogate on two sleep derivations, and sits well above zero even
-  with the coupling destroyed. Only the formula and that surrogate floor are asserted; read
-  :func:`~eegtable.pac` against a null of your own.
-- **The post-movement beta rebound** was not visible at the group level in the 4.5 to 5.8 s
-  window of the motor task.
-- **Single-trial ERDS onsets** fired on movement trials at the same rate as on rest trials at
-  every persistence, so the onset is a weak single-trial detector even where the group effect
-  is unmistakable.
-- **Prediction intervals** from split and CV+ calibration covered 89 and 91 percent of
-  held-out epochs in these recordings at 90 percent nominal. Conformalized quantile intervals
-  covered 99.8 percent, because the 0 to 3 depth target is discrete. Coverage for a subject
-  outside the calibration set is not tested, and group-disjoint fitting does not guarantee it.
-- **The frontal sleep derivation** (Fpz-Cz) does not separate wake from N3 on relative
-  slow-wave power, because eye and movement activity in wake put as much power below 4 Hz as
-  slow waves do. The band-power, spectral-descriptor, and Hjorth checks read Pz-Oz. Sample
-  entropy, Higuchi dimension, the aperiodic slope, and the NREM slow-wave ordering hold on
-  both derivations.
+**PAC.** Nonzero raw phase-amplitude coupling is not evidence of physiological
+coupling by itself. The suite checks selected formulas and surrogate behavior;
+use a study-appropriate null and inspect waveform and filtering confounds.
+See :doc:`/methods/connectivity`.
+
+**Prediction intervals.** The recorded conformal checks describe empirical
+coverage in the tested recordings. Group-disjoint fitting alone does not
+establish exchangeability or guarantee coverage for a new participant or
+population. Discrete targets can also produce conservative intervals.
+
+**Sensor dependence.** Eye and movement activity in frontal derivations can
+increase low-frequency waking power. Several sleep spectral and Hjorth checks
+therefore use Pz-Oz. A finding from that derivation does not establish the same
+contrast at Fpz-Cz.
 
 Datasets
 --------
 
 .. list-table::
    :header-rows: 1
-   :widths: 24 34 42
+   :widths: 30 36 34
 
    * - Dataset
-     - What it is
-     - What must come out
+     - Tested sample
+     - Main checks
    * - PhysioNet EEG Motor Movement/Imagery
-     - Twenty subjects, 64 channels at 160 Hz, three runs of cued left- and right-fist movement
-       with rest between trials
-     - Mu and beta desynchronization over the hand areas, fewer bursts, movement decodable and
-       separable by CSP, volume conduction in envelope correlation, resting microstates
+     - Twenty subjects; 64 channels at 160 Hz; three cued hand-movement runs
+       with intervening rest.
+     - ERD/ERS, bursts, movement prediction, CSP, connectivity, and microstates.
    * - MNE SSVEP example
-     - One subject, 32 channels, ten 20-second trials each of 12 Hz and 15 Hz flicker
-     - Spectral lines and harmonics at the flicker frequency, phase locking and coherence only
-       when driven
+     - One subject; 32 channels; ten 20-second trials at each of 12 and 15 Hz.
+     - Driven spectral peaks, phase consistency, and connectivity.
    * - ERP CORE, Flankers task
-     - One subject, 30 channels at 1024 Hz, 400 arrow stimuli with a left or right press
-     - The visual N1, a parietal P3, and an error-related negativity at FCz
+     - One subject; 30 channels at 1024 Hz; stimulus and response events.
+     - Time-domain responses and comparisons to MNE peak extraction.
    * - Sleep-EDF (PhysioNet)
-     - Three subjects, two EEG derivations at 100 Hz, expert-scored 30-second epochs
-     - Slow-wave power with depth, every spectral and complexity descriptor falling from wake
-       to N3, the aperiodic slope steepening, N3 and sleep depth recoverable across subjects
+     - Three subjects; two EEG derivations at 100 Hz; expert-scored
+       30-second epochs.
+     - Stage-dependent features, sleep prediction, regression, and intervals.
 
-The motor data are from Schalk et al. (2004) through PhysioNet (Goldberger et al., 2000),
-the sleep data from Kemp et al. (2000), and the flanker data from Kappenman et al. (2021).
+Sample selection and preprocessing are defined in
+``tests/validation/loaders.py``. References below identify the dataset methods;
+MNE's `dataset documentation <https://mne.tools/stable/datasets.html>`_ describes
+the download interfaces.
 
-Running it
-----------
+Run the suite
+-------------
 
-**Data.** The recordings are downloaded on first use, about 470 MB in total, into MNE's
-data directory (``MNE_DATA``, default ``~/mne_data``).
-
-**Opt-in.** The suite is skipped unless asked for:
+From the repository root:
 
 .. code-block:: bash
 
    python -m pip install -e ".[dev,model,connectivity,microstates]"
    EEGTABLE_DATASETS=1 python -m pytest tests/validation -ra
 
-**Output.** A run rewrites ``docs/validation/results.json`` and the fragments this page
-includes, so the scorecard and the tables below reflect the last run on the machine that
-built the docs. Each run also saves an independent snapshot under
-``docs/validation/runs/<run-id>/results.json``, with its software versions and Python
-source identity. A partial run reports only claims observed in that run; it does not
-merge older claims into the new evidence.
+On Windows PowerShell, set ``$env:EEGTABLE_DATASETS = "1"`` before running
+``python -m pytest tests/validation -ra``.
 
-**CI.** The ``validation`` GitHub workflow:
+The dataset suite is skipped unless explicitly enabled. It downloads several
+hundred megabytes on first use into MNE's configured data directory
+(``MNE_DATA``, normally ``~/mne_data``). Additional tests of optional backends
+need their corresponding extras; skipped checks do not establish evidence for
+those integrations.
 
-- Runs the suite weekly and on demand.
-- Runs once on the oldest supported MNE (1.8) and once on the newest.
-- Caches the data between runs.
+Each run rewrites the current validation JSON and included fragments, and saves
+a separate snapshot with the run identity. A documentation build renders the
+saved evidence without running the suite. Keep a snapshot with the analysis
+when it supports a scientific claim.
+
+The ``validation`` GitHub workflow runs weekly and on demand, checks MNE 1.8
+and the installed current release, caches data, and uploads each job's evidence.
+The current-release job is not a fixed dependency environment; use the saved
+versions to identify what it tested.
 
 .. _validation-results:
 
-Every check
------------
+Individual checks
+-----------------
 
-Each row is one test. Rows are grouped by dataset and give:
-
-- the claim the test makes,
-- the criterion it applies,
-- what it observed on the last run,
-- whether it passed.
+Each row identifies the claim, criterion, observed result, and outcome, grouped
+by dataset. Consult the corresponding test when the observation is empty or
+when more detail about sample selection is needed.
 
 .. include:: ../validation/results.inc
+
+Reporting an analysis
+---------------------
+
+Record the EEGTable version and source revision, dependency versions,
+preprocessing and reference, channels/ROIs, bands/windows, estimator parameters,
+coverage/flag exclusions, sample and split units, tuning, null scheme, and seeds.
+Retain recipes, feature sidecars, and the relevant evidence snapshot. Cite the
+underlying methods and packages used, following the references in the method
+pages. Validation counts alone are insufficient to support a study's
+scientific interpretation.
 
 References
 ----------

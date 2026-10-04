@@ -27,6 +27,8 @@ __all__ = [
     "random_forest_pipeline",
     "ridge_grid",
     "ridge_pipeline",
+    "scaled_ridge_grid",
+    "scaled_ridge_pipeline",
     "svm_grid",
     "svm_pipeline",
 ]
@@ -150,6 +152,21 @@ def elasticnet_pipeline(
     return Pipeline(steps)
 
 
+class _TrainingScaledRidge(Ridge):  # type: ignore[misc]
+    """Scale the penalty by the training row and retained column counts."""
+
+    alpha: float
+
+    def fit(self, X: Any, y: Any, sample_weight: Any = None) -> Any:
+        alpha = self.alpha
+        self.alpha_ = alpha * X.shape[0] * X.shape[1]
+        self.alpha = self.alpha_
+        try:
+            return super().fit(X, y, sample_weight=sample_weight)
+        finally:
+            self.alpha = alpha
+
+
 def ridge_pipeline(
     config: PreprocessingConfig,
     *,
@@ -164,6 +181,15 @@ def ridge_pipeline(
     )
     steps.append(("regressor", Ridge(random_state=seed)))
     return Pipeline(steps)
+
+
+def scaled_ridge_pipeline(
+    config: PreprocessingConfig, *, seed: int, n_covariates: int = 0
+) -> Pipeline:
+    """Fit Ridge with alpha multiplied by training rows × retained columns at each fit."""
+    pipeline = ridge_pipeline(config, seed=seed, n_covariates=n_covariates)
+    pipeline.set_params(regressor=_TrainingScaledRidge(random_state=seed))
+    return pipeline
 
 
 def random_forest_pipeline(
@@ -358,6 +384,11 @@ def elasticnet_grid() -> dict[str, list[object]]:
         "regressor__alpha": [0.001, 0.01, 0.1, 1.0, 10.0],
         "regressor__l1_ratio": [0.2, 0.5, 0.8],
     }
+
+
+def scaled_ridge_grid() -> dict[str, list[object]]:
+    """Dimensionless penalties for :func:`scaled_ridge_pipeline`."""
+    return {"regressor__alpha": [10.0**power for power in range(-6, 2)]}
 
 
 def ridge_grid(X: npt.ArrayLike) -> dict[str, list[object]]:

@@ -30,11 +30,14 @@ def univariate_screen(
 
     Each subject's correlation between a feature and the target is taken over that
     subject's own trials, averaged across subjects in Fisher z and tested with a
-    one-sample t across subjects. No model is trained across subjects, so unlike
-    held-out scores the subjects are independent, and flipping the sign of one subject's
-    z for every feature at once keeps the dependence between features: the largest
-    ``|t|`` under those flips controls the family-wise error (``p_fwer``). ``q`` is the
-    Benjamini-Hochberg adjustment of ``p``.
+    one-sample t across subjects. Each subject's statistic uses its own trials,
+    avoiding shared predictive training data; independence must still follow
+    from the study design. Flipping one subject's z for every feature at once
+    preserves cross-feature dependence. The maximum ``|t|`` supplies the
+    adjustment ``p_fwer``; its randomization interpretation requires independent
+    subject vectors and a joint null invariant under sign reversal. ``q`` is
+    the Benjamini-Hochberg adjustment of ``p``, whose FDR interpretation also
+    requires valid p-values and appropriate dependence assumptions.
 
     With ``residualize_on``, the features and the target are first residualized on each
     subject's own nuisance design, as in :func:`residualize_within_subjects`, so a

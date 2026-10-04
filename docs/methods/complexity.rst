@@ -1,8 +1,12 @@
 Complexity and Microstate Methods
 =================================
 
-Regularity of a one-dimensional series, and segmentation of the scalp map into
-recurring states.
+This page defines univariate regularity and scaling measures, followed by
+scalp-map segmentation into recurring microstates. The univariate estimators
+use waveform samples from :class:`~eegtable.Signal` or envelope samples from
+:class:`~eegtable.BandSignal`, computed independently per channel and window.
+ROI/global outputs average channel estimates; they do not estimate multivariate
+complexity. Microstates instead use the spatial map across channels.
 
 Signatures are in :doc:`/api/complexity`.
 
@@ -28,6 +32,15 @@ Definition
 - Each unordered pair is counted once, and self-matches are excluded.
 - The log is natural.
 - Cost grows with the square of the window length.
+
+Only complete finite embeddings of length :math:`m+1` enter either count.
+Changing the embedding dimension, tolerance, sampling rate, preprocessing, or
+window length can change the estimate. Sample entropy describes recurrence
+at those settings; it is not by itself a measure of physiological health or
+information content. The `AntroPy sample-entropy documentation
+<https://raphaelvallat.com/antropy/generated/antropy.sample_entropy.html>`__
+provides a reference implementation; EEGTable implements its own pair counting
+and gap handling.
 
 Missing values
 ~~~~~~~~~~~~~~
@@ -71,6 +84,11 @@ Missing samples:
 - An embedding template that crosses a gap is excluded.
 - Missing samples are not deleted in a way that would make new neighbours.
 
+A scale of :math:`s` averages blocks of :math:`s` original samples, so its
+duration is :math:`s/f_s` seconds. Increasing scale reduces the number of
+available templates; computationally valid coarse-grained estimates may still
+be imprecise. Report the original sampling rate, scale range, and tolerance mode.
+
 .. code-block:: python
 
    n_blocks = signal.size // scale
@@ -103,7 +121,10 @@ with :math:`x` indexed from 0 and :math:`q_{\max} = \lfloor (N - m - 1) / k \rfl
 
 **Interpretation**
    Values near 1 are smooth curves. Larger values keep structure at finer
-   scales.
+   scales. This finite-stride regression is not proof of fractal scaling and
+   is not clipped to the ideal graph-dimension interval :math:`[1,2]`.
+   Compare estimates at consistent sampling rates, window lengths, and
+   ``k_max`` settings.
 
 **Cost**
    For a fixed ``k_max`` the cost is linear in the number of samples.
@@ -136,8 +157,9 @@ embedding. See `AntroPy permutation entropy
 ``lempel_ziv_complexity`` explicitly binarizes each channel/window. Samples at
 or above its selected ``median`` or ``mean`` become 1, and others become 0.
 AntroPy counts newly encountered substrings and divides by
-:math:`N/\log_2(N)`. Both symbols must occur; a one-symbol sequence raises an
-error because binary normalization is undefined for its observed alphabet.
+:math:`N/\log_2(N)`. EEGTable requires both symbols to occur; a one-symbol
+sequence raises an error rather than entering AntroPy's observed-alphabet
+normalization with an alphabet of size one.
 Finite-length normalized values can exceed one. Threshold choice is stored
 with the feature. See `AntroPy Lempel--Ziv complexity
 <https://raphaelvallat.com/antropy/generated/antropy.lziv_complexity.html>`__.
@@ -203,23 +225,6 @@ correlation.
    neighbouring state, or split between the two neighbours on a tie.
    Minimum segment duration and peak separation are rounded up to whole samples.
 
-.. code-block:: python
-
-   demeaned = epoch - np.mean(epoch, axis=0, keepdims=True)
-   gfp = np.std(demeaned, axis=0)
-   maps = demeaned.T
-   seeds = KMeans(n_clusters=K, n_init=20, random_state=random_state).fit(
-       normalize_rows(maps[gfp_peaks])
-   )
-   templates = unit_rows(seeds.cluster_centers_)
-   while labels change:
-       labels = np.argmax(np.abs(maps[gfp_peaks] @ templates.T), axis=1)
-       for k in range(K):
-           members = maps[gfp_peaks][labels == k]
-           templates[k] = principal_eigenvector(members.T @ members)
-   templates = normalize_rows(templates)
-   states = np.argmax(np.abs(templates @ normalize_rows(maps).T), axis=0)
-
 Row normalization subtracts the channel mean, divides by the Euclidean norm,
 and flips the sign so the largest-magnitude channel is positive. The sign flip
 is a reporting convention. The modified :math:`k`-means objective does not use
@@ -230,9 +235,19 @@ Fitting and labelling
 ~~~~~~~~~~~~~~~~~~~~~
 
 **fit_on**
-   ``fit_on`` is a boolean mask naming the trials whose maps may enter the fit, as a
-   cross-validation fold would require. The default uses every trial. That pool
-   includes the trial later scored if these features are used for prediction.
+   ``microstates.segment`` accepts a boolean mask naming the trials whose
+   maps may enter the fit. The default uses every trial. Templates learned
+   from all rows describe that pool and include any rows subsequently scored
+   as prediction targets.
+
+**Frozen templates**
+   :class:`~eegtable.MicrostateModel` separates fitting from assignment.
+   ``MicrostateModel.fit(signal, rows=training_rows)`` accepts integer epoch
+   indices and uses only those epochs for peak selection, initialization, and
+   template updates. ``model.segment(other_signal)`` assigns new epochs with
+   the frozen templates. The channel names and order must match exactly.
+   Prediction requires fitting inside each training partition, including
+   inner tuning partitions when applicable. See :doc:`/guides/learned_features`.
 
 **Output shape**
    Assignment and the measures below are computed per epoch, so each returned
@@ -241,7 +256,15 @@ Fitting and labelling
 **Labels**
    Cluster indices have no anatomical meaning. Templates that are not matched
    to a reference are labelled ``state1`` onward. Labels A--D require a
-   one-to-one match to an identified reference set and are not assigned here.
+   one-to-one match to an identified reference set. ``MicrostateModel.from_templates``
+   accepts an external template set, its channel order, state labels, and
+   ``reference_name``. ``model.match_reference(reference)`` uses a Hungarian
+   assignment to maximize total absolute spatial correlation and reorders
+   the fitted states into reference order. It requires the same number of
+   states and the same channels in the same order. A match establishes the
+   chosen labeling correspondence; inspect the recorded correlations before
+   interpreting the match. For prediction, the reference must be fixed
+   independently of the held-out data.
 
 **Comparability**
    Temporal features from two fits are comparable after that topographic match,
@@ -255,12 +278,14 @@ Fitting and labelling
    ``ValueError`` for the whole input, so reject such data first.
 
 **Relation to Pycrostates**
-   The objective matches the modified :math:`k`-means in Pycrostates. The
-   template update (the exact principal eigenvector rather than one
-   power-iteration step), the stopping rule (labels unchanged, at most 300
+   The objective is the polarity-invariant modified :math:`k`-means described
+   in the `Pycrostates ModKMeans API
+   <https://pycrostates.readthedocs.io/en/stable/api/generated/pycrostates.cluster.ModKMeans.html>`__.
+   The template update (the exact principal eigenvector), the stopping rule
+   (labels unchanged, at most 300
    iterations), initialisation, GFP-peak selection, and short-segment smoothing
-   are the choices above, so templates need not match a Pycrostates fit. They
-   are stored with the templates.
+   are EEGTable choices, so templates need not match a Pycrostates fit.
+   Fitting and assignment settings are recorded with the templates.
 
 **Reference**
    Michel and Koenig (2018) review why GFP peaks, topographic correlation,
@@ -281,7 +306,7 @@ From the sequence :math:`s(t)`:
    * - **coverage**
      - Occupancy, :math:`n_T^{-1} \sum_t \mathbb{I}[s(t) = k]` over the
        :math:`n_T` samples in the window. Across states the values sum to 1.
-     -
+     - 0
    * - **duration**
      - Mean dwell of a visit, in milliseconds.
      - NaN
@@ -307,6 +332,11 @@ assigned template after smoothing, pooled over every epoch, including those
 outside ``fit_on``. After smoothing, the assigned template is not always the
 best-correlated one.
 
+For ``MicrostateModel.segment``, this statistic describes the recording being
+assigned. It is a descriptive fit statistic and does not select or validate
+the number of states. State occupancies are compositional, and durations and
+transition probabilities depend on the smoothing and window boundaries.
+
 .. code-block:: python
 
    gfp = np.nanstd(epoch - np.nanmean(epoch, axis=0, keepdims=True), axis=0)
@@ -326,7 +356,9 @@ Coverage, duration, occurrence, and transitions are then computed as follows:
 - **transitions**: row-normalized counts of successive runs.
 
 **Requirement**
-   Segmentation requires scikit-learn (``pip install eegtable[microstates]``).
+   Template fitting requires scikit-learn (``pip install eegtable[microstates]``).
+   Assignment with externally supplied or already fitted templates does not
+   run clustering.
 
 References
 ----------

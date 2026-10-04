@@ -14,12 +14,14 @@ import pandas as pd
 import yaml
 from filelock import FileLock
 from sklearn.base import clone
+from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.model_selection import ParameterGrid
 from sklearn.pipeline import Pipeline
 
 from eegtable.group import GroupDesign, build_group_design, read_group_dataset
 from eegtable.io import read_dataset, write_table
+from eegtable.model.aggregate import subject_level_r, subject_r_scorer
 from eegtable.model.crossfit import (
     FoldClassification,
     FoldPrediction,
@@ -29,14 +31,18 @@ from eegtable.model.crossfit import (
 from eegtable.model.design import Design, build_design
 from eegtable.model.estimators import (
     elasticnet_pipeline,
+    logistic_grid,
     logistic_pipeline,
     random_forest_classifier_pipeline,
     random_forest_pipeline,
     ridge_pipeline,
+    scaled_ridge_grid,
+    scaled_ridge_pipeline,
     svm_pipeline,
 )
 from eegtable.model.metrics import classification_metrics, regression_metrics
 from eegtable.model.splits import Fold, InnerSplit, inner_cv, loso_folds
+from eegtable.model.transformers import PreprocessingConfig
 from eegtable.model.tuning import _validate_grouped_calibration
 from eegtable.provenance import (
     canonical_json,
@@ -81,12 +87,15 @@ class _Prepared:
 
 _PIPELINES = {
     ("regression", "ridge"): ridge_pipeline,
+    ("regression", "scaled_ridge"): scaled_ridge_pipeline,
     ("regression", "elasticnet"): elasticnet_pipeline,
     ("regression", "random_forest"): random_forest_pipeline,
     ("classification", "logistic"): logistic_pipeline,
     ("classification", "svm"): svm_pipeline,
     ("classification", "random_forest"): random_forest_classifier_pipeline,
 }
+
+_Evaluation = tuple[pd.DataFrame, tuple[FoldPrediction | FoldClassification, ...]]
 
 
 def _merge_targets(
@@ -272,6 +281,13 @@ def _verify_provenance(recipe: ModelRecipe, prepared: _Prepared) -> None:
 def _prepare(recipe: ModelRecipe) -> _Prepared:
     provenance = _provenance(recipe)
     design, identities = _load_design(recipe)
+    if recipe.validation.scoring == "subject_r":
+        for group in np.unique(design.groups):
+            target = design.y[design.groups == group]
+            if len(target) < 3 or np.all(target == target[0]):
+                raise ValueError(
+                    f"subject_r requires at least three targets that vary within group {group!r}."
+                )
     inner = InnerSplit(
         "subject",
         stratified=recipe.analysis.task == "classification",
@@ -316,34 +332,48 @@ def check_model(recipe: ModelRecipe) -> ModelCheck:
     )
 
 
-def _predictions(
-    recipe: ModelRecipe, prepared: _Prepared
-) -> tuple[pd.DataFrame, tuple[FoldPrediction, ...] | tuple[FoldClassification, ...]]:
+def _predictions(recipe: ModelRecipe, prepared: _Prepared) -> _Evaluation:
+    return _evaluate_model(
+        recipe, prepared, prepared.design.X, prepared.pipeline, recipe.model.grid
+    )
+
+
+def _evaluate_model(
+    recipe: ModelRecipe,
+    prepared: _Prepared,
+    values: np.ndarray[Any, Any],
+    pipeline: Pipeline,
+    grid: dict[str, Any],
+) -> _Evaluation:
     design = prepared.design
     arguments: dict[str, Any] = {
         "inner": prepared.inner,
         "seed": recipe.validation.seed,
-        "scoring": recipe.validation.scoring,
+        "scoring": (
+            subject_r_scorer()
+            if recipe.validation.scoring == "subject_r"
+            else recipe.validation.scoring
+        ),
     }
     results: tuple[FoldPrediction, ...] | tuple[FoldClassification, ...]
     if recipe.analysis.task == "classification":
         results = cross_fit_classification(
             prepared.folds,
-            design.X,
+            values,
             design.y.astype(np.intp),
             design.groups,
-            prepared.pipeline,
-            recipe.model.grid,
+            pipeline,
+            grid,
             **arguments,
         )
     else:
         results = cross_fit_regression(
             prepared.folds,
-            design.X,
+            values,
             design.y,
             design.groups,
-            prepared.pipeline,
-            recipe.model.grid,
+            pipeline,
+            grid,
             **arguments,
         )
     frame = prepared.identities.copy()
@@ -358,9 +388,37 @@ def _predictions(
         if isinstance(result, FoldClassification) and result.y_prob is not None:
             for index, label in enumerate(result.classes):
                 frame.loc[result.rows, f"probability_{label}"] = result.y_prob[:, index]
+        if isinstance(result, FoldClassification) and result.y_score is not None:
+            frame.loc[result.rows, "decision_score"] = result.y_score
     if (frame.fold < 0).any() or not np.isfinite(frame.y_pred).all():
         raise ValueError("every model sample must have exactly one held-out prediction.")
     return frame, results
+
+
+def _baselines(recipe: ModelRecipe, prepared: _Prepared) -> dict[str, _Evaluation]:
+    regression = recipe.analysis.task == "regression"
+    dummy = DummyRegressor() if regression else DummyClassifier(strategy="prior")
+    baselines = {
+        "dummy": _evaluate_model(
+            recipe, prepared, prepared.design.X, Pipeline([("model", dummy)]), {}
+        )
+    }
+    if prepared.design.n_covariates:
+        factory = scaled_ridge_pipeline if regression else logistic_pipeline
+        grid = scaled_ridge_grid() if regression else logistic_grid()
+        pipeline = factory(
+            PreprocessingConfig(),
+            seed=recipe.validation.seed,
+            n_covariates=prepared.design.n_covariates,
+        )
+        baselines["covariates"] = _evaluate_model(
+            recipe,
+            prepared,
+            prepared.design.X[:, prepared.design.covariate_columns],
+            pipeline,
+            grid,
+        )
+    return baselines
 
 
 def _classification_summary(result: Any) -> dict[str, object]:
@@ -378,30 +436,56 @@ def _classification_summary(result: Any) -> dict[str, object]:
     return {name: getattr(result, name) for name in names}
 
 
-def _metrics(recipe: ModelRecipe, frame: pd.DataFrame) -> dict[str, object]:
-    groups = frame.model_group.to_numpy(dtype=object)
-    truth, prediction = frame.y_true.to_numpy(), frame.y_pred.to_numpy()
-    if recipe.analysis.task == "regression":
-        overall, subjects = regression_metrics(
-            truth, prediction, groups, folds=frame.fold.to_numpy()
-        )
-        overall.update(
+def _regression_summary(frame: pd.DataFrame) -> dict[str, Any]:
+    def summarize(rows: pd.DataFrame) -> dict[str, float]:
+        truth, prediction = rows.y_true.to_numpy(), rows.y_pred.to_numpy()
+        metrics, _ = regression_metrics(truth, prediction)
+        del metrics["subject_level_r"], metrics["avg_subject_r_fisher_z"]
+        metrics.update(
             mean_squared_error=float(mean_squared_error(truth, prediction)),
             mean_absolute_error=float(mean_absolute_error(truth, prediction)),
         )
-        return {
-            "overall": overall,
-            "per_group": subjects,
-            "aggregation": "pooled_errors_and_Fisher_z_group_correlation",
-        }
+        return metrics
+
+    per_group = [
+        {"group": str(group), **summarize(rows)}
+        for group, rows in frame.groupby("model_group", sort=False)
+    ]
+    return {
+        "overall": summarize(frame),
+        "per_group": per_group,
+        "group_mean": {
+            name: float(np.mean([group[name] for group in per_group]))
+            for name in ("mean_squared_error", "mean_absolute_error")
+        },
+        "aggregation": "pooled_metrics_and_equal_group_means",
+    }
+
+
+def _metrics(recipe: ModelRecipe, frame: pd.DataFrame) -> dict[str, Any]:
+    groups = frame.model_group.to_numpy(dtype=object)
+    truth, prediction = frame.y_true.to_numpy(), frame.y_pred.to_numpy()
+    if recipe.analysis.task == "regression":
+        summary = _regression_summary(frame)
+        if recipe.validation.scoring == "subject_r":
+            correlation = subject_level_r(
+                frame.rename(columns={"model_group": "subject_id"}), undefined="zero"
+            )
+            summary["group_mean"]["subject_level_r"] = correlation.r
+        return summary
     probabilities = (
         frame[["probability_0", "probability_1"]].to_numpy() if "probability_0" in frame else None
     )
+    scores = frame.decision_score.to_numpy() if "decision_score" in frame else None
     pooled = classification_metrics(
-        truth.astype(np.intp), prediction.astype(np.intp), y_prob=probabilities
+        truth.astype(np.intp), prediction.astype(np.intp), y_prob=probabilities, y_score=scores
     )
     grouped = classification_metrics(
-        truth.astype(np.intp), prediction.astype(np.intp), y_prob=probabilities, groups=groups
+        truth.astype(np.intp),
+        prediction.astype(np.intp),
+        y_prob=probabilities,
+        y_score=scores,
+        groups=groups,
     )
     return {
         "overall": _classification_summary(pooled),
@@ -413,6 +497,56 @@ def _metrics(recipe: ModelRecipe, frame: pd.DataFrame) -> dict[str, object]:
 
 def _write_json(path: Path, value: object) -> None:
     path.write_text(canonical_json(value) + "\n")
+
+
+def _write_benchmarks(
+    directory: Path,
+    recipe: ModelRecipe,
+    prepared: _Prepared,
+    evaluations: dict[str, _Evaluation],
+) -> None:
+    baselines = {name: result for name, result in evaluations.items() if name != "model"}
+    baseline_predictions = pd.concat(
+        [predictions.assign(model=name) for name, (predictions, _) in baselines.items()],
+        ignore_index=True,
+    )
+    baseline_predictions.to_csv(
+        directory / "baseline_predictions.tsv", sep="\t", index=False, na_rep="n/a"
+    )
+    summaries = {
+        name: _metrics(recipe, predictions) for name, (predictions, _) in evaluations.items()
+    }
+    _write_json(directory / "metrics.json", summaries["model"])
+    _write_json(directory / "benchmark_metrics.json", summaries)
+    _write_json(
+        directory / "baseline_folds.json",
+        {
+            name: [
+                dict(
+                    record,
+                    inner_splits=[] if name == "dummy" else record["inner_splits"],
+                    best_params=result.best_params,
+                )
+                for record, result in zip(prepared.evidence, fits, strict=True)
+            ]
+            for name, (_, fits) in baselines.items()
+        },
+    )
+    comparison = pd.DataFrame(
+        [
+            {
+                "model": name,
+                **{
+                    f"{aggregation}_{metric}": value
+                    for aggregation in ("overall", "group_mean")
+                    for metric, value in summary[aggregation].items()
+                    if isinstance(value, (float, int))
+                },
+            }
+            for name, summary in summaries.items()
+        ]
+    )
+    comparison.to_csv(directory / "benchmarks.tsv", sep="\t", index=False, na_rep="n/a")
 
 
 def _model_descriptors(recipe: ModelRecipe, prepared: _Prepared) -> pd.DataFrame:
@@ -431,9 +565,9 @@ def _write_bundle(
     directory: Path,
     recipe: ModelRecipe,
     prepared: _Prepared,
-    frame: pd.DataFrame,
-    results: Sequence[FoldPrediction | FoldClassification],
+    evaluations: dict[str, _Evaluation],
 ) -> None:
+    frame, results = evaluations["model"]
     frame.to_csv(directory / "predictions.tsv", sep="\t", index=False, na_rep="n/a")
     prepared.design.quality_ledger.to_csv(directory / "quality_ledger.tsv", sep="\t", index=False)
     feature_quality(prepared.table).to_csv(directory / "feature_quality.tsv", sep="\t", index=False)
@@ -454,7 +588,7 @@ def _write_bundle(
         for record, result in zip(prepared.evidence, results, strict=True)
     ]
     _write_json(directory / "folds.json", evidence)
-    _write_json(directory / "metrics.json", _metrics(recipe, frame))
+    _write_benchmarks(directory, recipe, prepared, evaluations)
     _write_json(
         directory / "design.json",
         {"column_names": prepared.design.column_names, "row_semantics": recipe.inputs.rows},
@@ -484,12 +618,13 @@ def run_model(recipe: ModelRecipe) -> ModelResult:
             raise FileExistsError(f"model output already exists: {recipe.output}")
         prepared = _prepare(recipe)
         frame, results = _predictions(recipe, prepared)
+        baselines = _baselines(recipe, prepared)
         with TemporaryDirectory(
             prefix=f".{recipe.output.name}-", dir=recipe.output.parent
         ) as temporary:
             bundle = Path(temporary) / "bundle"
             bundle.mkdir()
-            _write_bundle(bundle, recipe, prepared, frame, results)
+            _write_bundle(bundle, recipe, prepared, {"model": (frame, results), **baselines})
             _verify_provenance(recipe, prepared)
             if recipe.output.exists():
                 raise FileExistsError(f"model output already exists: {recipe.output}")

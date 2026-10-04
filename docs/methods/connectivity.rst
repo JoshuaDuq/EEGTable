@@ -1,10 +1,11 @@
 Phase and Connectivity Methods
 ==============================
 
-Phase relations across trials at one sensor, and coupling between sensors.
-ITPC, PPC, envelope correlation, spectral connectivity, and wPLI are estimated
-on a set of trials, so they are written to a group-row table. See
-:ref:`concepts-row-kinds`.
+This page defines phase consistency, phase-amplitude coupling, sensor/ROI
+connectivity, common spatial patterns, and graph summaries. ITPC, PPC, envelope
+correlation, cross-trial spectral connectivity, and wPLI return one row per
+trial group. PAC and time-averaged spectral connectivity retain one row per
+epoch. See :ref:`concepts-row-kinds`.
 
 Signatures are in :doc:`/api/connectivity`.
 
@@ -21,8 +22,9 @@ vector, averaged over time.
    \left| \frac{1}{N} \sum_n e^{i \phi_n(t)} \right|
 
 **Range**
-   1 when the phase matches on every trial at that latency, and 0 when the
-   phase is uniform across trials.
+   Values lie in :math:`[0,1]`. Identical phases give 1; exact cancellation of
+   the finite set of unit vectors gives 0. Random uniform phases generally
+   give a positive finite-sample estimate.
 
 **Order of averaging**
    The mean across trials is taken at each time, and those values are then
@@ -31,9 +33,12 @@ vector, averaged over time.
    order above and near 0 if time is averaged first.
 
 **Bias**
-   Under a uniform-phase null, :math:`E[\mathrm{ITPC}^2] = 1/N` and
-   :math:`E[\mathrm{ITPC}] \approx \sqrt{\pi/(4N)}`. Small :math:`N` is biased
-   high, and values from different trial counts are not comparable.
+   At one latency, let :math:`R_t=|N^{-1}\sum_n e^{i\phi_n(t)}|`.
+   For independent uniform trial phases, :math:`E[R_t^2]=1/N`, and for
+   sufficiently large :math:`N`, :math:`E[R_t]\approx\sqrt{\pi/(4N)}`.
+   The first identity does not apply to the square of the time-averaged
+   ITPC. Trial count, dependence, and phase availability affect the bias;
+   comparisons should account for these differences.
 
 **Missing values and flags**
    - The default requires at least two valid trials.
@@ -51,8 +56,11 @@ Pairwise Phase Consistency
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Pairwise phase consistency (PPC; Vinck et al., 2010) estimates squared
-population phase locking. Its expectation is 0 under uniform phase, so values
-from different trial counts can be compared.
+population phase locking without the PLV-squared finite-sample bias under
+independent identically distributed trial phases. Its expectation is 0 under
+uniform phase. Finite-sample PPC can be negative; with :math:`N` valid trials
+at one latency its range is :math:`[-1/(N-1),1]`. Different trial counts still
+produce different uncertainty.
 
 .. math::
 
@@ -61,6 +69,8 @@ from different trial counts can be compared.
 **Implementation**
    The equivalent form :math:`(|\sum_n e^{i\phi_n}|^2 - N) / (N(N - 1))` is
    used at each time, then averaged over time.
+   When phases are missing, :math:`N` is the valid count at that latency.
+   Latencies below ``min_valid_trials`` are omitted, as for ITPC.
 
 Row layout of ITPC and PPC
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -109,8 +119,10 @@ amplitude instead of the sample count, which bounds the value in
    phase estimator changes the feature identity.
 
 **Notes**
-   - ``pac`` returns the raw estimate; ``pac_surrogates`` adds null inference.
-   - Autocorrelation in amplitude and in phase biases the raw value upward.
+   - ``pac`` returns the observed estimate with the selected amplitude
+     normalization; ``pac_surrogates`` adds null inference.
+   - Finite windows and temporal dependence can produce nonzero MVL without
+     coupling. Amplitude normalization alone does not remove this bias.
    - A null for this value can be built from circular time shifts inside the
      trial, which keep the single-trial spectrum.
 
@@ -118,7 +130,8 @@ amplitude instead of the sample count, which bounds the value in
    Tort, Komorowski, Eichenbaum, and Kopell (2010) compare coupling estimators
    and note that raw mean vector length depends on the amplitude of the
    modulated band. It should therefore not be read as a coupling strength
-   without normalization against surrogates.
+   without a specified statistical reference. Surrogate inference depends on
+   the null construction and its exchangeability assumptions.
 
 Surrogate inference
 ~~~~~~~~~~~~~~~~~~~
@@ -180,7 +193,7 @@ Functions
    envelope is first orthogonalized against the other node
    (``orthogonalize="pairwise"``) and the magnitude is taken
    (``absolute=True``). ``orthogonalize=None`` gives the plain Pearson
-   correlation.
+   correlation; ``absolute`` only affects the orthogonalized branch.
 
 ``spectral_connectivity``
    Calls ``mne_connectivity.spectral_connectivity_epochs`` for coherence,
@@ -188,9 +201,10 @@ Functions
    the phase-lag index, and wPLI.
 
 ``wpli``
-   The weighted phase-lag index. It down-weights zero-lag coupling and
-   therefore reduces the contribution of volume conduction (Vinck et al.,
-   2011).
+   The weighted phase-lag index. It weights phase-lag signs by the magnitude
+   of the imaginary cross-spectrum (Vinck et al., 2011). This suppresses
+   sensitivity to instantaneous mixing under the method's assumptions;
+   it does not establish direct or causal interaction between sources.
 
 ``spectral_connectivity_time``
    Calls ``mne_connectivity.spectral_connectivity_time`` with ``average=False``
@@ -208,8 +222,16 @@ Requirements and options
 - A spectral band must lie at or below the signal's Nyquist frequency;
   unavailable high frequencies raise an error rather than truncating the band.
 - ``method="wpli2_debiased"`` applies the sample-size correction in Vinck et
-  al. (2011), which matters at low trial counts. ``method="wpli"`` does not.
+  al. (2011) to squared wPLI. It can return negative finite-sample values and
+  is a different scale from ``method="wpli"``.
 - Warnings raised by the MNE estimator are left visible.
+- Cross-trial spectral estimates assume comparable spectral statistics across
+  the trials being combined. Two epochs is a computational minimum, not a
+  guarantee of a reliable estimate.
+- The default multitaper ``bandwidth=2.0`` fixes smoothing in hertz. Each
+  window must support a bandwidth of at least
+  :math:`1.35 f_s/N_\mathrm{samples}` to retain a low-bias taper. Fourier mode
+  uses the delegated Fourier estimator.
 
 Nodes and ROIs
 ~~~~~~~~~~~~~~
@@ -224,6 +246,11 @@ Nodes and ROIs
 - ``envelope_correlation``, ``spectral_connectivity`` and ``wpli`` have one row
   per trial group, as :func:`~eegtable.itpc` does.
 
+Cross-trial pair tables use output finiteness as coverage: 1 for a finite
+estimate and 0 otherwise. This does not report trial counts or the fraction
+of usable source samples. Per-epoch time connectivity has the input-coverage
+definition below.
+
 Per-epoch time averaging
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -232,8 +259,8 @@ Morlet coefficients controlled by ``n_cycles``. Each analysis window is decompos
 independently. The complete half-support of the longest wavelet is pruned at both
 edges. A window must then retain at least two samples and one cycle at the lowest
 grid frequency. Short windows, nonfinite samples, and channels that are constant
-inside an analysis window raise errors. This prevents DC leakage and numerical
-noise from being reported as oscillatory coupling. Optional
+inside an analysis window raise errors. These checks reject undefined inputs
+and estimates; they do not remove all spectral leakage. Optional
 ``smoothing_seconds`` applies MNE's temporal Hanning smoother; zero leaves the
 coefficients unsmoothed. A duration that rounds to two samples raises because the
 Hanning kernel then has zero total weight. Undefined backend estimates raise
@@ -277,11 +304,14 @@ For analytic signals :math:`z_i(t)`,
 - A constant original envelope has undefined Pearson correlation and returns
   NaN, including with orthogonalization. Its output coverage is zero.
 
-.. code-block:: python
-
-   trial_r = np.stack([np.corrcoef(np.abs(trial)) for trial in analytic])
-   bounded = np.clip(trial_r, -0.999999, 0.999999)
-   envelope_correlation = np.tanh(np.nanmean(np.arctanh(bounded), axis=0))
+For per-trial correlations :math:`r_e`, the returned group estimate is
+:math:`\tanh(\operatorname{mean}_e\operatorname{arctanh}(r_e))`, after
+clipping and omitting undefined trial correlations. It is an equally weighted
+mean on the Fisher scale, rather than a correlation of concatenated trials.
+The pairwise projection and symmetrization follow the
+`MNE-Connectivity envelope-correlation API
+<https://mne.tools/mne-connectivity/stable/generated/mne_connectivity.envelope_correlation.html>`__;
+the across-trial Fisher aggregation is an EEGTable choice.
 
 Spectral estimator formulas
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -306,6 +336,7 @@ estimators are
    \end{aligned}
 
 **Notes**
+   - ``coh`` is magnitude coherency, not magnitude-squared coherence.
    - PPC in this list is the unbiased estimator of squared PLV given in the
      ITPC section.
    - ``wpli2_debiased`` is MNE-Connectivity's debiased estimator of squared
@@ -361,8 +392,9 @@ Cross-fitting and leakage
 - A supplied ``window`` restricts both fitting and held-out projected variance;
   samples outside that window do not enter the features.
 - Reusing the same folds as a classifier's outer split still leaks. A fold's
-  filters are estimated with labels from epochs that fall in the classifier's
-  training set through another fold.
+  training rows include features generated by other CSP fits that used the
+  classifier's held-out labels. A preassembled table therefore cannot replace
+  fitting CSP inside that classifier's training partition.
 - :func:`eegtable.model.build_design` rejects these columns.
 - The split that produced a column is stored in its computation metadata.
 
@@ -372,6 +404,10 @@ To use CSP as a predictor:
   test rows with that fit.
 - Repeat the fit inside inner tuning.
 - In a scikit-learn pipeline, put ``mne.decoding.CSP`` in the pipeline.
+
+EEGTable also provides a fold-fitted ``eegtable.model.CSPTransformer``; see
+:doc:`/guides/learned_features` for predictive use with the package's CSP
+normalization.
 
 Covariance and filters
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -400,7 +436,9 @@ The filters solve :math:`C_0 w = \lambda(C_0+C_1)w`.
   eigenvectors, as MNE's CSP does, and at most that many components exist.
 - Components are taken alternately from the largest and the smallest
   eigenvalues.
-- The feature is the log of relative projected variance.
+- The feature is the natural log of projected variance divided by the sum
+  over the retained components. Changing the component count changes this
+  denominator.
 - Trace normalization, component order, and the cross-fitting split are stored
   with the column.
 
@@ -439,6 +477,11 @@ distance over node pairs.
 - A zero weight is treated as a missing edge.
 - Shortest paths are found with Floyd–Warshall.
 - A disconnected pair contributes 0.
+
+Weights enter through their absolute values. Negative correlations or negative
+debiased estimates therefore contribute their magnitudes as positive weights;
+this graph is not a signed-network analysis. Efficiency also depends on the
+connectivity scale, node set, and edge estimator.
 
 .. math::
 

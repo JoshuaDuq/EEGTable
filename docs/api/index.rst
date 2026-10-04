@@ -7,9 +7,12 @@ API Reference
      Signatures, parameters, and return types.
    </p>
 
-These names are exported from ``eegtable``, except ``eegtable.model``,
-``eegtable.microstates``, and ``eegtable.preprocessing``, which live in their submodules. Definitions are in
-:doc:`/methods/index`.
+Core containers, feature extractors, microstate functions, quality policies,
+and reliability are exported from ``eegtable``. Modeling, preprocessing, native
+BIDS input, file I/O, and group-sample design interfaces are documented under
+``eegtable.model``, ``eegtable.preprocessing``, ``eegtable.bids``,
+``eegtable.io``, and ``eegtable.group``. Each entry shows its import path.
+Method definitions and assumptions are in :doc:`/methods/index`.
 
 Browse the complete :ref:`symbol index <genindex>` to find a function or class by name.
 
@@ -25,7 +28,8 @@ Containers and files
       :link-type: doc
 
       ``FeatureTable``, ``Spectra``, ``Signal``, ``BandSignal``, ``Band``,
-      ``Window``, and table reading and writing.
+      ``Window``, table reading and writing, group samples, quality policies,
+      and repeated-session reliability.
 
 Feature extraction
 ------------------

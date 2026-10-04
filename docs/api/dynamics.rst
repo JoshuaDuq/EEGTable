@@ -1,10 +1,9 @@
 Dynamics
 ========
 
-.. autofunction:: eegtable.cycle_features
-
 Measures estimated from :class:`~eegtable.Signal` and :class:`~eegtable.BandSignal`
-containers. Their definitions are in :doc:`/methods/dynamics`.
+containers, with one result row per epoch. Definitions and units are in
+:doc:`/methods/dynamics`; cycle-by-cycle methods are in :doc:`/methods/cycles`.
 
 Time-Domain Measures
 --------------------
@@ -40,6 +39,8 @@ Time-Domain Measures
 Oscillatory Bursts
 ------------------
 
+These functions detect envelope-threshold runs on ``BandSignal`` inputs.
+
 .. autofunction:: eegtable.burst_count
 
 .. autofunction:: eegtable.burst_rate
@@ -50,8 +51,18 @@ Oscillatory Bursts
 
 .. autofunction:: eegtable.fraction_above_threshold
 
+Cycle-by-Cycle Features
+-----------------------
+
+This function uses broadband ``Signal`` inputs and requires ``eegtable[cycles]``.
+
+.. autofunction:: eegtable.cycle_features
+
 ERDS Dynamics
 -------------
+
+These functions use ``BandSignal`` power relative to an explicit baseline
+window. The default scale is decibels.
 
 .. autofunction:: eegtable.erds_mean
 

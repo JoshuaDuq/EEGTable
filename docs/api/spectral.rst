@@ -1,18 +1,24 @@
 Spectral Features
 =================
 
-Measures estimated from a :class:`~eegtable.Spectra` container. Their definitions
-are in :doc:`/methods/spectral`.
+Power reductions, spectral descriptors, and spectral parameterization. Most
+functions accept :class:`~eegtable.Spectra`; ``irasa`` accepts broadband
+:class:`~eegtable.Signal` inputs. Definitions, representation requirements, and
+units are in :doc:`/methods/spectral`.
 
+Power Reductions
+----------------
 
 .. autofunction:: eegtable.integrated_band_power
+
 .. autofunction:: eegtable.mean_psd
+
 .. autofunction:: eegtable.mean_tfr_power
+
 .. autofunction:: eegtable.periodic_power
 
-.. autofunction:: eegtable.band_ratio
-
-.. autofunction:: eegtable.asymmetry
+Spectral Descriptors
+--------------------
 
 .. autofunction:: eegtable.peak_frequency
 
@@ -24,6 +30,9 @@ are in :doc:`/methods/spectral`.
 
 .. autofunction:: eegtable.spectral_entropy
 
+Aperiodic and Periodic Estimates
+--------------------------------
+
 .. autofunction:: eegtable.aperiodic
 
 .. autofunction:: eegtable.aperiodic_ratio
@@ -31,3 +40,13 @@ are in :doc:`/methods/spectral`.
 .. autofunction:: eegtable.spectral_parameterization
 
 .. autofunction:: eegtable.irasa
+
+Derived Power Features
+----------------------
+
+These functions accept a power :class:`~eegtable.FeatureTable` and preserve
+the meaning of its stored normalization.
+
+.. autofunction:: eegtable.band_ratio
+
+.. autofunction:: eegtable.asymmetry

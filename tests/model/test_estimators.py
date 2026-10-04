@@ -28,6 +28,73 @@ from eegtable.model.transformers import PreprocessingConfig
 _CONFIG = PreprocessingConfig()
 
 
+def test_scaled_ridge_matches_penalty_from_retained_training_dimensions() -> None:
+    from sklearn.linear_model import Ridge
+
+    from eegtable.model.estimators import scaled_ridge_pipeline
+
+    rng = np.random.default_rng(42)
+    values = np.column_stack([rng.normal(size=(20, 3)), np.ones(20)])
+    target = rng.normal(size=20)
+    pipeline = scaled_ridge_pipeline(_CONFIG, seed=42)
+    pipeline.set_params(regressor__alpha=0.1).fit(values, target)
+    transformed = pipeline[:-1].transform(values)
+    reference = Ridge(alpha=0.1 * transformed.shape[0] * transformed.shape[1])
+    reference.fit(transformed, target)
+    np.testing.assert_allclose(pipeline.predict(values), reference.predict(transformed))
+    assert pipeline.named_steps["regressor"].alpha == 0.1
+
+
+def test_scaled_ridge_uses_inner_training_dimensions_after_pca(monkeypatch) -> None:
+    from eegtable.model.estimators import scaled_ridge_pipeline
+
+    rng = np.random.default_rng(42)
+    values = np.column_stack([rng.normal(size=(24, 4)), np.ones(24)])
+    target = values[:, 0] + rng.normal(scale=0.2, size=24)
+    groups = np.repeat(["a", "b", "c", "d"], 6).astype(object)
+    pipeline = scaled_ridge_pipeline(
+        PreprocessingConfig(pca_enabled=True, pca_n_components=2), seed=42
+    )
+    regressor_type = type(pipeline.named_steps["regressor"])
+    fit = regressor_type.fit
+    fitted_penalties = []
+
+    def record_fit(self, X, y, **fit_params):
+        result = fit(self, X, y, **fit_params)
+        fitted_penalties.append((len(X), X.shape[1], self.alpha, self.alpha_))
+        return result
+
+    monkeypatch.setattr(regressor_type, "fit", record_fit)
+    cross_fit_regression(
+        loso_folds(groups),
+        values,
+        target,
+        groups,
+        pipeline,
+        {"regressor__alpha": [0.01, 0.1]},
+        inner=InnerSplit("subject", n_splits=2),
+        seed=42,
+        scoring="neg_mean_squared_error",
+    )
+    assert {rows for rows, _, _, _ in fitted_penalties} == {6, 12, 18}
+    for rows, columns, alpha, effective_alpha in fitted_penalties:
+        assert columns == 2
+        assert effective_alpha == pytest.approx(alpha * rows * columns)
+
+
+def test_scaled_ridge_is_invariant_to_replicating_training_rows() -> None:
+    from sklearn.base import clone
+
+    from eegtable.model.estimators import scaled_ridge_pipeline
+
+    rng = np.random.default_rng(31)
+    values, target = rng.normal(size=(12, 3)), rng.normal(size=12)
+    pipeline = scaled_ridge_pipeline(_CONFIG, seed=42)
+    fitted = clone(pipeline).fit(values, target)
+    repeated = clone(pipeline).fit(np.tile(values, (3, 1)), np.tile(target, 3))
+    np.testing.assert_allclose(fitted.predict(values), repeated.predict(values))
+
+
 def test_the_pipeline_scales_before_it_regularizes() -> None:
     # ElasticNet penalizes coefficients on their own scale, so an unscaled feature in
     # different units is regularized differently from an identical one in volts.

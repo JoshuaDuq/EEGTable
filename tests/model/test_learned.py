@@ -172,6 +172,10 @@ def test_signal_classification_produces_nested_held_out_predictions():
     assert all(isinstance(result, FoldClassification) for result in results)
     assert all(result.best_params["model__C"] in [0.1, 1.0] for result in results)
     assert all(result.y_prob.shape == (8, 2) for result in results)
+    for result in results:
+        np.testing.assert_allclose(
+            result.y_score, np.log(result.y_prob[:, 1] / result.y_prob[:, 0])
+        )
     assert np.concatenate([result.rows for result in results]).size == labels.size
     assert np.mean(np.concatenate([result.y_true == result.y_pred for result in results])) > 0.9
 

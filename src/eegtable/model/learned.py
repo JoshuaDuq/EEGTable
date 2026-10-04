@@ -26,6 +26,7 @@ from eegtable.microstates import (
 from eegtable.model.crossfit import (
     FoldClassification,
     FoldPrediction,
+    _decision_scores,
     _validate_and_resolve_inner_groups,
     _validate_binary_labels,
     _validate_outer_folds,
@@ -323,6 +324,7 @@ def _classification_prediction(
         y_prob=probability,
         classes=classes,
         best_params=parameters,
+        y_score=_decision_scores(model, X),
     )
 
 

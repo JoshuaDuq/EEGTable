@@ -8,8 +8,8 @@ Installation
      <code>numpy</code>, <code>scipy</code>, <code>pandas</code>, and <code>mne</code>.
    </p>
 
-Prerequisites
--------------
+Requirements
+------------
 
 .. grid:: 1 1 2 2
    :gutter: 3
@@ -46,8 +46,8 @@ an environment and install EEGTable from source.
          cd EEGTable
          python3 -m venv .venv
          source .venv/bin/activate
-         pip install --upgrade pip
-         pip install -e .
+         python -m pip install --upgrade pip
+         python -m pip install -e .
 
    .. tab-item:: Windows PowerShell
       :sync: windows
@@ -62,10 +62,12 @@ an environment and install EEGTable from source.
          python -m pip install --upgrade pip
          pip install -e .
 
-Optional Dependencies
+Optional dependencies
 ---------------------
 
-Optional extras.
+Install only the extras used by your analysis. Extras add dependencies; they do
+not alter the core feature definitions. Combine related extras, for example
+``python -m pip install -e ".[preprocessing,preprocessing-auto,model]"``.
 
 .. list-table::
    :header-rows: 1
@@ -76,12 +78,13 @@ Optional extras.
      - Used For
    * - ``[connectivity]``
      - ``mne-connectivity>=0.7``
-     - Weighted Phase Lag Index (:func:`~eegtable.wpli`).
+     - Epoch-averaged and per-epoch time-frequency spectral connectivity,
+       including :func:`~eegtable.wpli`.
    * - ``[microstates]``
      - ``scikit-learn>=1.3``
      - GFP peak clustering and microstate segmentation (``eegtable.microstates``).
    * - ``[model]``
-     - ``scikit-learn>=1.3``
+     - ``scikit-learn>=1.3``, ``PyYAML>=6.0``, ``filelock>=3.0``
      - Design matrices, grouped cross-fitting, metrics, nulls, uncertainty, and
        model selection (``eegtable.model``, :doc:`/api/model`).
    * - ``[importance]``
@@ -122,18 +125,21 @@ Optional extras.
      - ``pytest``, ``ruff``, ``black``, ``mypy``, type stubs
      - Tests, type checking, and linting.
    * - ``[docs]``
-     - ``furo``, ``myst-parser``, ``sphinx-copybutton``, ``sphinx-design``, ``scikit-learn``
+     - ``sphinx``, ``furo``, ``myst-parser``, ``sphinx-copybutton``,
+       ``sphinx-design``, ``sphinx-notfound-page``, ``scikit-learn``
      - This documentation, including the modeling API pages.
 
-To install with all extras:
+For development with the scientific integrations and documentation:
 
 .. code-block:: bash
 
-   pip install -e ".[connectivity,microstates,model,importance,preprocessing,preprocessing-auto,bids,spectral-model,irasa,cycles,complexity,pac,riemann,dev,docs]"
+   python -m pip install -e ".[dev,docs,model,connectivity,microstates,importance,preprocessing,preprocessing-auto,bids,spectral-model,irasa,cycles,complexity,pac,riemann]"
 
-ByCycle 1.2 requires writable pandas arrays; pandas 3 is currently unsupported.
-The package constraint selects pandas 2. The specparam release is pinned because
-its result interface is changing during the version 2 release-candidate series.
+The dependency bounds above follow ``pyproject.toml``. EEGTable constrains
+pandas to version 2 and pins specparam to ``2.0.0rc7``; preserve those bounds
+when preparing a reproducible environment. ``preprocessing-auto`` and
+``preprocessing-gui`` supplement the ``preprocessing`` extra and should be
+installed with it.
 
 Modeling needs the ``model`` extra. SHAP needs the ``importance`` extra.
 Permutation importance is included in ``model``.
@@ -142,11 +148,31 @@ The preprocessing terminal front end is a Go program, not a Python extra.
 Build it with ``cd tui && go build -o eegtable-tui .`` (Go 1.24 or newer).
 Keys are in :doc:`/guides/preprocessing`.
 
-Verification
-------------
-
-Run the tests with
+Verify the installation
+-----------------------
 
 .. code-block:: bash
 
-   pytest
+   python -c "import eegtable; print(eegtable.__version__)"
+   eegtable --version
+
+For a development checkout, install the ``dev`` and ``model`` extras before
+running ``python -m pytest``. Additional integration tests require the
+corresponding extras. Public-dataset checks are opt-in; see
+:doc:`/guides/validation`.
+
+Build the documentation
+-----------------------
+
+From the repository root:
+
+.. code-block:: bash
+
+   python -m pip install -e ".[docs]"
+   python -m sphinx -b html -W --keep-going docs docs/_build/html
+
+Open ``docs/_build/html/index.html`` to inspect the generated site. The build
+imports the current source for API signatures and docstrings. Internet access
+is needed to fetch external reference inventories; the CI documentation job
+also installs optional scientific integrations. A documentation build does not
+rerun dataset validation or refresh its saved evidence.

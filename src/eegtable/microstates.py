@@ -299,14 +299,15 @@ def segment(
     """Fit microstate templates and assign every sample to one.
 
     Templates are clustered from the topographies at peaks of the global field
-    power, where the map is most stable, then every sample is assigned to its
-    most similar template. Similarity uses the **absolute** correlation, so a
-    topography and its inversion are the same state; that is the convention, and
-    it is why templates are sign-normalized.
+    power, then every sample is assigned by absolute spatial correlation.
+    A topography and its inversion represent the same state. Sign normalization
+    is a reporting and initialization convention; polarity invariance of the
+    modified k-means objective does not require that orientation.
 
     **Template fitting pools across trials.** ``fit_on`` names which trials may
-    contribute, exactly as a cross-validation fold would require. The default
-    uses every trial, which is correct for description and leaks for prediction.
+    contribute. The default uses every trial and is descriptive of that pool.
+    For prediction, fit templates within each training partition. Use
+    :class:`MicrostateModel` to fit once and assign independent recordings.
     The per-sample assignment and every measure derived from it are per epoch, so
     the measures themselves carry one row per epoch.
 
@@ -324,8 +325,8 @@ def segment(
     fit_on : ndarray of bool, optional
         Which epochs may contribute topographies to the clustering. None uses all.
     min_duration_ms : float, default 20.0
-        Segments shorter than this are absorbed into a neighbour, which removes
-        physiologically implausible one-sample flickering.
+        Segments shorter than this are absorbed into a neighbor or split between
+        neighbors on a duration tie. This smoothing changes temporal summaries.
     min_peak_distance_ms : float, default 10.0
         Minimum separation between global field power peaks.
     max_peaks_per_epoch : int, default 400

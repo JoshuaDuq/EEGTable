@@ -1,5 +1,5 @@
-Concepts
-========
+Data Concepts
+=============
 
 .. raw:: html
 
@@ -14,7 +14,7 @@ From MNE objects to feature tables
 ----------------------------------
 
 ``eegtable`` accepts MNE ``Spectrum``, ``EpochsTFR``, and ``Epochs`` objects.
-Spectra and time-frequency representations are computed in MNE, then wrapped.
+PSD and Morlet time-frequency representations are computed in MNE, then wrapped.
 :class:`~eegtable.BandSignal` is the exception.
 :meth:`~eegtable.BandSignal.from_epochs` applies its documented band-pass and
 Hilbert transform.
@@ -53,9 +53,9 @@ The containers
    * - Container
      - Contents
    * - :class:`~eegtable.Spectra`
-     - A power spectrum or a time-frequency representation, plus the estimator
-       parameters that produced it. The container records which of the two it
-       holds. An operation defined for one rejects the other.
+     - PSD density, support-restricted Morlet power, or a dimensionless ratio
+       to an aperiodic fit, with estimator parameters. The representation is
+       explicit; incompatible operations raise errors.
    * - :class:`~eegtable.Signal`
      - Broadband time-domain data.
    * - :class:`~eegtable.BandSignal`
@@ -64,7 +64,9 @@ The containers
    * - :class:`~eegtable.Band`
      - A named half-open frequency interval.
    * - :class:`~eegtable.Window`
-     - A named time interval within the epoch.
+     - A named time interval in seconds relative to the epoch origin. Sample
+       selection includes both bounds; Morlet reduction further restricts
+       coefficients by wavelet support.
 
 Bands and windows are named, not positional. A column records that it is
 ``alpha`` in ``baseline``, and :meth:`~eegtable.FeatureTable.select` matches
@@ -75,8 +77,7 @@ those fields.
 Anatomy of a feature table
 --------------------------
 
-Every extractor returns a :class:`~eegtable.FeatureTable` with five aligned
-parts.
+A :class:`~eegtable.FeatureTable` has five aligned parts.
 
 ``values``
    Shape ``(n_rows, n_features)``.
@@ -111,8 +112,8 @@ the column name.
 Column names
 ------------
 
-Column names are generated. Each name is six underscore-separated fields and a
-hash suffix.
+Column names are generated. Each name contains six readable underscore-separated fields and a
+seventh field containing the hash suffix.
 
 .. code-block:: text
 
@@ -146,33 +147,74 @@ Epoch rows and group rows
 There are two kinds of table. They are not merged.
 
 **Per-epoch tables** have one row per epoch. ``row_ids`` is a
-``(recording, epoch index, event)`` triple per row. Concatenation across
-recordings uses that triple. :func:`eegtable.model.build_design` accepts only
+``(recording, epoch index, event)`` triple per row. Joining feature columns checks those identities; stacking recordings
+retains them and rejects duplicates. :func:`eegtable.model.build_design` accepts only
 per-epoch tables.
 
 **Group-row tables** come from measures that are undefined on one trial.
 Those measures are inter-trial phase coherence, pairwise phase consistency,
 envelope correlation (per-trial correlations averaged in Fisher :math:`z`),
-every ``spectral_connectivity`` method including wPLI, and their graph
-summaries. The value describes a
+epoch-averaged ``spectral_connectivity`` methods including wPLI, and graph
+summaries of those group estimates. ``spectral_connectivity_time`` instead
+returns per-epoch estimates. Graph summaries preserve the row kind of their
+input. The value describes a
 set of trials. The table carries ``row_labels`` for those groups and cannot
 carry ``row_ids``.
 
 Copying a group value onto its member epochs repeats one number across rows.
-A model then treats those rows as independent observations. The runner writes
-the two kinds of table to separate files. See :doc:`/guides/runner`.
+This can overstate the effective sample size and leak shared information
+across training and test rows. The runner writes
+the two kinds of table to separate files. ``eegtable.group`` provides native
+group-sample loading and design construction. See :doc:`/guides/cohorts` and
+:doc:`/guides/runner`.
 
 .. _concepts-missing:
 
 Missing values
 --------------
 
-``NaN`` in ``values`` means the value was withheld because of the input.
-Non-finite samples are treated as missing. A measure that cannot be estimated
-returns ``NaN`` and records the condition in ``coverage`` and ``flags``.
+``NaN`` in ``values`` denotes a missing or withheld estimate. It can reflect
+insufficient input, an undefined statistic, a failed fit, a quality exclusion,
+or a column absent from a recording in a union schema.
+Non-finite samples are treated as missing. Data-dependent failures use the measure's documented ``coverage`` and
+``flags``. Invalid arguments, incompatible representations, and invalid file
+manifests raise errors instead. See the method definition for the exact rule.
 
 A finite value can still come from a small fraction of its input. Read
 ``coverage`` with the value. ``max_feature_missingness`` in
 :class:`~eegtable.model.PreprocessingConfig` is a separate check. It drops a
 column when the fraction of ``NaN`` rows exceeds the threshold. It does not
 read ``coverage``.
+
+Units and normalization
+-----------------------
+
+EEG input amplitudes follow MNE's convention of volts; frequencies are in Hz
+and times in seconds unless a parameter explicitly names milliseconds.
+Inspect each column's ``FeatureMeta.unit`` rather than inferring its unit from
+its name.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 36 64
+
+   * - Quantity
+     - Interpretation
+   * - Raw PSD density
+     - V²/Hz for EEG, with full multitaper normalization when applicable.
+   * - Integrated PSD band power
+     - V², using interpolation at the exact band bounds.
+   * - Morlet container values
+     - MNE power divided by the original sampling frequency: a smoothed
+       density representation. It is not numerically identical to a PSD.
+   * - ``log10``
+     - Base-10 logarithm of the value in its declared input unit.
+   * - ``log_ratio``, ``db``, ``percent``
+     - Baseline-relative scales. The order of averaging and normalization is
+       measure-specific; read :doc:`/methods/spectral` and
+       :doc:`/methods/dynamics` before comparing them.
+
+Column identity records the scientific definition, including spatial members
+and computation settings. It does not identify the complete dataset or
+software environment; those belong to recording and run provenance. Preserve
+both when reproducing an analysis.

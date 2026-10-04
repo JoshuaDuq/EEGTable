@@ -43,13 +43,11 @@ def envelope_correlation(
     in Fisher ``z``. Nodes are channels, or ROIs when ``groups`` is given, in
     which case a node's series is the mean analytic signal of its members.
 
-    **On sensor data this measure is dominated by volume conduction unless it is
-    orthogonalized.** One source seen by two electrodes produces a zero-lag
-    envelope correlation with no interaction behind it, so ``orthogonalize``
-    defaults to ``"pairwise"``, matching ``mne_connectivity.envelope_correlation``.
-    Passing ``None`` gives the raw envelope correlation, which is interpretable
-    on source-reconstructed or otherwise leakage-corrected data and misleading on
-    sensors.
+    Shared sources can produce sensor-envelope correlations through instantaneous
+    mixing. The default ``orthogonalize="pairwise"`` follows the projection in
+    ``mne_connectivity.envelope_correlation``. Passing ``None`` computes plain
+    envelope correlation. Pairwise orthogonalization and source reconstruction
+    do not establish direct or causal interactions or remove every leakage effect.
 
     **Estimated across trials, so the result has one row per trial group.** See
     :func:`~eegtable.itpc` for why that is not broadcast to per-epoch rows.
@@ -71,8 +69,7 @@ def envelope_correlation(
         (2012). None correlates the envelopes directly.
     absolute : bool, default True
         Take the magnitude of each trial's correlation before averaging. Applies
-        only when orthogonalizing, where the residual sign carries little
-        information; matches MNE's default.
+        only when orthogonalizing and matches MNE's default.
 
     Returns
     -------
@@ -162,8 +159,9 @@ def spectral_connectivity(
 ) -> FeatureTable:
     """Spectral connectivity between every pair of nodes.
 
-    Delegates the estimation to ``mne_connectivity.spectral_connectivity_epochs``,
-    so the cross-spectral density is computed once, in one place, for every method.
+    Delegates spectral estimation and cross-trial accumulation to
+    ``mne_connectivity.spectral_connectivity_epochs`` for each trial group,
+    band, and window. Returned rows describe trial groups.
 
     Takes a broadband :class:`~eegtable.Signal` and a list of bands, rather than
     pre-filtered :class:`~eegtable.BandSignal` objects, because the band is a
@@ -182,14 +180,15 @@ def spectral_connectivity(
         Broadband epochs.
     method : str
         One of ``"coh"``, ``"imcoh"``, ``"plv"``, ``"ciplv"``, ``"ppc"``,
-        ``"pli"``, ``"wpli"``, ``"wpli2_debiased"``. Prefer ``"wpli2_debiased"``
-        over ``"wpli"`` at low trial counts: it removes the sample-size bias that
-        makes wPLI rise as trials fall.
+        ``"pli"``, ``"wpli"``, ``"wpli2_debiased"``. ``"coh"`` is magnitude
+        coherency, not magnitude-squared coherence. ``"wpli2_debiased"``
+        corrects finite-sample bias in squared wPLI and can be negative; it is
+        a different scale from wPLI.
 
-        ``"imcoh"`` is reported as a magnitude, because its sign is a statement
-        about which node came first and these pairs are unordered. ``"dpli"`` and
-        ``"cohy"`` are refused rather than misrepresented; see the error each
-        raises.
+        ``"imcoh"`` is reported as a magnitude before frequency averaging because
+        its sign flips when node order is exchanged and these pairs are
+        unordered. Directed or complex-valued methods such as ``"dpli"`` and
+        ``"cohy"`` are not supported by this interface.
     bands : sequence of Band
         Bands to estimate in.
     windows : sequence of Window
@@ -203,16 +202,17 @@ def spectral_connectivity(
         Spectral estimator passed to mne-connectivity.
     bandwidth : float, default 2.0
         Frequency smoothing of the multitaper estimate, in Hz; ignored by
-        ``"fourier"``. Fixed in hertz on purpose: mne-connectivity's own default
-        is ``8 / window_length`` Hz, which on a 1 s window smooths over ±4 Hz,
-        wider than the delta or theta band, and changes with every window
-        length. Must be at least 1.35 frequency bins, ``1.35 * sfreq / n_samples``:
-        in a narrower band no Slepian taper keeps 90% of its power.
+        ``"fourier"``. Fixed in hertz across windows. Each window must support
+        at least 1.35 frequency bins, ``1.35 * sfreq / n_samples``, to retain
+        a low-bias taper.
 
     Returns
     -------
     FeatureTable
         One column per node pair, band and window, with ``space_kind="pair"``.
+        Every trial group requires at least two epochs; this is a computational
+        minimum rather than a guarantee of reliability. Coverage is 1 for finite
+        output and 0 otherwise, not a measure of usable source-sample fraction.
     """
     if method in _DIRECTED:
         raise ValueError(f"{method!r} is not available here. {_DIRECTED[method]}")
@@ -303,9 +303,9 @@ def wpli(
     """Weighted phase lag index between every pair of nodes.
 
     A shorthand for :func:`spectral_connectivity` with ``method="wpli"``; see it
-    for what the estimation does and for the other measures it reaches. At low
-    trial counts prefer ``method="wpli2_debiased"``, which corrects the
-    sample-size bias that makes wPLI grow as the number of trials falls.
+    for estimation details. That function also exposes ``"wpli2_debiased"``,
+    which corrects finite-sample bias in squared wPLI and can return negative
+    values. The two methods report different scales.
 
     Parameters
     ----------

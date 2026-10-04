@@ -251,10 +251,10 @@ class CommonSpatialPattern:
         Returns
         -------
         ndarray, shape (n_rows, n_components)
-            ``log(var_j / sum_k var_k)``, the standard CSP feature. The
-            normalization makes it independent of the epoch's overall amplitude,
-            so it describes how power is distributed across components rather
-            than how loud the epoch was.
+            ``log(var_j / sum_k var_k)``, using the natural logarithm and summing
+            variance over the retained components. An overall positive amplitude
+            scale cancels; changing the number of retained components changes
+            the denominator. This differs from log absolute component power.
         """
         if tuple(signal.ch_names) != self.ch_names:
             raise ValueError(

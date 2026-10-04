@@ -39,6 +39,8 @@ from eegtable.model.estimators import (
     random_forest_pipeline,
     ridge_grid,
     ridge_pipeline,
+    scaled_ridge_grid,
+    scaled_ridge_pipeline,
     svm_grid,
     svm_pipeline,
 )
@@ -205,6 +207,8 @@ __all__ = [
     "residualize_within_subjects",
     "ridge_grid",
     "ridge_pipeline",
+    "scaled_ridge_grid",
+    "scaled_ridge_pipeline",
     "run_aware_cv",
     "run_aware_inner_cv",
     "run_folds",

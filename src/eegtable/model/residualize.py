@@ -264,9 +264,13 @@ def residualize_within_subjects(
     both the target and the features and reads as trial-level tracking. Here every
     subject gets its own model instead. A subject with training rows is fitted on those
     alone and its held-out rows are predicted from them. A subject with none, as in a
-    leave-one-subject-out fold, is fitted on its own held-out rows: that defines its
-    residual target without informing any model, which is what makes the estimand
-    within-subject. On features this uses no target at all. A missing value stays missing.
+    leave-one-subject-out fold, is fitted on its own held-out rows. Target and
+    feature nuisance fits use that subject's batches separately; feature fits
+    use no target. The predictive estimator receives no held-out targets, but
+    the residual outcome and test features depend on the held-out batch. This
+    defines a within-subject residual association, not a training-only transform
+    for prospective prediction of an unseen raw outcome. Missing values remain
+    missing.
     """
     column_names = tuple(str(c).strip() for c in columns if str(c).strip())
     if not column_names:

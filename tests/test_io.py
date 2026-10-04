@@ -458,3 +458,39 @@ def test_a_sidecar_that_is_not_json_is_named(tmp_path) -> None:
     path.with_suffix(".json").write_text("{ not json")
     with pytest.raises(ValueError, match=r"features\.json"):
         read_table(path)
+
+
+def _as_written_by_eegfeat(path: Path) -> None:
+    """Turn a bundle into one eegfeat wrote: no schema, no manifests, the old names."""
+    for file in (path, path.with_name(f"{path.stem}_coverage.tsv")):
+        file.write_text(file.read_text().replace("__eegtable_row_id", "__eegfeat_row_id", 1))
+    sidecar_path = path.with_suffix(".json")
+    sidecar = json.loads(sidecar_path.read_text())
+    for key in ("schema", "files", "row_text_columns"):
+        del sidecar[key]
+    sidecar["eegfeat_version"] = sidecar.pop("eegtable_version")
+    sidecar_path.write_text(json.dumps(sidecar))
+
+
+def test_a_bundle_written_by_eegfeat_reads_back_unchanged(tmp_path) -> None:
+    # Event names that look numeric stay text, as eegfeat's reader kept them.
+    table = replace(_epoch_table(), row_ids=(("rec", 0, "1"), ("rec", 1, "2"), ("rec", 2, "01")))
+    path = tmp_path / "sub-01_features.tsv"
+    write_table(table, path, rows=pd.DataFrame({"event": ["1", "2", "01"], "rating": [3, 5, 4]}))
+    _as_written_by_eegfeat(path)
+
+    _assert_same_table(read_table(path), table)
+    dataset = io_module.read_dataset([path])
+    np.testing.assert_array_equal(dataset.table.values, table.values)
+    assert dataset.targets["event"].tolist() == ["1", "2", "01"]
+    assert dataset.targets["rating"].tolist() == [3, 5, 4]
+
+
+def test_a_bundle_written_by_eegfeat_still_needs_its_coverage_file(tmp_path) -> None:
+    path = tmp_path / "sub-01_features.tsv"
+    write_table(_epoch_table(), path, rows=pd.DataFrame({"event": ["left", "right", "left"]}))
+    _as_written_by_eegfeat(path)
+    path.with_name("sub-01_features_coverage.tsv").unlink()
+
+    with pytest.raises(ValueError, match="legacy feature bundle file manifest"):
+        read_table(path)

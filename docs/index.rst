@@ -7,10 +7,11 @@ EEGTable
 
    Labelled EEG feature extraction and modeling for MNE objects.
 
-Extract spectral, temporal, connectivity, and complexity measures while
-retaining their units and provenance. Evaluate models with group-disjoint
-validation. Method definitions describe the assumptions and missing-value
-behavior of each measure.
+Extract spectral, temporal, connectivity, complexity, cycle, and microstate
+measures while retaining their units and provenance. Evaluate regression and
+binary classification models with group-disjoint validation. Method definitions describe each measure's assumptions and missing-value behavior.
+This is development version ``0.1.0.dev0``; retain the source revision and
+dependency versions with each analysis.
 
 .. container:: overview-links
 
@@ -51,8 +52,8 @@ Every feature has a definition. Start with the signal property you want to measu
 .. container:: method-directory
 
    :doc:`Spectral <methods/spectral>`
-      Band power, spectral shape, aperiodic fits, peak detection, and Morlet
-      support masking.
+      Band power, spectral shape, aperiodic fits, IRASA, peak detection,
+      Morlet support masking, and spectral parameterization.
 
       ``integrated_band_power`` · ``peak_frequency`` · ``aperiodic_ratio``
 
@@ -72,7 +73,13 @@ Every feature has a definition. Start with the signal property you want to measu
       Sample and multiscale entropy, Higuchi fractal dimension, and
       GFP-peak clustered microstate segmentation.
 
-      ``sample_entropy`` · ``microstates.segment``
+      ``sample_entropy`` · ``MicrostateModel`` · ``segment``
+
+   :doc:`Cycle waveforms <methods/cycles>`
+      Cycle timing, amplitude, rise/decay symmetry, and consistency-based burst
+      labels from broadband signals.
+
+      ``cycle_features``
 
 Build an analysis workflow
 --------------------------
@@ -97,7 +104,7 @@ Build an analysis workflow
 
       .. rubric:: :doc:`Evaluate a model <guides/modeling>`
 
-      Grouped cross-fitting, permutation nulls, and conformal intervals.
+      Grouped regression and binary classification, nested tuning, and nulls.
 
 .. container:: research-note
 
@@ -120,13 +127,13 @@ Build an analysis workflow
    :hidden:
    :caption: Guides
 
-   Tables & files <guides/tables>
    guides/preprocessing
+   Native BIDS input <guides/bids>
    Cohort runner <guides/runner>
+   Tables & files <guides/tables>
+   Reproducible cohorts <guides/cohorts>
    Predictive modeling <guides/modeling>
    Learned features <guides/learned_features>
-   Reproducible cohorts <guides/cohorts>
-   Native BIDS input <guides/bids>
    Modeling recipes <guides/model_recipes>
 
 .. toctree::

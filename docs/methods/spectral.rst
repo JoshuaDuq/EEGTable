@@ -1,9 +1,10 @@
 Spectral Methods
 ================
 
-Power integrated over a band, normalization of that power, and summaries of
-spectral shape. Each measure reads a :class:`~eegtable.Spectra` container and
-applies to Welch, multitaper, and Morlet input unless a section says otherwise.
+This page defines power reductions, spectral descriptors, and periodic and
+aperiodic estimates. Most functions read a :class:`~eegtable.Spectra` container;
+IRASA reads broadband :class:`~eegtable.Signal` inputs. PSD and Morlet power
+represent different spectral estimates, even when their reported units agree.
 
 Signatures are in :doc:`/api/spectral`.
 
@@ -23,17 +24,17 @@ Integrated Band Power
    P_B = \int_{f_{\min}}^{f_{\max}} S(f)\,df
 
 - **Quadrature**: piecewise linear, with interpolated contributions at both
-  boundaries. A linear grid and a logarithmic grid therefore represent the same
-  interval.
+  boundaries. Both linear and logarithmic grids integrate the requested
+  interval; their numerical estimates can differ for curved spectra.
 - **Units**: for an EEG PSD in V²/Hz the integral is in V².
 - **Missing values**: NaN if any weighted bin is non-finite.
 
 Mean PSD and Mean TFR Power
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``mean_psd`` divides the integral above by the bandwidth and stays in V²/Hz.
-``mean_tfr_power`` is the same frequency-weighted mean of Morlet power, also in
-V²/Hz.
+With complete data, ``mean_psd`` divides the integral above by the bandwidth
+and stays in V²/Hz. ``mean_tfr_power`` applies the same frequency weights to
+the window-reduced Morlet power, also in V²/Hz.
 
 - **Units**: V²/Hz for both. After the sampling-rate division described below,
   each ``mean_tfr_power`` value is a density in V²/Hz, smoothed over the wavelet
@@ -41,24 +42,35 @@ V²/Hz.
 - **Averaging**: ``mean_tfr_power`` averages within the band rather than
   integrating, so the result is comparable to ``mean_psd``. Integrating it would
   give wavelet-smoothed band power in V².
-- **Missing values**: both average over the finite bins.
+- **Missing values**: both omit non-finite bins and renormalize the remaining
+  weights. With gaps, the result is a mean over the retained contributions,
+  rather than the full-band integral divided by its nominal width.
 - **Representation**: :class:`~eegtable.Spectra` records which representation it
   holds. Each function rejects the other representation.
 
 Morlet Scaling
 ~~~~~~~~~~~~~~
 
-MNE scales its Morlet wavelets to energy 2 (norm :math:`\sqrt{2}`, unit norm for
-the real part). The power it returns for a stationary signal is therefore the
-one-sided density at the wavelet frequency, smoothed over the wavelet bandwidth,
-times the sampling rate.
+MNE scales its Morlet wavelets to energy 2 (norm :math:`\sqrt{2}`). For
+stationary signals and predominantly positive-frequency wavelets, dividing
+coefficient power by the original sampling rate gives a wavelet-smoothed
+estimate on the scale of a one-sided density.
 
 - **Correction**: :meth:`~eegtable.Spectra.from_tfr` divides that factor out and
   therefore needs the sampling rate the TFR was computed at.
 - **Decimated TFR**: it reports only the decimated rate.
-- **Why**: without the division, resampling a recording from 250 Hz to 500 Hz
-  doubles the raw power, and an aperiodic offset fitted to it shifts by
-  :math:`\log_{10}` of the rate ratio.
+- **Scaling**: raw coefficient power scales approximately with the sampling
+  rate for fixed physical wavelet parameters. Discrete sampling, low cycle
+  counts, and frequency smoothing affect agreement with a PSD.
+- **Backend**: the wavelet definition and normalization are documented in the
+  `MNE Morlet API
+  <https://mne.tools/stable/generated/mne.time_frequency.morlet.html>`__.
+
+The default time reduction is the arithmetic mean. ``statistic="median"``
+instead divides the temporal median by :math:`\ln 2`, which calibrates it to
+the mean of an exponential power distribution. This calibration does not hold
+for every signal: a constant-power oscillation is multiplied by
+:math:`1/\ln 2`. Report the reduction when comparing power estimates.
 
 Integration Weights
 ~~~~~~~~~~~~~~~~~~~
@@ -105,9 +117,9 @@ Power Floor
 :math:`\epsilon` is :math:`10^{-12}` of the largest finite power of that epoch
 and channel, over every window and the baseline.
 
-- **Why relative**: the floor does not depend on the recording units. A fixed
-  floor would flatten a source estimate in A·m, whose power sits many decades
-  below EEG in V².
+- **Amplitude scaling**: multiplying input power by a positive constant scales
+  the floor by the same constant. Baseline ratios are therefore unchanged;
+  absolute ``log10`` power still depends on the amplitude unit.
 - **Missing values**: an epoch and channel with no positive power has no floor,
   and every value is NaN.
 - **Logarithmic forms**: the numerator and the denominator are floored.
@@ -163,8 +175,13 @@ Coefficients outside this interval are excluded before the window mean.
 
 - If :math:`\tau(f) > (t_{\max} - t_{\min}) / 2`, the frequency has no usable
   coefficient in the window and the result is NaN.
-- If no frequency in the band retains a coefficient, construction raises
-  ``ValueError``.
+- If no frequency on the TFR axis retains a coefficient for a requested
+  window, ``Spectra.from_tfr`` raises ``ValueError``. A later band reduction
+  can return NaN when only that band's frequencies have no usable coefficients.
+
+``Spectra.support`` records the fraction of requested time points that meet
+the support restriction. ``coverage`` records numerical finiteness among the
+supported coefficients. These quantities describe different limitations.
 
 Peak Frequency
 --------------
@@ -177,12 +194,12 @@ Aperiodic Adjustment
 ~~~~~~~~~~~~~~~~~~~~
 
 The search runs on :math:`P(f) / P_{\text{ap}}(f)`, where a pure power law is
-flat at one. On a steep spectrum the largest raw bin in the band is the low
-edge, whatever the oscillation does.
+flat at one. On a steep spectrum an unadjusted maximum can be driven by the
+low-frequency background instead of an oscillatory peak.
 
 - **Fit range**: ``fit_range``, default
   :math:`(\min(2, f_{\min}), \max(40, f_{\max}))`, which extends outside the
-  analysis band. A slope estimated on a window a few hertz wide is not stable.
+  analysis band. A narrow fit range can poorly constrain the background.
 - **Measure name**: with this adjustment the measure name is
   ``peak_freq_adjusted``.
 - **Fit**: the robust log-log line in `Aperiodic Fit`_. It is a straight line.
@@ -210,8 +227,10 @@ SciPy's ``find_peaks`` selects local maxima whose topographic prominence in
 above the higher of the two surrounding bases, rather than height above the
 band median. The strongest qualifying peak is retained.
 
-- **Power used**: take the log of the smoothed and, if enabled,
-  aperiodic-adjusted power. Selection and interpolation use the same spectrum.
+- **Power used**: prominence is evaluated in :math:`\log_{10}` of the
+  smoothed, optionally aperiodic-adjusted power. Among qualifying peaks, the
+  largest linear-power value is retained. Interpolation uses that linear
+  power, rather than its logarithm.
 - **Missing values**: the search runs separately on contiguous finite spans;
   missing bins cannot provide a peak's bases. Smoothing preserves missing bins.
 - **No peak**: when none qualifies, the frequency is NaN and ``no_peak`` is set.
@@ -239,13 +258,14 @@ and its two neighbours, using their actual frequency coordinates. Let
    \delta &= -\frac{b}{2a}, \qquad f_{\text{peak}} = f_k + \delta
    \end{aligned}
 
-:math:`k` is the discrete argmax.
+:math:`k` is the retained peak bin.
 
 - **Minimum bins**: interpolation needs at least three bins, which is also the
   requirement for an interior maximum. Narrower bands raise.
 - **Disabling**: ``interpolate=False`` returns the bin frequency.
-- **Accuracy**: the fitted parabola's vertex is exact on both uniform and
-  non-uniform grids; the offset is bounded by the midpoints to neighbouring bins.
+- **Grid**: the parabola uses actual bin coordinates on uniform or non-uniform
+  grids. Its vertex refines the grid estimate; it does not establish the
+  accuracy of a physiological peak frequency.
 - **Degenerate cases**: a zero denominator, or a non-finite :math:`\delta`, is
   treated as :math:`\delta = 0`.
 - **Clipping**: :math:`\delta` is clipped to :math:`[-h_L/2, h_R/2]` in Hz.
@@ -258,6 +278,9 @@ Spectral Centroid and Bandwidth
 -------------------------------
 
 The spectral centroid is the centre of mass of power in the band.
+These descriptors select bins with :math:`f_{\min}\le f<f_{\max}`; they do
+not interpolate contributions at the numerical band boundaries. At least
+three in-band bins are required.
 
 .. math::
 
@@ -276,6 +299,9 @@ Bandwidth is the mass-weighted standard deviation about that centroid.
 - **Reference**: the two quantities are the spectral centroid and spread (the
   first moment and the square root of the second central moment) in Peeters
   (2004), adapted here to a PSD.
+- **Missing values**: non-finite bins contribute no mass. A zero total mass
+  returns NaN. Comparisons with different patterns of missing bins can describe
+  different retained spectral shapes.
 
 Spectral Edge Frequency
 -----------------------
@@ -312,6 +338,9 @@ distribution, in :math:`[0, 1]`.
 - **Range**: :math:`H = 1` is uniform power across the band. :math:`H = 0` is
   power in a single bin.
 - **Zero terms**: the undefined term :math:`0 \ln 0` is omitted.
+- **Missing bins**: non-finite bins contribute zero mass, but :math:`N` still
+  counts all selected bins. Missingness can therefore change the normalized
+  entropy. No positive total mass returns NaN.
 - **Grid**: the definition uses one count per bin and requires an approximately
   uniform frequency grid. A non-uniform grid is rejected. Interpolate onto a
   uniform grid in hertz first.
@@ -341,9 +370,14 @@ refit, up to ``max_iterations`` times.
   :math:`z \cdot 1.4826\,\mathrm{MAD}(r)`, the normal-consistent MAD.
 - **Median**: the residual median enters the MAD but is not subtracted from
   :math:`r` in the comparison.
-- **One-sided**: only positive residuals are removed. Oscillatory peaks sit above
-  the aperiodic component, and leaving them in flattens the slope.
+- **One-sided**: only positive residuals are removed. Peaks above the
+  background can bias the fitted slope; the direction depends on their
+  position and shape.
 - **Input**: only positive finite power enters the fit.
+- **Minimum points**: fewer than five usable positive-frequency bins returns
+  NaN parameters. A fit range selecting fewer than five axis bins raises.
+- **Weighting**: each retained frequency bin has equal regression weight.
+  Changing grid density can therefore change the fitted line.
 - **Passband**: ``fit_range`` must stay within the recording's reported filter
   bounds. Including suppressed frequencies biases the fitted background, as
   illustrated in `FOOOF's filtering example
@@ -358,7 +392,10 @@ Goodness of Fit
 ~~~~~~~~~~~~~~~
 
 The column ``r_squared`` is the coefficient of determination on the points that
-survived rejection. Rejected peaks are left out of it.
+survived rejection. Rejected peaks are left out of it. It describes the retained
+line fit, rather than the whole spectrum or the validity of the decomposition.
+Constant retained log power has undefined ``r_squared`` and returns NaN even
+when slope and offset can be estimated.
 
 - **Why exclude peaks**: an alpha peak is not a failure of the line, and scoring
   the line against that peak is low on ordinary spectra.
@@ -388,13 +425,14 @@ Periodic Power
 weighted as ``mean_psd`` weighs power.
 
 - **Reference value**: a pure power law gives 1 in every band.
-- **Broadband changes**: a broadband change the line can follow, a gain or a tilt
-  of the whole spectrum as from a movement or muscle artifact, moves the fit and
-  leaves the ratio unchanged. An oscillation changes the ratio.
+- **Broadband changes**: multiplication by a power-law gain that the line can
+  follow is absorbed by the fit. Real artifacts need not follow this model,
+  so the ratio does not provide artifact correction.
 - **Contrast with band power**: band power sums the two, so a broadband rise can
   hide an oscillatory fall.
-- **Units**: the ratio is dimensionless, so a PSD and time-frequency power give
-  the same value.
+- **Units**: the ratio is dimensionless. Identical spectral shapes differing
+  only by a positive scale give the same ratio; PSD and time-frequency
+  estimates of one recording can differ because of smoothing and time reduction.
 - **Normalization**: the normalizations are those above, with :math:`B` the
   periodic power of the baseline window, itself divided by that window's own fit.
 - **Missing values**: a cell whose fit fails is NaN and carries
@@ -437,6 +475,11 @@ passband. Logged data, aperiodic ratios, and time-frequency power are unsuitable
 Smooth Welch or multitaper PSD estimates are preferable to raw FFT power.
 ``debug=True`` ensures backend fitting errors surface.
 
+The number and width of fitted peaks depend on spectral resolution, the fit
+range, and peak thresholds. Inspect fits before interpreting individual
+parameters. A high fit score alone does not establish that every Gaussian
+represents a distinct physiological oscillation.
+
 See the `official SpectralModel API
 <https://specparam-tools.github.io/generated/specparam.SpectralModel.html>`__
 for the supported backend and its fitting settings. Install
@@ -474,6 +517,12 @@ For the outward bracketing-bin bounds, the expanded frequency support
 must fit inside the recording passband and below Nyquist. Constant traces and
 non-finite spectra raise errors. Coverage describes input samples in the
 window; it is not a measure of decomposition quality.
+
+IRASA assumes a component that remains approximately scale-free under the
+chosen resampling factors. Filter transitions, broad overlapping peaks, and
+limited frequency support can affect the separation. Its signed periodic
+integral can be negative and is not the dimensionless ratio returned by
+``periodic_power``.
 
 The `official IRASA tutorial
 <https://neurodsp-tools.github.io/neurodsp/auto_tutorials/aperiodic/plot_IRASA.html>`__
@@ -575,6 +624,10 @@ References
   components*. Nature Neuroscience, 23, 1655--1665.
   `doi:10.1038/s41593-020-00744-x
   <https://doi.org/10.1038/s41593-020-00744-x>`__.
+* Wen, H., & Liu, Z. (2016). *Separating fractal and oscillatory components in
+  the power spectrum of neurophysiological signal*. Brain Topography, 29,
+  13--26. `doi:10.1007/s10548-015-0448-0
+  <https://doi.org/10.1007/s10548-015-0448-0>`__.
 * Peeters, G. (2004). *A large set of audio features for sound description
   (similarity and classification) in the CUIDADO project*. IRCAM technical
   report. `Report PDF

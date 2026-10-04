@@ -31,6 +31,24 @@ def test_a_single_class_confusion_matrix_still_has_both_axes() -> None:
     assert result.confusion.shape == (2, 2)
 
 
+def test_auc_and_average_precision_use_unbounded_decision_scores() -> None:
+    result = classification_metrics(
+        np.array([0, 1, 0, 1]),
+        np.array([0, 1, 0, 1]),
+        y_score=np.array([-8.0, 2.0, -1.0, 9.0]),
+        groups=np.array(["s1", "s1", "s2", "s2"], dtype=object),
+    )
+    assert result.auc == 1.0
+    assert result.average_precision == 1.0
+    assert result.y_prob is None
+
+
+@pytest.mark.parametrize("scores", [np.array([0.0]), np.array([0.0, np.nan])])
+def test_classification_rejects_invalid_decision_scores(scores) -> None:
+    with pytest.raises(ValueError, match="y_score"):
+        classification_metrics(np.array([0, 1]), np.array([0, 1]), y_score=scores)
+
+
 def test_classification_requires_a_subject_label_for_every_trial() -> None:
     with pytest.raises(ValueError, match="subject label for every trial"):
         classification_metrics(
