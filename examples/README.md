@@ -1,3 +1,9 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/branding/eegtable-logo-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="../assets/branding/eegtable-logo.svg">
+  <img src="../assets/branding/eegtable-logo.svg" width="201" height="48" alt="EEGTable">
+</picture>
+
 # Example output
 
 Output of `examples/make_examples.py` from simulated recordings. Five subjects, two runs

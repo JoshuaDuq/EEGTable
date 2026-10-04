@@ -72,8 +72,8 @@ html {
   text-decoration: none;
 }
 .docs-wordmark img {
-  width: 30px;
-  height: 30px;
+  width: 134px;
+  height: 32px;
 }
 .docs-header-label {
   padding-left: 0.75rem;
@@ -207,23 +207,13 @@ html {
   padding: 1.6rem 1.4rem 0.75rem;
   text-decoration: none;
 }
-.sidebar-logo-container {
-  margin: 0;
-}
 .sidebar-logo {
-  width: 30px;
-  height: 30px;
+  width: 168px;
+  height: auto;
 }
 .sidebar-brand-lockup {
   display: flex;
   flex-direction: column;
-}
-.sidebar-brand-text {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 650;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
 }
 .sidebar-brand-caption {
   margin-top: 0.15rem;
@@ -1249,13 +1239,24 @@ table.genindextable {
 html:has(body.drawer-open) {
   overflow: hidden;
 }
-.visually-hidden {
+.visually-hidden, #eegtable > h1 {
   position: absolute;
   width: 1px;
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+a.hero-logo {
+  display: block;
+  width: 268px;
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 1.25rem;
+}
+a.hero-logo img {
+  max-width: 100%;
+  height: auto;
 }
 .main-search {
   display: flex;

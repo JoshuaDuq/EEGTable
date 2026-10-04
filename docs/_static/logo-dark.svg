@@ -1,4 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="8" fill="#8dd9bd"/>
-  <path d="M6.5 16.25H9.25L11.6 10.25L14.7 22.25L17.9 12.4L20.4 16.25H25.5" stroke="#08745c" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">EEGTable</title>
+  <desc id="desc">Three EEG signal traces resolve into aligned feature-table cells.</desc>
+  <g stroke="#8dd9bd" stroke-width="2.25" stroke-linecap="round">
+    <path d="M2.5 8C5 8 5 4.5 7.5 4.5S10 11.5 12.5 11.5S15 8 17.5 8H22"/>
+    <path d="M2.5 16C5 16 5 12.5 7.5 12.5S10 19.5 12.5 19.5S15 16 17.5 16H22"/>
+    <path d="M2.5 24C5 24 5 20.5 7.5 20.5S10 27.5 12.5 27.5S15 24 17.5 24H22"/>
+  </g>
+  <g fill="#8dd9bd">
+    <rect x="25.5" y="5.75" width="4.5" height="4.5" rx="0.6"/>
+    <rect x="25.5" y="13.75" width="4.5" height="4.5" rx="0.6"/>
+    <rect x="25.5" y="21.75" width="4.5" height="4.5" rx="0.6"/>
+  </g>
 </svg>

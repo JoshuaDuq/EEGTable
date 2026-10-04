@@ -3,6 +3,18 @@
 EEGTable
 ========
 
+.. image:: ../assets/branding/eegtable-logo.svg
+   :alt: EEGTable
+   :width: 268
+   :height: 64
+   :class: hero-logo only-light
+
+.. image:: ../assets/branding/eegtable-logo-dark.svg
+   :alt: EEGTable
+   :width: 268
+   :height: 64
+   :class: hero-logo only-dark
+
 .. rst-class:: hero-lede
 
    Labelled EEG feature extraction and modeling for MNE objects.

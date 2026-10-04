@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from scipy.stats import linregress
 
 import eegtable as ef
 from eegtable.bands import Band
@@ -174,6 +175,57 @@ def test_slope_recovers_a_known_linear_ramp() -> None:
         normalize="percent",
     )
     assert table.select(measure="erds_slope").values.item() == pytest.approx(100.0, rel=0.02)
+
+
+@pytest.mark.parametrize("offset", [0.0, 100_000.0])
+@pytest.mark.parametrize("gap", [None, np.nan, np.inf])
+@pytest.mark.parametrize("normalize", ["percent", "db"])
+def test_slope_matches_scipy_with_shifted_times_and_missing_samples(offset, gap, normalize) -> None:
+    sfreq = 1000.0
+    times = offset + np.arange(300) / sfreq
+    power = np.ones(300)
+    power[100:] += times[100:] - times[100]
+    if gap is not None:
+        power[150:160] = gap
+    signal = BandSignal.from_arrays(
+        analytic=np.sqrt(power).astype(complex).reshape(1, 1, -1),
+        times=times,
+        ch_names=("C3",),
+        band=ALPHA,
+        sfreq=sfreq,
+        row_ids=(("test", 0, "event"),),
+    )
+    table = erds_slope(
+        [signal],
+        baseline=Window("base", times[0], times[99]),
+        windows=[Window("stim", times[100], times[-1])],
+        include_global=False,
+        normalize=normalize,
+    )
+    finite = np.isfinite(power[100:])
+    active = power[100:][finite]
+    trace = 100 * (active - 1) if normalize == "percent" else 10 * np.log10(active)
+    reference = linregress(times[100:][finite], trace).slope
+    assert table.values.item() == pytest.approx(reference, rel=1e-10)
+    assert table.meta[0].unit == ("%/s" if normalize == "percent" else "dB/s")
+
+
+@pytest.mark.parametrize("n_finite", [0, 1, 2, 3])
+def test_slope_requires_three_finite_samples(n_finite) -> None:
+    envelope = np.ones((1, 1, 201))
+    envelope[:, :, 100:] = np.nan
+    envelope[:, :, 100 : 100 + n_finite] = np.sqrt(1 + np.arange(n_finite) / SFREQ)
+    table = erds_slope(
+        [_signal(envelope)],
+        baseline=BASE,
+        windows=[STIM],
+        normalize="percent",
+        include_global=False,
+    )
+    if n_finite < 3:
+        assert np.isnan(table.values.item())
+    else:
+        assert table.values.item() == pytest.approx(100.0)
 
 
 def test_an_unusable_baseline_yields_nan_rather_than_an_enormous_ratio() -> None:

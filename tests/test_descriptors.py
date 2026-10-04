@@ -179,6 +179,14 @@ def test_edge_returns_a_grid_frequency_because_it_does_not_interpolate() -> None
     assert table.values.item() in set(UNIFORM.tolist())
 
 
+@pytest.mark.parametrize("trailing", [0.0, np.nan, np.inf])
+def test_full_spectral_edge_stops_at_the_last_bin_with_power(trailing) -> None:
+    freqs = np.arange(8.0, 12.0, 0.5)
+    power = np.r_[np.full(6, 0.1), trailing, trailing]
+    table = spectral_edge(_spectra(power, freqs), band=ALPHA, percentile=1.0, include_global=False)
+    assert table.values.item() == freqs[5]
+
+
 @pytest.mark.parametrize("percentile", [0.0, -0.1, 1.5, np.nan])
 def test_an_out_of_range_percentile_raises(percentile: float) -> None:
     with pytest.raises(ValueError, match="percentile"):

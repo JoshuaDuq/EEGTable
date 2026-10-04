@@ -1,4 +1,10 @@
-# <img src="docs/_static/favicon.svg" width="32" height="32" valign="middle" alt="EEGTable logo" /> EEGTable
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/branding/eegtable-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/branding/eegtable-logo.svg">
+    <img src="assets/branding/eegtable-logo.svg" width="402" height="96" alt="EEGTable">
+  </picture>
+</h1>
 
 [![Python ≥ 3.11](https://img.shields.io/badge/python-≥3.11-blue.svg)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)

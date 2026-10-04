@@ -381,13 +381,14 @@ def spectral_edge(
         freqs: npt.NDArray[np.float64],
         weights: npt.NDArray[np.float64],
     ) -> tuple[npt.NDArray[np.float64], dict[str, npt.NDArray[np.bool_]]]:
-        mass, total = _mass(data, weights)
+        mass, _ = _mass(data, weights)
+        cumulative = np.cumsum(mass, axis=3)
+        # Use the same accumulation for the total so the final fraction is exactly one.
+        total = cumulative[..., -1]
         with np.errstate(invalid="ignore", divide="ignore"):
-            cumulative = np.cumsum(mass, axis=3) / total[..., np.newaxis]
+            cumulative = cumulative / total[..., np.newaxis]
         reached = cumulative >= percentile
-        # Rounding can leave the final cumulative a hair under the threshold; fall back
-        # to the last bin rather than to argmax's 0, which would be the first one.
-        index = np.where(reached.any(axis=3), reached.argmax(axis=3), freqs.size - 1)
+        index = reached.argmax(axis=3)
         return np.where(total > 0.0, freqs[index], np.nan), {}
 
     return _descriptor(

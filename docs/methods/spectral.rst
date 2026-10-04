@@ -314,8 +314,10 @@ band power reaches a fraction :math:`\alpha`. The default is 0.95.
    \frac{\sum_{i=0}^{k} P(f_i) \Delta f_i}{\sum_{i} P(f_i) \Delta f_i} \ge \alpha
 
 - **Interpolation**: none between bins.
-- **Rounding**: if floating-point rounding means no bin reaches :math:`\alpha`,
-  the last bin is returned.
+- **Rounding**: the total uses the same cumulative sum as the quantile search.
+  Trailing zero-power or missing bins do not move the 100-percent edge.
+- **Missing bins**: non-finite bins contribute no power. No positive total
+  power returns NaN.
 - **Argument**: the quantile is the ``percentile`` argument.
 - **Reference**: Szeto (1990) used this quantile for electrocortical maturation,
   with :math:`\alpha = 0.90`.

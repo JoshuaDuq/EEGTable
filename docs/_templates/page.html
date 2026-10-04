@@ -1,12 +1,25 @@
 {% extends "!page.html" %}
 
+{% block extrahead %}
+{{ super() }}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="{{ project }}">
+<meta property="og:title" content="{{ title|striptags }}">
+<meta property="og:image" content="{{ brand_preview_url }}">
+<meta property="og:image:alt" content="EEGTable — labelled EEG feature extraction and modeling">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{{ brand_preview_url }}">
+<meta name="twitter:image:alt" content="EEGTable — labelled EEG feature extraction and modeling">
+{% endblock %}
+
 {% block body %}
 <a class="skip-to-content muted-link" href="#furo-main-content">{{ _("Skip to content") }}</a>
 <header class="docs-header">
   <a class="docs-wordmark" href="{{ pathto(master_doc) }}">
-    <img class="only-light" src="{{ pathto('_static/' + theme_light_logo, 1) }}" alt="" width="28" height="28">
-    <img class="only-dark" src="{{ pathto('_static/' + theme_dark_logo, 1) }}" alt="" width="28" height="28">
-    <span>{{ project }}</span>
+    <img class="only-light" src="{{ pathto('_static/' + theme_light_logo, 1) }}" alt="{{ project }}" width="134" height="32">
+    <img class="only-dark" src="{{ pathto('_static/' + theme_dark_logo, 1) }}" alt="{{ project }}" width="134" height="32">
     <span class="docs-header-label">Docs</span>
   </a>
   <nav class="docs-sections" aria-label="Documentation sections">

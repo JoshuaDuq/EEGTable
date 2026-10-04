@@ -97,7 +97,8 @@ notfound_urls_prefix = "/EEGTable/"
 # ---------------------------------------------------------------------------
 html_theme = "furo"
 html_title = "EEGTable"
-html_static_path = ["_static"]
+html_baseurl = "https://joshuaduq.github.io/EEGTable/"
+html_static_path = ["_static", "../assets/branding"]
 html_css_files = ["custom.css"]
 html_js_files = ["custom.js", "navigation.js"]
 html_permalinks_icon = "#"
@@ -110,8 +111,8 @@ copybutton_line_continuation_character = "\\"
 html_favicon = "_static/favicon.svg"
 
 html_theme_options = {
-    "light_logo": "logo-light.svg",
-    "dark_logo": "logo-dark.svg",
+    "light_logo": "eegtable-logo.svg",
+    "dark_logo": "eegtable-logo-dark.svg",
     "dark_css_variables": {
         "color-background-primary": "#171c21",
         "color-background-secondary": "#20272d",
@@ -165,6 +166,7 @@ html_theme_options = {
 }
 
 html_context = {
+    "brand_preview_url": html_baseurl + "_static/github-social-preview.png",
     "companion_pages": {
         **{
             f"methods/{name}": (f"api/{name}", "API reference")

@@ -776,16 +776,17 @@ def _slope(
     times: npt.NDArray[np.float64],
     finite: npt.NDArray[np.bool_],
 ) -> npt.NDArray[np.float64]:
-    # Ordinary least squares in closed form, so it vectorizes over epochs and
-    # channels whose finite samples differ.
+    # Center both variables before products to avoid cancellation on shifted time axes.
     count = finite.sum(axis=2).astype(float)
-    t = np.where(finite, times, 0.0)
+    t = np.where(finite, times - times[0], 0.0)
     y = np.where(finite, trace, 0.0)
-    sum_t, sum_y = t.sum(axis=2), y.sum(axis=2)
-    denominator = count * (t * t).sum(axis=2) - sum_t**2
-    numerator = count * (t * y).sum(axis=2) - sum_t * sum_y
+    divisor = np.maximum(count, 1)[..., np.newaxis]
+    t = np.where(finite, t - t.sum(axis=2, keepdims=True) / divisor, 0.0)
+    y = np.where(finite, y - y.sum(axis=2, keepdims=True) / divisor, 0.0)
+    denominator = (t * t).sum(axis=2)
+    numerator = (t * y).sum(axis=2)
     with np.errstate(invalid="ignore", divide="ignore"):
-        return np.where((count > 2) & (denominator != 0.0), numerator / denominator, np.nan)
+        return np.where((count > 2) & (denominator > 0.0), numerator / denominator, np.nan)
 
 
 def _signed_magnitude(
