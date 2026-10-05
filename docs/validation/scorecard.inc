@@ -14,6 +14,36 @@
      - 
      - 
      - 
+   * - ``spectral_parameterization``
+     - –
+     - ✓ 1
+     - –
+     - –
+     - –
+   * - ``irasa``
+     - ✓ 1
+     - ✓ 2
+     - –
+     - –
+     - –
+   * - ``permutation_entropy``
+     - –
+     - ✓ 1
+     - –
+     - –
+     - –
+   * - ``lempel_ziv_complexity``
+     - –
+     - ✓ 1
+     - –
+     - –
+     - –
+   * - ``detrended_fluctuation``
+     - –
+     - ✓ 1
+     - –
+     - –
+     - –
    * - ``aperiodic``
      - ✓ 1
      - ✓ 1
@@ -500,5 +530,11 @@
      - –
      - –
      - ✓ 3
+   * - ``preprocessing``
+     - –
+     - ✓ 6
+     - –
+     - –
+     - –
 
-**Covered by unit tests only, not yet by a real-data check:** ``spectral_parameterization``, ``irasa``, ``cycle_features``, ``permutation_entropy``, ``lempel_ziv_complexity``, ``detrended_fluctuation``, ``pac_surrogates``, ``spectral_connectivity_time``, ``apply_quality``, ``cohort_quality``, ``feature_quality``, ``intraclass_reliability``.
+**Covered by unit tests only, not yet by a real-data check:** ``cycle_features``, ``pac_surrogates``, ``spectral_connectivity_time``, ``apply_quality``, ``cohort_quality``, ``feature_quality``, ``intraclass_reliability``.

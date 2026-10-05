@@ -10,16 +10,14 @@ partial run cannot inherit claims from earlier evidence.
 from __future__ import annotations
 
 import json
-import platform
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
 import eegtable
-from eegtable.provenance import implementation_hash
+from eegtable.provenance import file_hash, identity, implementation_hash, software_versions
 
 KINDS = ("formula", "estimator", "physiology", "decoding", "behaviour")
 KIND_TITLES = {
@@ -60,6 +58,7 @@ TOOLING = (
     "stack_rows",
     "runner",
     "eegtable command",
+    "preprocessing",
 )
 
 DATASET_TITLES = {
@@ -92,27 +91,34 @@ def feature_api() -> tuple[str, ...]:
     )
 
 
-def _versions() -> dict[str, str]:
-    packages = ("eegtable", "mne", "numpy", "scipy", "scikit-learn", "mne-connectivity")
-    out = {"python": platform.python_version()}
-    for package in packages:
-        try:
-            out[package] = version(package)
-        except PackageNotFoundError:
-            out[package] = "not installed"
-    return out
+def validation_hash() -> str:
+    """Identify the exact validation checks, loaders, and reporting code."""
+    root = Path(__file__).parent
+    return identity(
+        {path.relative_to(root).as_posix(): file_hash(path) for path in sorted(root.rglob("*.py"))}
+    )
 
 
-def write(rows: Iterable[Row], root: Path, *, code_sha256: str | None = None) -> None:
+def write(
+    rows: Iterable[Row],
+    root: Path,
+    *,
+    code_sha256: str | None = None,
+    validation_sha256: str | None = None,
+) -> None:
     """Archive this run independently and render only its observed claims."""
     code_hash = implementation_hash()
     if code_sha256 is not None and code_hash != code_sha256:
         raise ValueError(
             "Validation implementation changed during the run; evidence not published."
         )
+    checks_hash = validation_hash()
+    if validation_sha256 is not None and checks_hash != validation_sha256:
+        raise ValueError("Validation checks changed during the run; evidence not published.")
+    cases = list(rows)
+    fresh = _collapse(cases)
     root.mkdir(parents=True, exist_ok=True)
     results = root / "results.json"
-    fresh = _collapse(rows)
     merged = sorted((asdict(row) for row in fresh), key=lambda r: (r["dataset"], r["nodeid"]))
     stamp = datetime.now(UTC)
     run_id = stamp.strftime("%Y%m%dT%H%M%S.%fZ") + "-" + code_hash[:12]
@@ -120,7 +126,9 @@ def write(rows: Iterable[Row], root: Path, *, code_sha256: str | None = None) ->
         "generated": stamp.isoformat(),
         "run_id": run_id,
         "code_sha256": code_hash,
-        "versions": _versions(),
+        "validation_sha256": checks_hash,
+        "checks": {"passed": sum(row.passed for row in cases), "total": len(cases)},
+        "versions": software_versions(),
         "rows": merged,
     }
     archive = root / "runs" / run_id
@@ -137,6 +145,8 @@ def _collapse(rows: Iterable[Row]) -> list[Row]:
     """One row per test function: parametrized cases share a claim and pool their values."""
     grouped: dict[str, list[Row]] = {}
     for row in rows:
+        if row.kind not in KINDS:
+            raise ValueError(f"Unknown validation kind {row.kind!r}; expected one of {KINDS}.")
         grouped.setdefault(row.nodeid.split("[")[0], []).append(row)
     out = []
     for nodeid, cases in grouped.items():
@@ -161,18 +171,19 @@ def _collapse(rows: Iterable[Row]) -> list[Row]:
 
 def _summary(payload: Mapping[str, Any]) -> str:
     rows = payload["rows"]
-    checks = sum(r.get("cases", 1) for r in rows)
-    passed_checks = sum(r.get("cases", 1) for r in rows if r["passed"])
+    checks = payload["checks"]["total"]
+    passed_checks = payload["checks"]["passed"]
     passed = sum(r["passed"] for r in rows)
     datasets = sorted({r["dataset"] for r in rows if r["dataset"]})
     measures = {m for r in rows for m in r["measures"]}
     v = payload["versions"]
+    sklearn_version = v.get("scikit-learn", "not installed")
     return (
         f"**{passed} of {len(rows)} claims hold, {passed_checks} of {checks} checks pass** "
         f"across {len(datasets)} public datasets, covering {len(measures)} public functions. "
         f"Last run {payload['generated'][:10]} on "
         f"Python {v['python']}, MNE {v['mne']}, NumPy {v['numpy']}, SciPy {v['scipy']}, "
-        f"scikit-learn {v['scikit-learn']}, eegtable {v['eegtable']}.\n"
+        f"scikit-learn {sklearn_version}, eegtable {v['eegtable']}.\n"
     )
 
 

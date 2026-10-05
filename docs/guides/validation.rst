@@ -15,6 +15,10 @@ The generated summary, scorecard, and check table describe the saved validation
 run. ``docs/validation/results.json`` records its timestamp, source hash,
 software versions, criteria, observations, and pass/fail outcomes. The same
 run is archived under ``docs/validation/runs/<run-id>/results.json``.
+``validation_sha256`` identifies the validation tests, dataset loaders, and
+reporting code separately from the package source. Publication fails if either
+source hash changes during a run. Individual check counts retain the outcomes
+of each parameterized case, even when one case makes their shared claim fail.
 These artifacts establish what was tested in that environment; they do not
 establish the validity of every public API or cover later source changes.
 
@@ -23,6 +27,9 @@ Public-dataset tests examine selected estimators and effects in real
 recordings. The narrative below summarizes those checks and their limits.
 A partial run replaces the current summary with only that run's evidence; it
 does not merge results from older runs.
+Failures while loading a fixture or cleaning up a test are recorded as failed
+claims, with their test phase and exception in the observation. Skipped checks
+remain excluded. Unknown evidence categories are rejected when writing a report.
 
 Some implementation choices were informed by these datasets. Repeated success
 on them is regression evidence, rather than independent prospective validation.
@@ -50,7 +57,9 @@ and outcomes below before interpreting a count as coverage of a method.
        on the same input, within the stated numerical tolerance.
    * - Other estimator
      - Agreement with a named alternative estimator or package under the
-       tested settings and tolerance.
+       tested settings and tolerance. When EEGTable uses the same package
+       internally, this checks integration and feature selection; it is not
+       independent validation of the underlying algorithm.
    * - Known physiology
      - A specified physiological contrast in the selected recordings,
        channels, windows, and analysis units.
@@ -84,6 +93,45 @@ The main tested contrasts are:
 - **Connectivity and microstates:** numerical comparisons to MNE-Connectivity,
   effects of pairwise orthogonalization, and descriptive microstate
   segmentation on the selected resting data.
+- **Optional estimators:** AntroPy complexity on both Sleep-EDF nights,
+  specparam fixed/knee fits on SSVEP trials, and NeuroDSP IRASA on motor
+  trials, compared with direct package calls and independent power integration.
+
+Backend integration checks
+--------------------------
+
+``test_complexity_backends.py`` selects the first two epochs of each of W, N1,
+N2, N3, and R in both existing Sleep-EDF nights, retaining acquisition order and
+both EEG derivations. Two separate ten-second windows test normalized
+permutation entropy at order/delay (3, 1) and (4, 2), normalized Lempel--Ziv
+complexity after explicit mean/median binarization, and DFA on contiguous
+traces. The comparisons use ``rtol=1e-12, atol=1e-12`` and require finite values.
+
+``test_spectral_backends.py`` fits every SSVEP trial at Oz with specparam
+2.0.0rc7, using fixed and knee aperiodic models over ``[2, 40)`` Hz. It compares
+aperiodic parameters, fit diagnostics, peak counts, and the highest fitted
+peaks in two half-open bands. Missing peak parameters must remain NaN and
+carry the corresponding flag. The tolerance is ``rtol=1e-10, atol=1e-12``.
+
+The IRASA checks use the first two rest, left-hand, and right-hand trials of
+motor subject S001 at C3/C4, over -0.5 to 3.5 seconds. Five resampling factors
+from 1.1 to 1.9 and two-second Welch segments are used. Direct NeuroDSP
+calls check offsets, slopes, and signed component integrals in four bands
+whose edges miss the frequency grid, including both fit-range boundaries.
+The component sum must equal an independently computed SciPy Welch integral
+within ``rtol=1e-10, atol=1e-24`` V². No physiological direction or fit quality
+threshold is inferred from these integration comparisons.
+
+These checks follow the public APIs documented in the
+`AntroPy examples <https://github.com/raphaelvallat/antropy>`_,
+`specparam SpectralModel documentation
+<https://specparam-tools.github.io/generated/specparam.SpectralModel.html>`_,
+and `NeuroDSP IRASA tutorial
+<https://neurodsp-tools.github.io/neurodsp/auto_tutorials/aperiodic/plot_IRASA.html>`_.
+The recordings and loading conventions come from MNE's
+`SSVEP tutorial <https://mne.tools/stable/auto_tutorials/time-freq/50_ssvep.html>`_
+and `sleep-staging tutorial
+<https://mne.tools/stable/auto_tutorials/clinical/60_sleep.html>`_.
 
 Interpretation limits
 ---------------------
@@ -160,7 +208,7 @@ From the repository root:
 
 .. code-block:: bash
 
-   python -m pip install -e ".[dev,model,connectivity,microstates]"
+   python -m pip install -e ".[dev,model,connectivity,microstates,spectral-model,irasa,complexity,preprocessing,preprocessing-auto]"
    EEGTABLE_DATASETS=1 python -m pytest tests/validation -ra
 
 On Windows PowerShell, set ``$env:EEGTABLE_DATASETS = "1"`` before running
@@ -181,6 +229,12 @@ The ``validation`` GitHub workflow runs weekly and on demand, checks MNE 1.8
 and the installed current release, caches data, and uploads each job's evidence.
 The current-release job is not a fixed dependency environment; use the saved
 versions to identify what it tested.
+Both jobs explicitly import AntroPy, specparam, and NeuroDSP before running
+their comparisons. The current-release job also installs and checks the
+preprocessing dependencies. Preprocessing validation requires MNE 1.13.2 and
+is excluded from the MNE 1.8 job. Evidence records all installed analysis
+packages, including the optional estimators and preprocessing backends,
+alongside the core dependencies.
 
 .. _validation-results:
 

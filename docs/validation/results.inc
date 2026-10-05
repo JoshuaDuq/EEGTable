@@ -181,6 +181,18 @@ PhysioNet motor movement
      - identical candidate lists, retained epochs, repair labels, and samples
      - –
      - pass
+   * - Motor-task IRASA signed component integrals agree with NeuroDSP and SciPy quadrature (``irasa``)
+     - rtol=1e-10, atol=1e-24 including off-grid edges near both fit-range boundaries
+     - low: max absolute component integral error 6.46e-27 V^2; mu: max absolute component integral error 3.23e-27 V^2; beta: max absolute component integral error 6.46e-27 V^2; high: max absolute component integral error 2.02e-28 V^2
+     - pass
+   * - Signed IRASA components sum to an independently computed SciPy Welch band integral (``irasa``)
+     - rtol=1e-10, atol=1e-24 in four bands on all selected motor trials/channels
+     - four bands, six trials, two channels; max relative total-power error 6.56e-16
+     - pass
+   * - Motor-task IRASA aperiodic offset and slope agree with direct NeuroDSP fits (``irasa``)
+     - rtol=1e-10, atol=1e-12 on six trials at C3 and C4
+     - six trials, two channels; max absolute offset/slope error 0.00e+00
+     - pass
 
 ERP CORE Flankers
 ^^^^^^^^^^^^^^^^^
@@ -277,6 +289,18 @@ Sleep-EDF
      - relative error below 1e-9
      - –
      - pass
+   * - Sleep-EDF DFA exponents agree with direct AntroPy calls on contiguous windows (``detrended_fluctuation``)
+     - rtol=1e-12, atol=1e-12; finite values in both derivations and windows
+     - 80 estimates across two nights and five stages; max absolute error 0.00e+00
+     - pass
+   * - Sleep-EDF binary complexity agrees with AntroPy after explicit symbolization (``lempel_ziv_complexity``)
+     - rtol=1e-12, atol=1e-12 for median and mean thresholds; finite values
+     - median: 80 estimates across two nights and five stages; max absolute error 0.00e+00; mean: 80 estimates across two nights and five stages; max absolute error 0.00e+00
+     - pass
+   * - Sleep-EDF ordinal entropy agrees with direct AntroPy calls in each channel/window (``permutation_entropy``)
+     - rtol=1e-12, atol=1e-12 for order/delay (3, 1) and (4, 2); finite values
+     - order=3, delay=1: 80 estimates across two nights and five stages; max absolute error 0.00e+00; order=4, delay=2: 80 estimates across two nights and five stages; max absolute error 0.00e+00
+     - pass
    * - Band power reproduces the staging accuracy of MNE's sleep-classification tutorial (``mean_psd``)
      - random forest trained on one night scores the other within 0.03 of the tutorial's own features
      - accuracy on SC4011: tutorial 0.684, eegtable 0.683
@@ -372,6 +396,10 @@ MNE SSVEP
    * - On a narrow band the zero-crossing rate is twice the Hjorth mobility (Rice) (``zero_crossing_rate``, ``hjorth_mobility``)
      - within 6 percent per cell and 1 percent on average
      - –
+     - pass
+   * - SSVEP fixed/knee model parameters, diagnostics and selected peaks match specparam (``spectral_parameterization``)
+     - rtol=1e-10, atol=1e-12 on every Oz trial; absent peaks are NaN and flagged
+     - fixed: 20 Oz trials, 208 finite parameters, 12 absent peak parameters; max absolute error 0.00e+00; knee: 20 Oz trials, 234 finite parameters, 6 absent peak parameters; max absolute error 0.00e+00
      - pass
    * - With smoothing off and alpha excluded, the peak lands on the flicker frequency (``peak_frequency``)
      - condition medians within 0.3 Hz of 12 and 15 Hz; 70 percent of trials within

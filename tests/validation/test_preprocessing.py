@@ -97,7 +97,7 @@ def _same_epochs(actual, expected) -> None:
 
 @pytest.mark.validates(
     "preprocessing",
-    kind="equivalence",
+    kind="estimator",
     dataset="erp_core",
     claim="prepare and crop-raw are set_bipolar_reference and Raw.crop",
     criterion="identical samples, first_samp, and channel order",
@@ -116,7 +116,7 @@ def test_prepare_and_crop_match_mne(erp_workflow: Workflow) -> None:
 
 @pytest.mark.validates(
     "preprocessing",
-    kind="equivalence",
+    kind="estimator",
     dataset="erp_core",
     claim="notch and filter are Raw.notch_filter and Raw.filter on physiology channels only",
     criterion="samples within 1e-15 V; 60 Hz bin reduced, 20 Hz bin within 0.5%",
@@ -142,7 +142,7 @@ def test_notch_and_filter_match_mne(erp_workflow: Workflow) -> None:
 
 @pytest.mark.validates(
     "preprocessing",
-    kind="equivalence",
+    kind="estimator",
     dataset="erp_core",
     claim="epoch is mne.Epochs on the acquisition grid with baseline, proj, and decim off",
     criterion="identical events, drop log, and samples; events past the crop dropped, not shifted",
@@ -172,7 +172,7 @@ def test_epochs_match_mne(erp_workflow: Workflow) -> None:
 
 @pytest.mark.validates(
     "preprocessing",
-    kind="equivalence",
+    kind="estimator",
     dataset="erp_core",
     claim="apply-artifact is ICA.apply of the saved fit with the reviewed exclusion",
     criterion="samples within 1e-15 V; mean |corr(FP1, VEOG)| across epochs down by a quarter",
@@ -197,7 +197,7 @@ def test_reviewed_ica_matches_mne_and_removes_blinks(erp_workflow: Workflow) -> 
 
 @pytest.mark.validates(
     "preprocessing",
-    kind="equivalence",
+    kind="estimator",
     dataset="erp_core",
     claim="reject, reference, resample, crop-epochs, baseline are drop_bad, set_eeg_reference, "
     "decimate, crop, apply_baseline",
@@ -225,7 +225,7 @@ def test_epoch_stages_match_mne(erp_workflow: Workflow) -> None:
 
 @pytest.mark.validates(
     "preprocessing",
-    kind="equivalence",
+    kind="estimator",
     dataset="eegbci",
     claim="detect-bads, reject, and interpolate are PyPREP NoisyChannels, autoreject "
     "fit/transform, and interpolate_bads with the same seeds",

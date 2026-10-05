@@ -88,6 +88,7 @@ def ssvep_recording() -> Recording:
 _OBSERVED: dict[str, str] = {}
 _ROWS: dict[str, report.Row] = {}
 _CODE_SHA256 = implementation_hash()
+_VALIDATION_SHA256 = report.validation_hash()
 
 
 @pytest.fixture
@@ -103,17 +104,22 @@ def record(request: pytest.FixtureRequest) -> Callable[[str], None]:
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) -> Iterator[None]:
     outcome = yield
-    if call.when != "call":
-        return
     marker = item.get_closest_marker("validates")
     if marker is None:
         return
     result = outcome.get_result()
     if result.skipped:
         return
-    # Parametrized cases share a marker; the first case's observed value is kept
-    # unless a later case recorded its own.
+    if call.when != "call" and result.passed:
+        return
+    previous = _ROWS.get(item.nodeid)
+    observations = [previous.observed] if previous is not None and previous.observed else []
     observed = _OBSERVED.pop(item.nodeid, "")
+    if observed:
+        observations.append(observed)
+    if call.excinfo is not None:
+        message = " ".join(str(call.excinfo.value).split())
+        observations.append(f"{call.when}: {call.excinfo.typename}: {message}")
     _ROWS[item.nodeid] = report.Row(
         nodeid=item.nodeid,
         measures=tuple(marker.args),
@@ -121,8 +127,8 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]) ->
         dataset=str(marker.kwargs.get("dataset") or getattr(item.module, "DATASET", "")),
         claim=marker.kwargs["claim"],
         criterion=marker.kwargs["criterion"],
-        observed=observed,
-        passed=result.passed,
+        observed="; ".join(observations),
+        passed=result.passed and (previous is None or previous.passed),
         run=datetime.now(UTC).replace(microsecond=0).isoformat(),
     )
 
@@ -132,5 +138,8 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
     if not _ROWS:
         return
     report.write(
-        _ROWS.values(), Path(__file__).parents[2] / "docs" / "validation", code_sha256=_CODE_SHA256
+        _ROWS.values(),
+        Path(__file__).parents[2] / "docs" / "validation",
+        code_sha256=_CODE_SHA256,
+        validation_sha256=_VALIDATION_SHA256,
     )

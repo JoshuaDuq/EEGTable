@@ -1,1 +1,1 @@
-**86 of 86 claims hold, 108 of 108 checks pass** across 4 public datasets, covering 80 public functions. Last run 2026-10-03 on Python 3.11.14, MNE 1.13.2, NumPy 2.4.6, SciPy 1.17.1, scikit-learn 1.9.1, eegtable 0.1.0.dev0.
+**93 of 93 claims hold, 121 of 121 checks pass** across 4 public datasets, covering 85 public functions. Last run 2026-10-05 on Python 3.11.14, MNE 1.13.2, NumPy 2.4.6, SciPy 1.17.1, scikit-learn 1.9.1, eegtable 0.1.0.dev0.

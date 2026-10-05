@@ -24,9 +24,11 @@ jobs:
         include:
           - mne: "mne==1.8.*"
             # MNE 1.8 imports a SciPy function removed in 1.15.
-            pins: "scipy<1.15 numpy<2.3"
+            extras: "dev,model,connectivity,microstates,spectral-model,irasa,complexity"
+            pytest_args: "--ignore=tests/validation/test_preprocessing.py"
           - mne: "mne"
-            pins: ""
+            extras: "dev,model,connectivity,microstates,spectral-model,irasa,complexity,preprocessing,preprocessing-auto"
+            pytest_args: ""
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,9 +38,14 @@ jobs:
         with:
           path: mne_data
           key: mne-datasets-${{ hashFiles('tests/validation/loaders.py') }}
-      - run: pip install -e ".[dev,model,connectivity,microstates]" ${{ matrix.mne }} ${{ matrix.pins }}
+      - run: pip install -e ".[${{ matrix.extras }}]"
+      - if: matrix.mne == 'mne==1.8.*'
+        run: pip install "mne==1.8.*" "scipy<1.15" "numpy<2.3"
       - run: python -c "import mne; print(mne.__version__)"
-      - run: pytest tests/validation -ra --durations=10
+      - run: python -c "import antropy, specparam, neurodsp"
+      - if: matrix.mne == 'mne'
+        run: python -c "import yaml, sklearn, h5io, h5py, filelock, pyprep, autoreject"
+      - run: pytest tests/validation -ra --durations=10 ${{ matrix.pytest_args }}
       # The suite rewrites docs/validation from what it observed; keep each run's copy.
       - uses: actions/upload-artifact@v4
         if: always()
