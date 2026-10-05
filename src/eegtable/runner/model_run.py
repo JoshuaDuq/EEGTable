@@ -31,6 +31,9 @@ from eegtable.model.crossfit import (
 from eegtable.model.design import Design, build_design
 from eegtable.model.estimators import (
     elasticnet_pipeline,
+    hist_gradient_boosting_classifier_pipeline,
+    hist_gradient_boosting_pipeline,
+    lda_pipeline,
     logistic_grid,
     logistic_pipeline,
     random_forest_classifier_pipeline,
@@ -39,11 +42,12 @@ from eegtable.model.estimators import (
     scaled_ridge_grid,
     scaled_ridge_pipeline,
     svm_pipeline,
+    svr_pipeline,
 )
 from eegtable.model.metrics import classification_metrics, regression_metrics
 from eegtable.model.splits import Fold, InnerSplit, inner_cv, loso_folds
 from eegtable.model.transformers import PreprocessingConfig
-from eegtable.model.tuning import _validate_grouped_calibration
+from eegtable.model.tuning import _validate_grouped_estimator
 from eegtable.provenance import (
     canonical_json,
     file_hash,
@@ -90,9 +94,13 @@ _PIPELINES = {
     ("regression", "scaled_ridge"): scaled_ridge_pipeline,
     ("regression", "elasticnet"): elasticnet_pipeline,
     ("regression", "random_forest"): random_forest_pipeline,
+    ("regression", "hist_gradient_boosting"): hist_gradient_boosting_pipeline,
+    ("regression", "svr"): svr_pipeline,
     ("classification", "logistic"): logistic_pipeline,
     ("classification", "svm"): svm_pipeline,
     ("classification", "random_forest"): random_forest_classifier_pipeline,
+    ("classification", "hist_gradient_boosting"): hist_gradient_boosting_classifier_pipeline,
+    ("classification", "lda"): lda_pipeline,
 }
 
 _Evaluation = tuple[pd.DataFrame, tuple[FoldPrediction | FoldClassification, ...]]
@@ -180,7 +188,7 @@ def _pipeline(recipe: ModelRecipe, design: Design | GroupDesign) -> Pipeline:
         unknown = set(parameters) - set(allowed)
         if unknown:
             raise ValueError(f"unknown estimator grid parameters: {sorted(unknown)}.")
-        _validate_grouped_calibration(clone(pipeline).set_params(**parameters))
+        _validate_grouped_estimator(clone(pipeline).set_params(**parameters))
     return pipeline
 
 

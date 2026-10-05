@@ -395,11 +395,11 @@ def _missingness_inputs(
         yield X, estimator
     elif isinstance(estimator, Pipeline):
         data = X
-        for _, step in estimator.steps:
+        for position, (_, step) in enumerate(estimator.steps):
             if step is None or step == "passthrough":
                 continue
             yield from _missingness_inputs(step, data)
-            if not hasattr(step, "transform"):
+            if position == len(estimator.steps) - 1 or not hasattr(step, "transform"):
                 break
             data = step.transform(data)
     elif isinstance(estimator, ColumnTransformer):

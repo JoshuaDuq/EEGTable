@@ -11,6 +11,12 @@ from eegtable.model.estimators import (
     elasticnet_grid,
     elasticnet_pipeline,
     ensemble_pipeline,
+    hist_gradient_boosting_classifier_grid,
+    hist_gradient_boosting_classifier_pipeline,
+    hist_gradient_boosting_grid,
+    hist_gradient_boosting_pipeline,
+    lda_grid,
+    lda_pipeline,
     logistic_grid,
     logistic_pipeline,
     random_forest_classifier_grid,
@@ -21,6 +27,8 @@ from eegtable.model.estimators import (
     ridge_pipeline,
     svm_grid,
     svm_pipeline,
+    svr_grid,
+    svr_pipeline,
 )
 from eegtable.model.splits import InnerSplit, loso_folds
 from eegtable.model.transformers import PreprocessingConfig
@@ -120,6 +128,10 @@ def test_pipelines_are_built_fresh_not_shared() -> None:
         (svm_pipeline, svm_grid),
         (logistic_pipeline, logistic_grid),
         (random_forest_classifier_pipeline, random_forest_classifier_grid),
+        (hist_gradient_boosting_pipeline, hist_gradient_boosting_grid),
+        (hist_gradient_boosting_classifier_pipeline, hist_gradient_boosting_classifier_grid),
+        (svr_pipeline, svr_grid),
+        (lda_pipeline, lda_grid),
     ],
 )
 @pytest.mark.parametrize("n_covariates", [0, 2])

@@ -6,11 +6,20 @@ import numpy as np
 import numpy.typing as npt
 import sklearn
 from packaging.version import parse as parse_version
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor, VotingClassifier
+from sklearn.compose import TransformedTargetRegressor
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.ensemble import (
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
+    VotingClassifier,
+)
 from sklearn.feature_selection import f_classif, f_regression
 from sklearn.linear_model import ElasticNet, LogisticRegression, Ridge
 from sklearn.pipeline import Pipeline
-from sklearn.svm import SVC
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC, SVR
 
 from eegtable.model import _deps as _deps
 from eegtable.model.transformers import PreprocessingConfig, base_preprocessing_steps
@@ -19,6 +28,12 @@ __all__ = [
     "elasticnet_grid",
     "elasticnet_pipeline",
     "ensemble_pipeline",
+    "hist_gradient_boosting_classifier_grid",
+    "hist_gradient_boosting_classifier_pipeline",
+    "hist_gradient_boosting_grid",
+    "hist_gradient_boosting_pipeline",
+    "lda_grid",
+    "lda_pipeline",
     "logistic_grid",
     "logistic_pipeline",
     "random_forest_classifier_grid",
@@ -31,6 +46,8 @@ __all__ = [
     "scaled_ridge_pipeline",
     "svm_grid",
     "svm_pipeline",
+    "svr_grid",
+    "svr_pipeline",
 ]
 
 
@@ -221,6 +238,30 @@ def random_forest_pipeline(
     return Pipeline(steps)
 
 
+def hist_gradient_boosting_pipeline(
+    config: PreprocessingConfig, *, seed: int, n_covariates: int = 0
+) -> Pipeline:
+    """Fit histogram gradient boosting without an internal validation split."""
+    steps = base_preprocessing_steps(
+        config, include_scaling=False, n_covariates=n_covariates, score_func=f_regression
+    )
+    steps.append(("hgb", HistGradientBoostingRegressor(early_stopping=False, random_state=seed)))
+    return Pipeline(steps)
+
+
+def svr_pipeline(config: PreprocessingConfig, *, seed: int, n_covariates: int = 0) -> Pipeline:
+    """Fit RBF-SVR with training-only feature and target standardization.
+
+    Predictions retain the original target units. Tune the SVR through
+    ``svr__regressor__`` parameters. The estimator is deterministic.
+    """
+    steps = base_preprocessing_steps(
+        config, include_scaling=True, n_covariates=n_covariates, score_func=f_regression
+    )
+    steps.append(("svr", TransformedTargetRegressor(regressor=SVR(), transformer=StandardScaler())))
+    return Pipeline(steps)
+
+
 def svm_pipeline(
     config: PreprocessingConfig,
     *,
@@ -317,6 +358,33 @@ def random_forest_classifier_pipeline(
         )
     )
     return _assemble_pipeline(steps, resampler)
+
+
+def hist_gradient_boosting_classifier_pipeline(
+    config: PreprocessingConfig, *, seed: int, n_covariates: int = 0
+) -> Pipeline:
+    """Fit balanced histogram boosting without an internal validation split."""
+    steps = base_preprocessing_steps(
+        config, include_scaling=False, n_covariates=n_covariates, score_func=f_classif
+    )
+    steps.append(
+        (
+            "hgb",
+            HistGradientBoostingClassifier(
+                early_stopping=False, random_state=seed, class_weight="balanced"
+            ),
+        )
+    )
+    return Pipeline(steps)
+
+
+def lda_pipeline(config: PreprocessingConfig, *, seed: int, n_covariates: int = 0) -> Pipeline:
+    """Fit deterministic LDA with automatic covariance shrinkage and empirical priors."""
+    steps = base_preprocessing_steps(
+        config, include_scaling=True, n_covariates=n_covariates, score_func=f_classif
+    )
+    steps.append(("lda", LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto")))
+    return Pipeline(steps)
 
 
 def ensemble_pipeline(
@@ -430,3 +498,31 @@ def logistic_grid(*, penalty: str = "l2") -> dict[str, list[object]]:
 
 def random_forest_classifier_grid() -> dict[str, list[object]]:
     return random_forest_grid()
+
+
+def hist_gradient_boosting_grid() -> dict[str, list[object]]:
+    """Tune tree complexity and iteration count through grouped inner folds."""
+    return {
+        "hgb__max_iter": [100, 200],
+        "hgb__max_leaf_nodes": [7, 15],
+        "hgb__min_samples_leaf": [10, 20],
+        "hgb__l2_regularization": [0.0, 1.0],
+    }
+
+
+def hist_gradient_boosting_classifier_grid() -> dict[str, list[object]]:
+    return hist_gradient_boosting_grid()
+
+
+def svr_grid() -> dict[str, list[object]]:
+    """SVR penalties and epsilon are expressed in training-target standard deviations."""
+    return {
+        "svr__regressor__C": [0.1, 1.0, 10.0],
+        "svr__regressor__gamma": ["scale", 0.01, 0.1],
+        "svr__regressor__epsilon": [0.01, 0.1],
+    }
+
+
+def lda_grid() -> dict[str, list[object]]:
+    """Compare automatic covariance shrinkage with fixed regularization strengths."""
+    return {"lda__shrinkage": ["auto", 0.1, 0.5, 0.9]}

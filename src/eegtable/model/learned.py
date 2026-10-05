@@ -33,7 +33,7 @@ from eegtable.model.crossfit import (
 )
 from eegtable.model.execution import run_folds
 from eegtable.model.splits import Fold, InnerSplit
-from eegtable.model.tuning import fit_untuned, tune
+from eegtable.model.tuning import _validate_grouped_estimator, fit_untuned, tune
 from eegtable.signal import Signal
 from eegtable.spectra import Window
 
@@ -277,6 +277,7 @@ def learned_pipeline(features: BaseEstimator, estimator: BaseEstimator) -> Pipel
 
 
 def _validate_signal_pipeline(pipeline: Pipeline, signal: Signal) -> None:
+    _validate_grouped_estimator(pipeline)
     features = pipeline.steps[0][1]
     if not isinstance(
         features,

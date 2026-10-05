@@ -157,8 +157,15 @@ def _analysis(value: object) -> ModelAnalysis:
 def _model(value: object, task: str) -> EstimatorSettings:
     record = _mapping(value, "model", {"estimator", "grid"}, {"estimator", "grid"})
     choices = {
-        "regression": {"ridge", "scaled_ridge", "elasticnet", "random_forest"},
-        "classification": {"logistic", "svm", "random_forest"},
+        "regression": {
+            "ridge",
+            "scaled_ridge",
+            "elasticnet",
+            "random_forest",
+            "hist_gradient_boosting",
+            "svr",
+        },
+        "classification": {"logistic", "svm", "random_forest", "hist_gradient_boosting", "lda"},
     }
     estimator = _text(record["estimator"], "model.estimator")
     if estimator not in choices[task]:

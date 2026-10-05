@@ -114,6 +114,14 @@ Regression estimators and grids
 
 .. autofunction:: eegtable.model.random_forest_grid
 
+.. autofunction:: eegtable.model.hist_gradient_boosting_pipeline
+
+.. autofunction:: eegtable.model.hist_gradient_boosting_grid
+
+.. autofunction:: eegtable.model.svr_pipeline
+
+.. autofunction:: eegtable.model.svr_grid
+
 Classification estimators and grids
 -----------------------------------
 
@@ -132,6 +140,14 @@ respectively. Grouped fitting rejects hidden SVM probability calibration and
 .. autofunction:: eegtable.model.random_forest_classifier_pipeline
 
 .. autofunction:: eegtable.model.random_forest_classifier_grid
+
+.. autofunction:: eegtable.model.hist_gradient_boosting_classifier_pipeline
+
+.. autofunction:: eegtable.model.hist_gradient_boosting_classifier_grid
+
+.. autofunction:: eegtable.model.lda_pipeline
+
+.. autofunction:: eegtable.model.lda_grid
 
 .. autofunction:: eegtable.model.ensemble_pipeline
 

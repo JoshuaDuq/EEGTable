@@ -285,10 +285,67 @@ Pipelines
 ~~~~~~~~~
 
 - **Regression**: ``scaled_ridge_pipeline``, ``ridge_pipeline``,
-  ``elasticnet_pipeline``, and ``random_forest_pipeline``.
+  ``elasticnet_pipeline``, ``random_forest_pipeline``,
+  ``hist_gradient_boosting_pipeline``, and ``svr_pipeline``.
 - **Classification**: ``svm_pipeline``, ``logistic_pipeline``,
-  ``random_forest_classifier_pipeline``, and ``ensemble_pipeline``.
+  ``random_forest_classifier_pipeline``,
+  ``hist_gradient_boosting_classifier_pipeline``, ``lda_pipeline``,
+  and ``ensemble_pipeline``.
   :func:`eegtable.model.classification_metrics` requires labels in ``{0, 1}``.
+
+Histogram gradient boosting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The regression and classification factories use scikit-learn's
+`histogram gradient boosting
+<https://scikit-learn.org/stable/modules/ensemble.html#histogram-based-gradient-boosting>`_.
+They retain the existing training-fitted quality/missingness policies and
+median imputation; native backend support for NaN does not bypass those
+policies. Scaling is omitted unless PCA is configured. Classification uses
+balanced class weights estimated from each training fit.
+
+``early_stopping=False`` prevents an internal random validation split from
+mixing participants or runs. Grouped fitting rejects pipelines and grid
+candidates that enable it, including ``early_stopping="auto"``. Select
+``hgb__max_iter`` through the grouped inner folds instead.
+``hist_gradient_boosting_grid`` and
+``hist_gradient_boosting_classifier_grid`` share a compact grid over
+iteration count, leaf count, minimum leaf size, and L2 regularization.
+Group-aware prediction intervals apply the same restriction for split and
+CV+ fitting. Ungrouped fitting can use the backend's early stopping.
+
+Support vector regression
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``svr_pipeline`` uses RBF-SVR with training-fitted feature scaling and a
+`TransformedTargetRegressor
+<https://scikit-learn.org/stable/modules/generated/sklearn.compose.TransformedTargetRegressor.html>`_
+that standardizes the target inside every inner fit and outer refit.
+Predictions are converted back to the original target units. The
+``svr_grid`` parameters use ``svr__regressor__C``,
+``svr__regressor__gamma``, and ``svr__regressor__epsilon``; penalties and
+epsilon refer to standardized training targets, not raw rating units.
+SVR is deterministic. Its fitting cost grows more than quadratically with
+the number of samples, so evaluate its runtime before a large nested search.
+See `scikit-learn's SVR documentation
+<https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVR.html>`_.
+
+Shrinkage linear discriminant analysis
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``lda_pipeline`` uses ``LinearDiscriminantAnalysis(solver="lsqr",
+shrinkage="auto")`` after training-fitted preprocessing and scaling.
+``lda_grid`` compares automatic shrinkage with fixed strengths. LDA is
+deterministic, estimates class priors from its training labels, and provides
+probabilities and decision scores. Shrinkage regularizes covariance
+estimation; it does not remove LDA's shared class-covariance assumption.
+The covariance matrix grows with the square of the retained feature count.
+See `scikit-learn's shrinkage guidance
+<https://scikit-learn.org/stable/modules/lda_qda.html#shrinkage-and-covariance-estimator>`_
+and `MNE's CSP/LDA example
+<https://mne.tools/stable/auto_examples/decoding/decoding_csp_eeg.html>`_.
+Signal-level CSP followed by LDA uses ``learned_pipeline`` with a supplied
+``LinearDiscriminantAnalysis`` estimator (:doc:`learned_features`).
 
 Ridge grid
 ~~~~~~~~~~

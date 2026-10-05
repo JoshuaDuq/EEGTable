@@ -31,8 +31,9 @@ preprocessing:
   # feature_selection_percentile: 25
   # pca_components: 0.95
 model:
-  estimator: scaled_ridge  # regression: scaled_ridge, ridge, elasticnet, random_forest
-  # classification: logistic, svm, random_forest; use that estimator's grid names.
+  # regression: scaled_ridge, ridge, elasticnet, random_forest, hist_gradient_boosting, svr
+  # classification: logistic, svm, random_forest, hist_gradient_boosting, lda
+  estimator: scaled_ridge  # Use the chosen estimator's grid parameter names.
   grid:
     # scaled_ridge multiplies these by training rows × retained columns at every fit.
     regressor__alpha: [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1.0, 10.0]

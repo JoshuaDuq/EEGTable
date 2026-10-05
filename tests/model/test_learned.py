@@ -4,10 +4,13 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from scipy.special import expit
 from sklearn.base import BaseEstimator, ClassifierMixin, clone
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
 from eegtable.csp import CommonSpatialPattern
 from eegtable.microstates import MicrostateModel, microstate_coverage
@@ -153,11 +156,21 @@ def test_learned_pipeline_has_fold_fitted_feature_and_scaling_steps():
     assert isinstance(pipeline.named_steps["scale"], StandardScaler)
 
 
-def test_signal_classification_produces_nested_held_out_predictions():
+@pytest.mark.parametrize(
+    "estimator,grid",
+    [
+        (LogisticRegression(), {"model__C": [0.1, 1.0]}),
+        (
+            LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto"),
+            {"model__shrinkage": ["auto", 0.5]},
+        ),
+    ],
+)
+def test_signal_classification_produces_nested_held_out_predictions(estimator, grid):
     signal, labels, groups = _signals()
     folds = loso_folds(groups)
     pipeline = learned.learned_pipeline(
-        learned.CSPTransformer(ch_names=CHANNELS, n_components=2), LogisticRegression()
+        learned.CSPTransformer(ch_names=CHANNELS, n_components=2), estimator
     )
     results = learned.cross_fit_signal_classification(
         folds,
@@ -165,19 +178,39 @@ def test_signal_classification_produces_nested_held_out_predictions():
         labels,
         groups,
         pipeline,
-        {"model__C": [0.1, 1.0]},
+        grid,
         inner=InnerSplit("subject", n_splits=3),
         seed=4,
     )
     assert all(isinstance(result, FoldClassification) for result in results)
-    assert all(result.best_params["model__C"] in [0.1, 1.0] for result in results)
+    assert all(
+        result.best_params[name] in candidates
+        for result in results
+        for name, candidates in grid.items()
+    )
     assert all(result.y_prob.shape == (8, 2) for result in results)
     for result in results:
-        np.testing.assert_allclose(
-            result.y_score, np.log(result.y_prob[:, 1] / result.y_prob[:, 0])
-        )
+        np.testing.assert_allclose(result.y_prob[:, 1], expit(result.y_score))
     assert np.concatenate([result.rows for result in results]).size == labels.size
     assert np.mean(np.concatenate([result.y_true == result.y_pred for result in results])) > 0.9
+
+
+def test_untuned_signal_classification_rejects_internal_svm_calibration():
+    signal, labels, groups = _signals()
+    pipeline = learned.learned_pipeline(
+        learned.CSPTransformer(ch_names=CHANNELS, n_components=2), SVC(probability=True)
+    )
+    with pytest.raises(ValueError, match="internal trial-wise cross-validation"):
+        learned.cross_fit_signal_classification(
+            loso_folds(groups),
+            signal,
+            labels,
+            groups,
+            pipeline,
+            {},
+            inner=InnerSplit("subject", n_splits=3),
+            seed=4,
+        )
 
 
 def test_signal_regression_produces_nested_held_out_predictions():

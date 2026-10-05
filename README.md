@@ -138,7 +138,7 @@ See [Preprocessing](https://joshuaduq.github.io/EEGTable/guides/preprocessing.ht
 
 ## Modeling
 
-`eegtable.model` supports regression and binary classification with group-disjoint outer folds and optional inner tuning. Ridge, elastic net, random forest, logistic regression, SVM, and ensembles are available. Preprocessing is fitted within training folds; nested tuning uses training groups. Permutation inference must repeat the chosen fitting procedure under a null whose exchangeability assumptions match the study.
+`eegtable.model` supports regression and binary classification with group-disjoint outer folds and optional inner tuning. Ridge, elastic net, random forest, histogram gradient boosting, SVR, logistic regression, SVM classification, shrinkage LDA, and ensembles are available. Preprocessing is fitted within training folds; nested tuning uses training groups. SVR standardizes targets within each training fit and returns predictions in their original units. Histogram boosting disables internal early stopping and tunes iteration counts through grouped folds. Permutation inference must repeat the chosen fitting procedure under a null whose exchangeability assumptions match the study.
 
 Training-fitted CSP, microstate, covariance, and tangent-space transforms support learned features. Fixed quality policies retain coverage, flags, and exclusion evidence. Predicting new participants, predicting new runs of known participants, and estimating within-participant associations require different split and scoring choices.
 

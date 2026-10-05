@@ -160,9 +160,29 @@ def test_model_check_keeps_numeric_looking_groups_distinct(tmp_path, rows):
     assert check(load(path)).n_groups == 4
 
 
-@pytest.mark.parametrize("task", ["regression", "classification"])
-def test_model_run_writes_verifiable_prediction_and_quality_bundle(tmp_path, task):
-    path, _ = _recipe(tmp_path, task)
+@pytest.mark.parametrize(
+    "task,estimator,grid",
+    [
+        ("regression", "ridge", {"regressor__alpha": [0.1, 1.0]}),
+        ("classification", "logistic", {"lr__C": [0.1, 1.0]}),
+        (
+            "regression",
+            "hist_gradient_boosting",
+            {"hgb__max_iter": [5, 10], "hgb__min_samples_leaf": [2]},
+        ),
+        (
+            "classification",
+            "hist_gradient_boosting",
+            {"hgb__max_iter": [5, 10], "hgb__min_samples_leaf": [2]},
+        ),
+        ("regression", "svr", {"svr__regressor__C": [0.1, 1.0]}),
+        ("classification", "lda", {"lda__shrinkage": ["auto", 0.5]}),
+    ],
+)
+def test_model_run_writes_verifiable_prediction_and_quality_bundle(tmp_path, task, estimator, grid):
+    path, record = _recipe(tmp_path, task)
+    record["model"] = {"estimator": estimator, "grid": grid}
+    path.write_text(yaml.safe_dump(record))
     load, _, run = _api()
     result = run(load(path))
     predictions = pd.read_csv(result.output / "predictions.tsv", sep="\t")
@@ -189,6 +209,50 @@ def test_model_run_writes_verifiable_prediction_and_quality_bundle(tmp_path, tas
     if task == "classification":
         np.testing.assert_allclose(predictions.probability_0 + predictions.probability_1, 1)
     assert "overall" in json.loads((result.output / "metrics.json").read_text())
+
+
+@pytest.mark.parametrize("task,estimator", [("regression", "lda"), ("classification", "svr")])
+def test_model_recipe_rejects_additional_estimators_for_the_wrong_task(tmp_path, task, estimator):
+    path, record = _recipe(tmp_path, task)
+    record["model"]["estimator"] = estimator
+    path.write_text(yaml.safe_dump(record))
+    load, _, _ = _api()
+    with pytest.raises(ValueError, match="unsupported"):
+        load(path)
+
+
+@pytest.mark.parametrize("task", ["regression", "classification"])
+@pytest.mark.parametrize("early_stopping", [True, "auto"])
+def test_model_check_rejects_boosting_internal_validation(tmp_path, task, early_stopping):
+    path, record = _recipe(tmp_path, task)
+    record["model"] = {
+        "estimator": "hist_gradient_boosting",
+        "grid": {"hgb__early_stopping": [early_stopping]},
+    }
+    path.write_text(yaml.safe_dump(record))
+    load, check, _ = _api()
+    with pytest.raises(ValueError, match="early_stopping=False"):
+        check(load(path))
+    assert not (tmp_path / "results").exists()
+
+
+@pytest.mark.parametrize(
+    "task,estimator,grid",
+    [
+        ("regression", "hist_gradient_boosting", {"hgb__max_iter": [0]}),
+        ("classification", "hist_gradient_boosting", {"hgb__max_iter": [0]}),
+        ("regression", "svr", {"svr__regressor__C": [-1.0]}),
+        ("classification", "lda", {"lda__shrinkage": [2.0]}),
+    ],
+)
+def test_additional_estimator_fit_errors_leave_no_completed_bundle(tmp_path, task, estimator, grid):
+    path, record = _recipe(tmp_path, task)
+    record["model"] = {"estimator": estimator, "grid": grid}
+    path.write_text(yaml.safe_dump(record))
+    load, _, run = _api()
+    with pytest.raises(ValueError, match="Fold"):
+        run(load(path))
+    assert not (tmp_path / "results").exists()
 
 
 def test_model_run_handles_group_rows_without_epoch_broadcast(tmp_path):

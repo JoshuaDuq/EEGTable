@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from sklearn.dummy import DummyRegressor
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import Pipeline
@@ -16,6 +16,39 @@ from eegtable.model.uncertainty import (
 )
 
 PIPE = Pipeline([("regressor", DummyRegressor(strategy="mean"))])
+
+
+@pytest.mark.parametrize("method", ["split", "cv_plus"])
+@pytest.mark.parametrize("early_stopping", [True, "auto"])
+def test_ungrouped_intervals_allow_boosting_early_stopping(method, early_stopping):
+    values = np.random.default_rng(31).normal(size=(80, 3))
+    model = Pipeline(
+        [("hgb", HistGradientBoostingRegressor(early_stopping=early_stopping, max_iter=3))]
+    )
+    result = prediction_intervals(model, values, values[:, 0], values[:4], method=method)
+    assert np.isfinite(result.lower).all()
+    assert np.isfinite(result.upper).all()
+    assert np.all(result.lower <= result.upper)
+
+
+@pytest.mark.parametrize("method", ["split", "cv_plus"])
+def test_grouped_intervals_reject_boosting_internal_validation(method):
+    values = np.random.default_rng(31).normal(size=(80, 3))
+    groups = np.repeat(["a", "b", "c", "d"], 20).astype(object)
+    model = Pipeline([("hgb", HistGradientBoostingRegressor(early_stopping=True, max_iter=3))])
+    with pytest.raises(ValueError, match="early_stopping=False"):
+        prediction_intervals(model, values, values[:, 0], values[:4], method=method, groups=groups)
+
+
+def test_grouped_quantile_intervals_validate_the_replacement_estimator():
+    values = np.random.default_rng(31).normal(size=(80, 3))
+    groups = np.repeat(["a", "b", "c", "d"], 20).astype(object)
+    model = Pipeline([("hgb", HistGradientBoostingRegressor(early_stopping=True, max_iter=3))])
+    result = prediction_intervals(
+        model, values, values[:, 0], values[:4], method="quantile", groups=groups
+    )
+    assert np.isfinite(result.lower).all()
+    assert np.isfinite(result.upper).all()
 
 
 @pytest.mark.parametrize("method", ["split", "cv_plus", "quantile"])

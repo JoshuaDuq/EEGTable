@@ -115,6 +115,13 @@ Useful estimator parameter names are:
    * - regression
      - ``random_forest``
      - ``rf__n_estimators``, ``rf__max_depth``
+   * - regression
+     - ``hist_gradient_boosting``
+     - ``hgb__max_iter``, ``hgb__max_leaf_nodes``
+   * - regression
+     - ``svr``
+     - ``svr__regressor__C``, ``svr__regressor__gamma``,
+       ``svr__regressor__epsilon``
    * - classification
      - ``logistic``
      - ``lr__C``
@@ -124,6 +131,36 @@ Useful estimator parameter names are:
    * - classification
      - ``random_forest``
      - ``rf__n_estimators``, ``rf__max_depth``
+   * - classification
+     - ``hist_gradient_boosting``
+     - ``hgb__max_iter``, ``hgb__max_leaf_nodes``
+   * - classification
+     - ``lda``
+     - ``lda__shrinkage``
+
+For histogram gradient boosting, keep ``early_stopping=False`` and tune the
+iteration count through the grouped inner folds. Recipes reject candidates
+that enable internal early stopping. For example, replace the template's
+``model`` block with:
+
+.. code-block:: yaml
+
+   model:
+     estimator: hist_gradient_boosting
+     grid:
+       hgb__max_iter: [100, 200]
+       hgb__max_leaf_nodes: [7, 15]
+       hgb__min_samples_leaf: [10, 20]
+       hgb__l2_regularization: [0.0, 1.0]
+
+The same model block supports either task; classification uses balanced
+training class weights. ``svr`` standardizes the target separately within
+each training fit and returns predictions in its original units. Its nested
+parameter names address the SVR inside the target-transforming estimator.
+``lda`` uses the ``lsqr`` solver by default with automatic covariance
+shrinkage; a grid such as ``lda__shrinkage: [auto, 0.1, 0.5, 0.9]`` compares
+automatic and fixed strengths. Detailed assumptions appear in
+:doc:`modeling`.
 
 The template uses ``scaled_ridge``: at every inner fit and outer refit, alpha
 is multiplied by the training row count and retained column count after

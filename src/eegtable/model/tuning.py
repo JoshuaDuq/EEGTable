@@ -8,7 +8,11 @@ import numpy as np
 import numpy.typing as npt
 from sklearn.base import BaseEstimator, clone
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import VotingClassifier
+from sklearn.ensemble import (
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+    VotingClassifier,
+)
 from sklearn.model_selection import GridSearchCV, ParameterGrid
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC, NuSVC
@@ -70,7 +74,20 @@ def _assign_random_state(estimator: object, seed: int) -> None:
             estimator.set_params(**{key: seed for key in random_state_keys})
 
 
-def _validate_grouped_calibration(pipeline: Pipeline) -> None:
+def _validate_boosting_early_stopping(pipeline: Pipeline) -> None:
+    for component in (pipeline, *pipeline.get_params(deep=True).values()):
+        if (
+            isinstance(component, (HistGradientBoostingRegressor, HistGradientBoostingClassifier))
+            and component.early_stopping
+        ):
+            raise ValueError(
+                "Grouped fitting requires early_stopping=False for histogram gradient "
+                "boosting; tune max_iter through group-disjoint inner folds."
+            )
+
+
+def _validate_grouped_estimator(pipeline: Pipeline) -> None:
+    _validate_boosting_early_stopping(pipeline)
     components = (pipeline, *pipeline.get_params(deep=True).values())
     if any(isinstance(component, CalibratedClassifierCV) for component in components):
         raise ValueError(
@@ -117,13 +134,13 @@ def tune(
 ) -> TunedFit:
     if refit is False:
         raise ValueError("refit=False cannot return a fitted outer-fold model.")
-    _validate_grouped_calibration(pipeline)
+    _validate_grouped_estimator(pipeline)
     for parameters in ParameterGrid(dict(grid)):
         try:
             candidate = clone(pipeline).set_params(**parameters)
         except ValueError as exc:
             raise FoldFitError(f"Fold {fold}: inner CV failed: {exc}") from exc
-        _validate_grouped_calibration(candidate)
+        _validate_grouped_estimator(candidate)
     chosen = scoring[refit] if isinstance(scoring, Mapping) and isinstance(refit, str) else scoring
     if isinstance(chosen, _SubjectRScorer):
         raise ValueError(
