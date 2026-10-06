@@ -1,9 +1,11 @@
 import importlib.util
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import mne
 import numpy as np
+import pandas as pd
 import pytest
 
 pytest.importorskip("mne_bids")
@@ -78,6 +80,42 @@ def test_markers_stay_anchored_after_trimming(tmp_path):
         "Comment/QC_ResidualHigh",
     ]
     np.testing.assert_allclose(out.annotations.onset, [0.0, 1.5, 5.0], atol=0.01)
+
+
+@pytest.mark.parametrize("first_samp", [0, 200])
+@pytest.mark.parametrize("trim", [False, True])
+def test_conversion_preserves_absolute_event_times(tmp_path, first_samp, trim):
+    from mne_bids import BIDSPath, read_raw_bids
+
+    measurement_start = datetime(2020, 1, 1, tzinfo=UTC)
+    raw = mne.io.RawArray(
+        np.arange(2_000)[None, :] * 1e-6,
+        mne.create_info(["Cz"], 100.0, "eeg"),
+        first_samp=first_samp,
+        verbose=False,
+    )
+    raw.set_meas_date(measurement_start)
+    raw.set_annotations(mne.Annotations([4.0, 5.0], [0.0, 0.0], ["Trig_therm/T  1"] * 2))
+    kwargs = {"trim_to_first_event_prefix": "Trig_therm"} if trim else {}
+    written(tmp_path, raw, **kwargs)
+    path = BIDSPath(
+        subject="0001", task="thermalactive", run=1, datatype="eeg", root=tmp_path / "bids"
+    )
+    out = read_raw_bids(path, verbose=False)
+    offset = raw.first_time + (4.0 if trim else 0.0)
+    acquisition_start = measurement_start + timedelta(seconds=offset)
+    assert out.info["meas_date"] == acquisition_start
+    np.testing.assert_allclose(out.annotations.onset, [0.0, 1.0] if trim else [4.0, 5.0])
+    event_times = [
+        out.annotations.orig_time + timedelta(seconds=float(onset))
+        for onset in out.annotations.onset
+    ]
+    assert event_times == [
+        measurement_start + timedelta(seconds=raw.first_time + onset) for onset in (4.0, 5.0)
+    ]
+    np.testing.assert_allclose(out.get_data(), raw.get_data()[:, 400:] if trim else raw.get_data())
+    scans = pd.read_csv(tmp_path / "bids" / "sub-0001" / "sub-0001_scans.tsv", sep="\t")
+    assert pd.Timestamp(scans.loc[0, "acq_time"]).to_pydatetime() == acquisition_start
 
 
 def test_bad_intervals_survive_the_default_filter(tmp_path):

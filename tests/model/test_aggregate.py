@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from scipy import stats
+from sklearn.dummy import DummyRegressor
 
 from eegtable.model.aggregate import (
     AggregationConfig,
@@ -12,6 +13,7 @@ from eegtable.model.aggregate import (
     paired_signflip_p_value,
     subject_level_errors,
     subject_level_r,
+    subject_r_scorer,
 )
 from eegtable.model.crossfit import FoldPrediction
 
@@ -23,6 +25,22 @@ def _predictions(per_subject: dict[str, tuple[list[float], list[float]]]) -> pd.
         for t, p in zip(truths, preds, strict=True)
     ]
     return pd.DataFrame(rows)
+
+
+@pytest.mark.parametrize("function", [subject_level_r, subject_level_errors])
+def test_subject_aggregates_ignore_unused_categorical_labels(function) -> None:
+    frame = _predictions({"s1": ([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0])})
+    expected = function(frame)
+    frame["subject_id"] = pd.Categorical(frame.subject_id, categories=["s1", "unused"])
+    assert function(frame) == expected
+
+
+def test_subject_scorer_ignores_unused_categorical_labels() -> None:
+    values = np.arange(4, dtype=float)[:, None]
+    target = np.arange(4, dtype=float)
+    model = DummyRegressor().fit(values, target)
+    groups = pd.Series(pd.Categorical(["s1"] * 4, categories=["s1", "unused"]))
+    assert subject_r_scorer()(model, values, target, groups) == 0.0
 
 
 @pytest.mark.parametrize("function", [subject_level_r, subject_level_errors])

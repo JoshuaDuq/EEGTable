@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ exit "${FAKE_EXIT:-0}"
 	if err := os.WriteFile(binary, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return Client{Binary: binary, Config: "study.yaml"}, record
+	return Client{Binary: binary, Config: "study.yaml", Jobs: 1}, record
 }
 
 func argv(t *testing.T, record string) string {
@@ -244,8 +245,26 @@ func TestRunAllOmitsTheRecordingFlag(t *testing.T) {
 	for range process.Events() {
 	}
 	<-process.Done()
-	if got := argv(t, record); got != "preprocess run study.yaml --progress-json" {
+	if got := argv(t, record); got != "preprocess run study.yaml --n-jobs 1 --progress-json" {
 		t.Fatalf("argv = %q", got)
+	}
+}
+
+func TestRunForwardsNegativeAndZeroJobCounts(t *testing.T) {
+	for _, jobs := range []int{-1, 0} {
+		t.Run(strconv.Itoa(jobs), func(t *testing.T) {
+			client, record := fake(t, map[string]string{"events.jsonl": ""})
+			client.Jobs = jobs
+			process, err := client.Run("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			collect(t, process)
+			want := "preprocess run study.yaml --n-jobs " + strconv.Itoa(jobs) + " --progress-json"
+			if got := argv(t, record); got != want {
+				t.Fatalf("argv = %q, want %q", got, want)
+			}
+		})
 	}
 }
 

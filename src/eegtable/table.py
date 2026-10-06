@@ -295,6 +295,8 @@ class FeatureTable:
     support: npt.NDArray[np.float64] | None = None
 
     def __post_init__(self) -> None:
+        if np.iscomplexobj(self.values):
+            raise TypeError("Feature values must be real.")
         if self.values.ndim != 2:
             raise ValueError(f"values must be 2-D (n_epochs, n_features), got {self.values.shape}.")
         if self.coverage.shape != self.values.shape:

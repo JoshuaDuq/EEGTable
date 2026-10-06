@@ -98,7 +98,7 @@ Structured metadata is authoritative; `FeatureTable.select()` uses that metadata
 - **Epoch rows** retain `(recording, original epoch index, event)` identities.
 - **Trial-group rows** describe estimates across trials, such as ITPC and epoch-averaged connectivity. They are written separately and have a dedicated `eegtable.group` design interface.
 - **Coverage** measures finite-input availability. It does not measure artifact removal or signal quality. Morlet temporal support is recorded separately on `Spectra`.
-- **Files** contain values and coverage TSVs plus a JSON sidecar. Newly written schema 2 bundles include descriptor types and payload checksums. Extraction provenance records resolved settings, input identities, software/source identities, and available preprocessing evidence.
+- **Files** contain values and coverage TSVs plus a JSON sidecar. Newly written schema 3 bundles include shared computation specifications, descriptor types, and payload checksums. Extraction provenance records resolved settings, input identities, software/source identities, and available preprocessing evidence.
 
 See [Data concepts](https://joshuaduq.github.io/EEGTable/concepts.html) and [Reproducible cohorts](https://joshuaduq.github.io/EEGTable/guides/cohorts.html).
 

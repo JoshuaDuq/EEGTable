@@ -10,10 +10,10 @@ subject, session, condition, and outcome descriptors explicitly; filenames
 alone do not supply these variables.
 
 EEGTable keeps the numerical feature definition, its evidence and the recording
-identity together. Newly written tables use schema 2: the sidecar declares the
-exact payload filenames and their SHA-256 checksums. Reading a modified schema 2
-payload raises. The reader also accepts the existing schema-less ``eegfeat``
-format when it has the required row-identity manifest, but that format has no
+identity together. Newly written tables use schema 3: the sidecar declares the
+exact payload filenames and their SHA-256 checksums. Reading a modified
+checksummed payload raises. The reader also accepts the existing schema-less
+``eegfeat`` format when it has the required row-identity manifest, but that format has no
 payload checksums or general descriptor type manifest. Unsupported schemas or
 missing row identities raise. Regenerate old outputs when the study requires
 the current extraction provenance and integrity checks; see :doc:`tables`.

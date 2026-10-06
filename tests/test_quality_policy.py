@@ -91,6 +91,18 @@ def test_cohort_report_counts_cells_by_condition(alpha_beta_table):
     assert feature_quality(table)["n_finite"].tolist() == [2, 1]
 
 
+def test_cohort_report_omits_unused_categories(alpha_beta_table):
+    from eegtable.quality import cohort_quality
+
+    targets = pd.DataFrame(
+        {"condition": pd.Categorical(["rest", "rest"], categories=["rest", "task"])}
+    )
+    summary = cohort_quality(alpha_beta_table, targets, by=("condition",))
+    assert summary["condition"].tolist() == ["rest"]
+    assert summary["n_rows"].tolist() == [2]
+    assert summary["mean_coverage"].tolist() == [1.0]
+
+
 def test_report_preserves_all_group_keys_with_missing_labels(alpha_beta_table):
     from eegtable.quality import cohort_quality
 

@@ -415,9 +415,9 @@ by the recipe are written. With both epoch and cross-trial measures, the input
   matched group outcomes and subject IDs as described in :doc:`cohorts`.
 - The two files are separate. See :ref:`concepts-row-kinds`.
 - Missing values are written ``n/a``.
-- Values and coverage payloads are protected by SHA-256 checksums in schema 2
-  sidecars. Table readers validate them before returning results. The legacy
-  ``eegfeat`` format described in :doc:`tables` lacks these checksums; merely
+- Values, coverage and optional support payloads are protected by SHA-256 checksums
+  in schema 3 sidecars. Table readers validate them before returning results.
+  The legacy ``eegfeat`` format described in :doc:`tables` lacks these checksums; merely
   loading it does not establish current extraction provenance.
 
 The filenames follow TSV/JSON sidecar conventions. These outputs are not a

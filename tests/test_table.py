@@ -107,6 +107,17 @@ def test_coverage_must_be_a_finite_fraction(invalid: float) -> None:
         FeatureTable(values=np.zeros((3, 2)), coverage=coverage, meta=(_meta("C3"), _meta("C4")))
 
 
+def test_values_must_be_real() -> None:
+    with pytest.raises(TypeError, match="real"):
+        replace(_table(), values=np.full((3, 2), 1.0 + 2.0j))
+
+
+@pytest.mark.parametrize("field", ["coverage", "support"])
+def test_fraction_arrays_must_be_real(field: str) -> None:
+    with pytest.raises(ValueError, match="real"):
+        replace(_table(), **{field: np.full((3, 2), 0.5 + 2.0j)})
+
+
 def test_flags_must_match_the_value_shape() -> None:
     with pytest.raises(ValueError, match="flag"):
         FeatureTable(

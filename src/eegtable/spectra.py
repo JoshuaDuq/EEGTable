@@ -189,6 +189,8 @@ class Spectra:
     """
 
     def __post_init__(self) -> None:
+        if np.iscomplexobj(self.data):
+            raise TypeError("spectral data must be real power, not complex coefficients.")
         if self.data.ndim != 4:
             raise ValueError(
                 "data must be 4-D (n_epochs, n_channels, n_windows, n_freqs), "
@@ -210,6 +212,8 @@ class Spectra:
                 f"windows has {len(self.windows)} entries but data has {n_windows} windows."
             )
         validate_names(tuple(window.name for window in self.windows), "window names")
+        if np.iscomplexobj(self.freqs):
+            raise TypeError("freqs must be real values in Hz.")
         if self.freqs.ndim != 1 or self.freqs.size != n_freqs:
             raise ValueError(
                 f"freqs must be 1-D of length {n_freqs}, got shape {self.freqs.shape}."

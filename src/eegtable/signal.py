@@ -204,6 +204,7 @@ class Signal:
         if np.iscomplexobj(array):
             raise TypeError("Signal data must be real; use BandSignal for analytic signals.")
         array = np.asarray(array, dtype=float)
+        _require_real_time_axis(times)
         return cls(
             data=array,
             times=np.asarray(times, dtype=float),
@@ -228,6 +229,11 @@ def _passband(source: Any) -> tuple[float | None, float | None] | None:
         return None
 
 
+def _require_real_time_axis(times: npt.ArrayLike) -> None:
+    if np.iscomplexobj(times):
+        raise TypeError("times must be real values in seconds.")
+
+
 def _validate_series(
     values: npt.NDArray[Any],
     times: npt.NDArray[np.float64],
@@ -247,6 +253,7 @@ def _validate_series(
             f"ch_names has {len(ch_names)} entries but {label} has {n_channels} channels."
         )
     validate_names(ch_names, "ch_names")
+    _require_real_time_axis(times)
     if times.ndim != 1 or times.size != n_times:
         raise ValueError(f"times must be 1-D of length {n_times}, got {times.shape}.")
     if not np.isfinite(times).all():
@@ -381,6 +388,7 @@ class BandSignal:
         array = np.asarray(analytic)
         if coverage is None:
             coverage = np.isfinite(array).astype(float)
+        _require_real_time_axis(times)
         return cls(
             analytic=array,
             times=np.asarray(times, dtype=float),

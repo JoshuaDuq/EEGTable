@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -221,6 +223,30 @@ def test_complex_fourier_coefficients_cannot_be_interpreted_as_power() -> None:
     )
     with pytest.raises(ValueError, match="complex.*power"):
         Spectra.from_spectrum(spectrum, recording="test", estimator_parameters={})
+
+
+@pytest.mark.parametrize("field", ["data", "freqs"])
+def test_spectral_arrays_reject_complex_power_and_frequency_axes(field: str) -> None:
+    data = np.ones((1, 1, 1, 3))
+    freqs = np.array([8.0, 10.0, 13.0])
+    if field == "data":
+        data = data + 100.0j
+    else:
+        freqs = freqs + 100.0j
+    with warnings.catch_warnings(), pytest.raises(TypeError, match="real"):
+        warnings.simplefilter("error", np.exceptions.ComplexWarning)
+        Spectra(
+            data=data,
+            freqs=freqs,
+            ch_names=("Cz",),
+            windows=(Window("all", -np.inf, np.inf),),
+            coverage=np.ones(data.shape),
+            source="provided",
+            representation="psd",
+            support=np.ones(data.shape),
+            row_ids=(("test", 0, "event"),),
+            computation=ComputationSpec.create("provided"),
+        )
 
 
 def test_non_finite_input_lowers_coverage_rather_than_raising() -> None:

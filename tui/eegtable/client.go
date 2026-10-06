@@ -129,9 +129,7 @@ func (c Client) Run(recording string) (Runner, error) {
 	if recording != "" {
 		args = append(args, "--recording", recording)
 	}
-	if c.Jobs > 1 {
-		args = append(args, "--n-jobs", strconv.Itoa(c.Jobs))
-	}
+	args = append(args, "--n-jobs", strconv.Itoa(c.Jobs))
 	args = append(args, "--progress-json")
 	cmd := exec.Command(c.Binary, args...)
 	cmd.Env = append(os.Environ(), "NO_COLOR=1", "PYTHONUNBUFFERED=1")

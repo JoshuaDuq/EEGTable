@@ -20,6 +20,7 @@ import argparse
 import json
 import logging
 import re
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -372,6 +373,9 @@ def run_raw_to_bids(
             suffix="eeg",
             root=bids_root,
         )
+        # BrainVision starts at sample zero; scans.tsv must date that exported sample.
+        if raw.info["meas_date"] is not None:
+            raw.set_meas_date(raw.info["meas_date"] + timedelta(seconds=raw.first_time))
         write_raw_bids(
             raw=raw,
             bids_path=bids_path,

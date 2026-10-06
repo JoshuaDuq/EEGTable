@@ -373,7 +373,7 @@ def subject_level_r(
     valid_entries: list[tuple[float, int]] = []
     invalid_subjects: list[str] = []
 
-    for subj, df_sub in predictions.groupby("subject_id"):
+    for subj, df_sub in predictions.groupby("subject_id", observed=True):
         yt = pd.to_numeric(df_sub["y_true"], errors="coerce").to_numpy(dtype=float)
         yp = pd.to_numeric(df_sub["y_pred"], errors="coerce").to_numpy(dtype=float)
         n_trials = len(yt)
@@ -501,7 +501,7 @@ class _SubjectRScorer:
         y_pred = np.asarray(estimator.predict(X), dtype=np.float64)  # type: ignore[attr-defined]
         y_true = np.asarray(y, dtype=np.float64)
         frame = pd.DataFrame({"subject_id": groups, "y_true": y_true, "y_pred": y_pred})
-        sizes = frame.groupby("subject_id").size()
+        sizes = frame.groupby("subject_id", observed=True).size()
         if (sizes < 3).any():
             raise ValueError(
                 f"Subject-level r needs at least 3 held-out trials per subject; "
@@ -594,7 +594,7 @@ def subject_level_errors(
     per_subject_n: list[int] = []
     invalid_subjects: list[str] = []
 
-    for subj, df_sub in predictions.groupby("subject_id"):
+    for subj, df_sub in predictions.groupby("subject_id", observed=True):
         yt = pd.to_numeric(df_sub["y_true"], errors="coerce").to_numpy(dtype=float)
         yp = pd.to_numeric(df_sub["y_pred"], errors="coerce").to_numpy(dtype=float)
         n_trials = len(yt)

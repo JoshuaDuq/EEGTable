@@ -160,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
     fixed = {
         RUN.search(p.name).groups(): p
         for p in args.fixed_bids.rglob("*_eeg.vmrk")
-        if RUN.search(p.name)
+        if not p.name.startswith("._") and RUN.search(p.name)
     }
     spliced = 0
     for root in args.derivatives:

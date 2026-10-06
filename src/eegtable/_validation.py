@@ -19,6 +19,8 @@ def minimum_sample_count(duration_seconds: float, sfreq: float) -> int:
 
 def validate_fraction_array(values: npt.NDArray[np.float64], name: str) -> None:
     """Require finite fractions on the closed unit interval."""
+    if np.iscomplexobj(values):
+        raise ValueError(f"{name} must contain real fractions.")
     if not np.isfinite(values).all() or np.any((values < 0.0) | (values > 1.0)):
         raise ValueError(f"{name} must contain finite values in [0, 1].")
 

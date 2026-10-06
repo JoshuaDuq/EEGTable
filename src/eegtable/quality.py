@@ -124,7 +124,8 @@ def cohort_quality(
     _validate_descriptor_labels(descriptors, by)
     records = []
     aligned = descriptors.reset_index(drop=True)
-    for labels, positions in aligned.groupby(list(by), sort=False, dropna=False).indices.items():
+    grouped = aligned.groupby(list(by), sort=False, dropna=False, observed=True)
+    for labels, positions in grouped.indices.items():
         labels = labels if isinstance(labels, tuple) else (labels,)
         values, coverage = table.values[positions], table.coverage[positions]
         record = dict(zip(by, labels, strict=True))

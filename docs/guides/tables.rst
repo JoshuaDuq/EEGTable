@@ -104,7 +104,7 @@ per-epoch tables into a dataset.
 Descriptor column names must be unique, nonempty strings. Invalid names raise
 before any files are written, preventing ambiguous targets when the bundle is
 read back.
-Schema 2 sidecars record which descriptor columns are text, preserving distinct
+Schema 3 sidecars record which descriptor columns are text, preserving distinct
 labels such as ``"01"`` and ``"1"`` through epoch and group dataset loading.
 Numeric descriptors retain their numerical values.
 
@@ -120,10 +120,11 @@ The functions:
 **File layout.** The filenames follow BIDS TSV and JSON sidecar conventions. The
 layout is not a validated BIDS derivative.
 
-Schema 2 sidecars include descriptor types and content checksums of the values
-and coverage files.
-For schema 2, altered values or coverage payloads, incomplete manifests, and
-unsupported schema versions raise errors. Regenerate bundles for a current,
+Schema 3 sidecars share computation specifications across columns and include
+descriptor types and content checksums of the values, coverage and optional
+support files. Schema 2 sidecars store each computation specification in full.
+For both schemas, altered payloads, incomplete manifests and unsupported schema
+versions raise errors. Regenerate bundles for a current,
 checksummed analysis. The existing reader also recognizes historical
 ``eegfeat_version`` sidecars without a schema field; those files have neither
 payload checksums nor a complete descriptor type manifest and do not provide

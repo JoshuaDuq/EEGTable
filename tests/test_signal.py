@@ -9,6 +9,7 @@ import pytest
 from eegtable.bands import BANDS_STANDARD, Band
 from eegtable.signal import BandSignal, Signal, TimeSeries, _required_filter_length
 from eegtable.spectra import Window
+from eegtable.table import ComputationSpec
 from eegtable.temporal import variance
 
 BETA = Band("beta", 13.0, 30.0)
@@ -281,6 +282,28 @@ def test_signal_shape_mismatches_raise() -> None:
         Signal.from_arrays(**{**good, "data": np.ones((2, 4))})
     with pytest.raises(ValueError, match="sfreq"):
         Signal.from_arrays(**{**good, "sfreq": 0.0})
+
+
+@pytest.mark.parametrize("container", [Signal, BandSignal])
+@pytest.mark.parametrize("constructor", ["arrays", "direct"])
+def test_time_series_reject_complex_timestamps_before_casting(container, constructor) -> None:
+    values = np.ones((1, 2, 4), dtype=complex if container is BandSignal else float)
+    arguments = {
+        "analytic" if container is BandSignal else "data": values,
+        "times": np.arange(4) / 100.0 + 0.1j,
+        "ch_names": ("C3", "C4"),
+        "sfreq": 100.0,
+        "row_ids": (("test", 0, "event"),),
+        "coverage": np.ones(values.shape),
+        "computation": ComputationSpec.create("provided"),
+    }
+    if container is BandSignal:
+        arguments["band"] = BETA
+    create = container.from_arrays if constructor == "arrays" else container
+
+    with warnings.catch_warnings(), pytest.raises(TypeError, match="times.*real"):
+        warnings.simplefilter("error", np.exceptions.ComplexWarning)
+        create(**arguments)
 
 
 @pytest.mark.parametrize("container", [Signal, BandSignal])

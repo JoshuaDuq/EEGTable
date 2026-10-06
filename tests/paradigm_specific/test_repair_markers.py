@@ -51,6 +51,39 @@ def test_splice_keeps_the_derivatives_header_and_takes_the_named_markers(tmp_pat
     assert [line.split("=", 1)[1] for line in text.splitlines() if line.startswith("Mk")] == NAMED
 
 
+def test_repair_ignores_appledouble_fixed_marker_sources(tmp_path, monkeypatch):
+    fixed_root, old_root = tmp_path / "fixed", tmp_path / "old"
+    fixed_root.mkdir()
+    old_root.mkdir()
+    name = "sub-01_task-thermalactive_run-1_eeg.vmrk"
+    vmrk(fixed_root / name, "fixed.eeg", NAMED)
+    vmrk(old_root / name, "old.eeg", GENERIC)
+    (fixed_root / f"._{name}").write_bytes(b"\x00\x05\x16\x07")
+    original_rglob = Path.rglob
+
+    def source_files(path, pattern):
+        matches = original_rglob(path, pattern)
+        if path == fixed_root:
+            return sorted(matches, key=lambda item: item.name.startswith("._"))
+        return matches
+
+    monkeypatch.setattr(Path, "rglob", source_files)
+    assert (
+        repair.main(
+            [
+                "--fixed-bids",
+                str(fixed_root),
+                "--derivatives",
+                str(old_root),
+                "--archive",
+                str(tmp_path / "archive"),
+            ]
+        )
+        == 0
+    )
+    assert repair.marker_lines(old_root / name) == NAMED
+
+
 def test_splice_refuses_when_the_generic_positions_do_not_match(tmp_path):
     fixed, old = tmp_path / "fixed.vmrk", tmp_path / "old.vmrk"
     vmrk(fixed, "fixed.eeg", NAMED)

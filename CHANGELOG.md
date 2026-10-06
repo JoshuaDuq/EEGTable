@@ -113,6 +113,16 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Spectral power, feature values, coverage, support and scientific time/frequency
+  axes reject complex inputs instead of accepting them or discarding imaginary parts.
+- Array-based cross-fitting rejects malformed targets and estimator predictions
+  before returning results, and requires fitted binary classifier classes.
+- Cohort quality and subject-level scores omit unused categorical labels instead
+  of creating empty groups or rejecting otherwise valid predictions.
+- Cropped BrainVision conversions preserve the acquisition time of the exported
+  first sample. Marker repair excludes macOS AppleDouble files from fixed sources.
+- The preprocessing TUI forwards every requested worker count to Python,
+  including negative counts supported by MNE and invalid zero counts.
 - Custom spectral kernels receive non-finite bins as NaN as documented, so
   NaN-aware reductions omit infinities while preserving input coverage.
 - Cross-fitting rejects missing or incorrectly shaped participant/run labels

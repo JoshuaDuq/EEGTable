@@ -460,6 +460,8 @@ def _validate_row_aligned(
     # each trial against another trial's nuisance values without any error.
     if len(y) != n_rows:
         raise ValueError(f"y has {len(y)} rows and X has {n_rows}.")
+    if np.asarray(y).ndim != 1 or np.iscomplexobj(y) or not np.isfinite(y).all():
+        raise ValueError("y must be a finite 1-D array of real values.")
 
     if covariates is not None and len(covariates) != n_rows:
         raise ValueError(f"covariates has {len(covariates)} rows and X has {n_rows}.")
@@ -537,10 +539,10 @@ def _validate_outer_folds(
 def _decision_scores(model: Pipeline, X: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
     if not hasattr(model, "decision_function"):
         return None
-    scores = np.asarray(model.decision_function(X), dtype=np.float64)
-    if scores.shape != (len(X),) or not np.isfinite(scores).all():
+    scores = np.asarray(model.decision_function(X))
+    if scores.shape != (len(X),) or np.iscomplexobj(scores) or not np.isfinite(scores).all():
         raise ValueError("Binary decision scores must be finite with one value per row.")
-    return scores
+    return np.asarray(scores, dtype=np.float64)
 
 
 def _cross_fit_engine(
@@ -596,7 +598,15 @@ def _cross_fit_engine(
         model = fitted.model
 
         if task == "regression":
-            y_pred = model.predict(fitted.X_test)
+            y_pred = np.asarray(model.predict(fitted.X_test))
+            if (
+                y_pred.shape != fitted.y_test.shape
+                or np.iscomplexobj(y_pred)
+                or not np.isfinite(y_pred).all()
+            ):
+                raise ValueError(
+                    f"Fold {f.index}: regression predictions must be finite and aligned."
+                )
             return FoldPrediction(
                 fold=f.index,
                 subject=f.subject,
@@ -606,27 +616,41 @@ def _cross_fit_engine(
                 best_params=fitted.best_params,
             )
 
-        y_pred = np.asarray(model.predict(fitted.X_test), dtype=np.intp)
-        raw_classes = getattr(model, "classes_", None)
-        if raw_classes is None and hasattr(model, "steps") and len(model.steps) > 0:
-            raw_classes = getattr(model.steps[-1][1], "classes_", None)
-        classes = (
-            tuple(int(c) for c in raw_classes)
-            if raw_classes is not None
-            else tuple(int(c) for c in np.unique(fitted.y_train))
-        )
+        raw_classes = np.asarray(getattr(model, "classes_", None))
+        if np.iscomplexobj(raw_classes) or not np.array_equal(raw_classes, [0, 1]):
+            raise ValueError(f"Fold {f.index}: classification requires fitted classes 0/1.")
+        y_pred = np.asarray(model.predict(fitted.X_test))
+        if (
+            y_pred.shape != fitted.y_test.shape
+            or np.iscomplexobj(y_pred)
+            or not np.isin(y_pred, raw_classes).all()
+        ):
+            raise ValueError(f"Fold {f.index}: binary predictions are required for every row.")
         y_prob: npt.NDArray[np.float64] | None = None
         if hasattr(model, "predict_proba"):
-            y_prob = np.asarray(model.predict_proba(fitted.X_test), dtype=np.float64)
+            probabilities = np.asarray(model.predict_proba(fitted.X_test))
+            if (
+                probabilities.shape != (len(fitted.X_test), 2)
+                or np.iscomplexobj(probabilities)
+                or not np.isfinite(probabilities).all()
+            ):
+                raise ValueError(
+                    f"Fold {f.index}: predictions require finite binary probabilities."
+                )
+            if np.any((probabilities < 0.0) | (probabilities > 1.0)) or not np.allclose(
+                probabilities.sum(axis=1), 1.0
+            ):
+                raise ValueError(f"Fold {f.index}: probabilities must be in [0, 1] and sum to one.")
+            y_prob = np.asarray(probabilities, dtype=np.float64)
 
         return FoldClassification(
             fold=f.index,
             subject=f.subject,
             rows=f.test,
             y_true=np.asarray(fitted.y_test, dtype=np.intp),
-            y_pred=y_pred,
+            y_pred=np.asarray(y_pred, dtype=np.intp),
             y_prob=y_prob,
-            classes=classes,
+            classes=tuple(int(c) for c in raw_classes),
             best_params=fitted.best_params,
             y_score=_decision_scores(model, fitted.X_test),
         )
