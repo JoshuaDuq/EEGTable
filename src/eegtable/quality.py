@@ -122,6 +122,16 @@ def cohort_quality(
     if not by or len(set(by)) != len(by):
         raise ValueError("by must contain unique descriptor column names.")
     _validate_descriptor_labels(descriptors, by)
+    summary_fields = {
+        "n_rows",
+        "n_cells",
+        "missing_fraction",
+        "mean_coverage",
+        *(f"flag_{name}_fraction" for name in table.flags),
+    }
+    clashes = sorted(set(by) & summary_fields)
+    if clashes:
+        raise ValueError(f"Grouping labels {clashes} collide with summary fields; rename them.")
     records = []
     aligned = descriptors.reset_index(drop=True)
     grouped = aligned.groupby(list(by), sort=False, dropna=False, observed=True)

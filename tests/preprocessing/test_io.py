@@ -25,8 +25,8 @@ def test_export_keeps_float_metadata(raw, tmp_path):
     from eegtable.preprocessing.config import EventEpochSettings, EventSettings
     from eegtable.preprocessing.io import write_result
 
-    # MNE stores epoch metadata as JSON at 10 significant digits; ordinary reaction
-    # times have more, and that documented rounding must not fail the export.
+    # MNE stores epoch metadata as JSON at 10 decimal places; this rounding is
+    # small relative to ordinary reaction times and must not fail the export.
     trials = tmp_path / "trials.tsv"
     pd.DataFrame({"rt": np.linspace(0.2, 0.9, 5) + 1e-11 * np.pi}).to_csv(
         trials, sep="\t", index=False
@@ -38,3 +38,18 @@ def test_export_keeps_float_metadata(raw, tmp_path):
     write_result(result, OutputSettings(tmp_path / "out", "subject"))
     restored = mne.read_epochs(tmp_path / "out" / "subject_epo.fif", preload=True, proj=False)
     np.testing.assert_allclose(restored.metadata["rt"], result.epochs.metadata["rt"], rtol=1e-9)
+
+
+def test_export_names_metadata_that_native_fif_cannot_preserve(raw, tmp_path):
+    import pandas as pd
+
+    from eegtable.preprocessing.io import write_result
+
+    result = preprocess(raw, ProcessingSettings(FixedEpochSettings(2)))
+    result.epochs.metadata = pd.DataFrame(
+        {"amplitude": np.linspace(1.1e-12, 2.2e-12, len(result.epochs))}
+    )
+    output = OutputSettings(tmp_path, "subject")
+    with pytest.raises(ValueError, match="metadata.*precision.*rescale"):
+        write_result(result, output)
+    assert not (tmp_path / "subject_preprocessing.json").exists()

@@ -85,10 +85,16 @@ def write_result(
         if restored.info["custom_ref_applied"] != epochs.info["custom_ref_applied"]:
             raise ValueError("export: reference changed during native serialization")
         if epochs.metadata is not None:
-            # MNE stores metadata as JSON at 10 significant digits; only that rounding may differ.
-            pd.testing.assert_frame_equal(
-                restored.metadata, epochs.metadata, check_exact=False, rtol=1e-9, atol=0
-            )
+            # Native JSON uses 10 decimal places; refuse rounding that materially changes values.
+            try:
+                pd.testing.assert_frame_equal(
+                    restored.metadata, epochs.metadata, check_exact=False, rtol=1e-9, atol=0
+                )
+            except AssertionError as exc:
+                raise ValueError(
+                    "export: epoch metadata cannot be preserved at native FIF JSON precision; "
+                    f"rescale numeric columns or store exact values as strings. {exc}"
+                ) from exc
         result.events.to_csv(staged / f"{output.name}_events.tsv", sep="\t", index=False)
         if result.repairs is not None:
             result.repairs.to_csv(staged / f"{output.name}_repairs.tsv", sep="\t", index=False)

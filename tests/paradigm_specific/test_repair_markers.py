@@ -190,6 +190,23 @@ def test_bundle_repair_renames_everywhere_and_rehashes(tmp_path):
         assert file_hash(tmp_path / name) == digest
 
 
+def test_bundle_repair_preserves_unrelated_ledger_text(tmp_path):
+    stem = bundle(tmp_path)
+    ledger = Path(f"{stem}_events.tsv")
+    frame = pd.read_csv(ledger, sep="\t", dtype=str, keep_default_na=False)
+    frame["bids_subject"] = ["0001", "0001"]
+    frame["run"] = ["01", "01"]
+    frame["trial_type"] = ["001", "002"]
+    frame["description"] = ["NA", ""]
+    frame.to_csv(ledger, sep="\t", index=False)
+
+    repair.repair_bundle(Path(f"{stem}_preprocessing.json"))
+
+    restored = pd.read_csv(ledger, sep="\t", dtype=str, keep_default_na=False)
+    pd.testing.assert_frame_equal(restored.drop(columns="label"), frame.drop(columns="label"))
+    assert restored["label"].tolist() == ["Trig_therm/T  1"] * 2
+
+
 # The 2026-09-22 repair left the old identity in the FIF, so eegtable run refused every bundle.
 def test_bundle_repair_restamps_the_epochs_identity(tmp_path):
     stem = bundle(tmp_path)

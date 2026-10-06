@@ -10,14 +10,17 @@ import numpy as np
 import pytest
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.compose import ColumnTransformer
+from sklearn.decomposition import PCA
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import make_scorer
+from sklearn.neighbors import KNeighborsRegressor
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
 from eegtable.model.estimators import ridge_pipeline
+from eegtable.model.execution import seeded
 from eegtable.model.importance import (
     Importance,
     aggregate_by,
@@ -35,6 +38,34 @@ PIPE = Pipeline([("regressor", DummyRegressor(strategy="mean"))])
 needs_shap = pytest.mark.skipif(
     importlib.util.find_spec("shap") is None, reason="shap not installed"
 )
+
+
+@pytest.fixture
+def kernel_shap_inputs():
+    values = np.random.default_rng(5).normal(size=(25, 10))
+    target = values[:, 0] * values[:, 1] + values[:, 2] ** 2
+    model = Pipeline([("regressor", KNeighborsRegressor(n_neighbors=4))]).fit(values, target)
+    return model, values[:3], tuple(f"f{i}" for i in range(10))
+
+
+@needs_shap
+def test_kernel_shap_seed_controls_coalition_sampling(kernel_shap_inputs) -> None:
+    model, values, names = kernel_shap_inputs
+    with seeded(1, 0):
+        first = shap_importance(model, values, names, seed=42)
+    with seeded(100, 0):
+        second = shap_importance(model, values, names, seed=42)
+    np.testing.assert_array_equal(first.values, second.values)
+
+
+@needs_shap
+def test_kernel_shap_preserves_the_callers_random_stream(kernel_shap_inputs) -> None:
+    model, values, names = kernel_shap_inputs
+    with seeded(100, 0):
+        expected = np.random.random()
+    with seeded(100, 0):
+        shap_importance(model, values, names, seed=42)
+        assert np.random.random() == expected
 
 
 def test_shap_binary_tree_output_keeps_class_and_feature_axes_separate() -> None:
@@ -356,6 +387,34 @@ def test_shap_importance_refuses_columns_that_are_not_input_features() -> None:
     pipe = ridge_pipeline(PreprocessingConfig(pca_enabled=True), seed=0).fit(X, X[:, 0])
     with _shap_stand_in(), pytest.raises(ValueError, match="input feature"):
         shap_importance(pipe, X, ["f0", "f1", "f2"])
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_shap_refuses_pca_even_when_component_names_match_input_names(nested) -> None:
+    values = np.random.default_rng(12).normal(size=(40, 3))
+    transform = PCA(n_components=2)
+    if nested:
+        transform = ColumnTransformer(
+            [("pca", transform, [0, 1, 2])], verbose_feature_names_out=False
+        )
+    model = Pipeline([("transform", transform), ("model", Ridge())]).fit(values, values[:, 0])
+    with _shap_stand_in(), pytest.raises(ValueError, match="input feature"):
+        shap_importance(model, values[:5], ["pca0", "pca1", "pca2"])
+
+
+def test_shap_preprocessing_preserves_caller_inputs() -> None:
+    values = np.random.default_rng(12).normal(size=(40, 3)) * [2, 3, 4] + 10
+    target = values @ np.array([2, -1, 1])
+    results = []
+    for copy in (True, False):
+        model = Pipeline([("scale", StandardScaler(copy=copy)), ("model", Ridge())]).fit(
+            values[:30].copy(), target[:30]
+        )
+        held_out = values[30:].copy()
+        with _shap_stand_in():
+            results.append(shap_importance(model, held_out, ["a", "b", "c"]))
+        np.testing.assert_array_equal(held_out, values[30:])
+    np.testing.assert_allclose(results[0].values, results[1].values)
 
 
 def test_shap_importance_refuses_a_transformer_with_unknown_column_mapping() -> None:

@@ -91,6 +91,22 @@ def test_cohort_report_counts_cells_by_condition(alpha_beta_table):
     assert feature_quality(table)["n_finite"].tolist() == [2, 1]
 
 
+@pytest.mark.parametrize(
+    "column",
+    ["n_rows", "n_cells", "missing_fraction", "mean_coverage", "flag_artifact_fraction"],
+)
+def test_cohort_report_rejects_group_keys_that_summary_fields_would_overwrite(
+    alpha_beta_table, column
+):
+    from eegtable.quality import cohort_quality
+
+    table = replace(
+        alpha_beta_table, flags={"artifact": np.zeros_like(alpha_beta_table.values, dtype=bool)}
+    )
+    with pytest.raises(ValueError, match="summary.*rename"):
+        cohort_quality(table, pd.DataFrame({column: [5, 9]}), by=(column,))
+
+
 def test_cohort_report_omits_unused_categories(alpha_beta_table):
     from eegtable.quality import cohort_quality
 

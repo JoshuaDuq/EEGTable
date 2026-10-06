@@ -165,7 +165,9 @@ def resolve_events(
 
 
 def _bids_annotation_labels(sidecar: pd.DataFrame) -> pd.Series[Any]:
-    if "trial_type" not in sidecar:
+    if "trial_type" not in sidecar or (
+        sidecar["trial_type"].isna().all() and "value" in sidecar and sidecar["value"].notna().any()
+    ):
         return sidecar["value"].fillna("na").astype(str)
     labels = sidecar["trial_type"].copy()
     if "value" in sidecar:

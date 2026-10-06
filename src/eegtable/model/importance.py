@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 from sklearn.base import is_classifier
 from sklearn.compose import ColumnTransformer
+from sklearn.decomposition import PCA
 from sklearn.inspection import permutation_importance as sklearn_perm_importance
 from sklearn.metrics import check_scoring
 from sklearn.pipeline import FeatureUnion, Pipeline
@@ -25,7 +26,7 @@ from eegtable.model.crossfit import (
     _validate_residualize_within,
     _validate_row_aligned,
 )
-from eegtable.model.execution import run_folds
+from eegtable.model.execution import run_folds, seeded
 from eegtable.model.splits import Fold, InnerSplit
 from eegtable.model.transformers import Deconfounder, transform_feature_names
 from eegtable.table import FeatureMeta
@@ -178,6 +179,11 @@ def permutation_importance(
 
 
 def _validate_shap_preprocessing(preprocessor: object) -> None:
+    if isinstance(preprocessor, PCA):
+        raise ValueError(
+            "PCA mixes input features, so original-input SHAP attribution "
+            "cannot be recovered from the components."
+        )
     if isinstance(preprocessor, Deconfounder) and preprocessor.n_covariates > 0:
         raise ValueError(
             "Deconfounder mixes features and covariates, so original-input SHAP "
@@ -222,7 +228,7 @@ def shap_importance(
     feature_names : sequence of str
         Unique name of each column of ``X``.
     seed : int, default 42
-        Seed for drawing the kernel explainer's background rows.
+        Seed for drawing the kernel explainer's background rows and feature coalitions.
 
     Returns
     -------
@@ -235,7 +241,7 @@ def shap_importance(
     require_shap()
     import shap
 
-    X_arr = np.asarray(X, dtype=np.float64)
+    X_arr = np.array(X, dtype=np.float64, copy=True)
     steps = list(model.steps)
     _, final_estimator = steps[-1]
     X_trans = X_arr
@@ -269,8 +275,9 @@ def shap_importance(
         bg_size = min(100, len(X_trans))
         bg_indices = rng.choice(len(X_trans), bg_size, replace=False)
         background = X_trans[bg_indices]
-        explainer = shap.KernelExplainer(predict_fn, background)
-        shap_values = explainer.shap_values(X_trans, nsamples=100)
+        with seeded(seed, 0):
+            explainer = shap.KernelExplainer(predict_fn, background)
+            shap_values = explainer.shap_values(X_trans, nsamples=100)
 
     shap_values = np.asarray(shap_values, dtype=float)
     if shap_values.ndim == 3:

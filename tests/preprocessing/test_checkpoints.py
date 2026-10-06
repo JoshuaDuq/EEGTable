@@ -1,4 +1,5 @@
 from dataclasses import replace
+from datetime import date
 
 import pytest
 
@@ -47,6 +48,18 @@ def test_source_description_change_requires_explicit_reset(raw, tmp_path):
         raw.info["description"]
     )
     raw.info["description"] = "Corrected acquisition notes"
+    raw.save(workflow.config.input.path, fmt="double", overwrite=True)
+
+    with pytest.raises(ValueError, match="reset"):
+        run_step(workflow, "load")
+
+
+@pytest.mark.parametrize("field,value", [("his_id", "subject-B"), ("birthday", date(2001, 2, 3))])
+def test_source_subject_change_requires_explicit_reset(raw, tmp_path, field, value):
+    raw.info["subject_info"] = {"his_id": "subject-A", "birthday": date(2000, 1, 2)}
+    workflow = open_workflow(config_for(raw, tmp_path))
+    run_step(workflow, "load")
+    raw.info["subject_info"][field] = value
     raw.save(workflow.config.input.path, fmt="double", overwrite=True)
 
     with pytest.raises(ValueError, match="reset"):

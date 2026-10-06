@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, is_dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,8 @@ def serializable(value: Any) -> Any:
         return serializable(asdict(value))
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, date):
+        return value.isoformat()
     if isinstance(value, np.ndarray):
         return serializable(value.tolist())
     if isinstance(value, np.generic):
@@ -74,6 +77,7 @@ def fingerprint(inst: Any) -> str:
                 "highpass": inst.info["highpass"],
                 "lowpass": inst.info["lowpass"],
                 "description": inst.info["description"],
+                "subject_info": inst.info["subject_info"],
             }
         ).encode()
     )

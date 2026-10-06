@@ -107,7 +107,7 @@ def repair_bundle(manifest_path: Path) -> None:
         rf"\g<1>{identity(manifest['provenance'])}", epochs.info["description"] or ""
     )
     ledger = folder / f"{stem}_events.tsv"
-    frame = pd.read_csv(ledger, sep="\t")
+    frame = pd.read_csv(ledger, sep="\t", dtype=str, keep_default_na=False)
     frame["label"] = frame["label"].map(rename)
     recipe = folder / f"{stem}_recipe.yaml"
     settings = rename_labels(read_yaml(recipe))

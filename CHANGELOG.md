@@ -9,9 +9,9 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
-- Preprocessing source fingerprints include acquisition descriptions, and enabled
-  scientific stages include their optional package versions. Existing checkpoint
-  trees require resetting the load stage before reuse.
+- Preprocessing source fingerprints include acquisition descriptions and subject
+  information, and enabled scientific stages include their optional package
+  versions. Existing checkpoint trees require resetting the load stage before reuse.
 - ICLabel explicitly uses ONNX Runtime, already required by `preprocessing-auto`,
   so installing PyTorch cannot silently change its inference backend.
 - Welch and multitaper constructors and runner features record sampling rate and
@@ -126,6 +126,17 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- SHAP preprocessing preserves caller-owned feature arrays and refuses PCA
+  attribution even when component names match input feature names. Kernel SHAP
+  seeds coalition sampling and preserves the caller's random streams.
+- Cohort quality summaries reject grouping labels that collide with summary
+  fields instead of overwriting the labels with counts or quality statistics.
+- BIDS event alignment follows MNE-BIDS value labels when `trial_type` is entirely
+  missing, retaining the correct metadata when unselected events share a sample.
+- Preprocessing exports report metadata lost to native FIF JSON precision as an
+  actionable error without publishing an incomplete bundle or accepting lost values.
+- Thermal-pain marker repair preserves unrelated ledger text, including leading
+  zeros in BIDS identifiers and numeric-looking trial labels.
 - Signals combined into one feature table and PAC operands require exact time
   samples and sampling frequencies; relative tolerances could accept shifted data.
 - Model tuning, classification responses, permutation importance and prediction

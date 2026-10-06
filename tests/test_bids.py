@@ -293,10 +293,13 @@ def test_simultaneous_unselected_bids_event_does_not_replace_selected_metadata(d
     assert list(result.epochs.metadata["reaction_time"]) == [0.2, 0.4]
 
 
-def test_simultaneous_value_only_bids_events_keep_selected_metadata(dataset):
+@pytest.mark.parametrize("trial_type", ["absent", "missing"])
+def test_simultaneous_value_only_bids_events_keep_selected_metadata(dataset, trial_type):
     _, paths = dataset
     events_path = paths[0].find_matching_sidecar(suffix="events", extension=".tsv")
     events = pd.read_csv(events_path, sep="\t").drop(columns="trial_type")
+    if trial_type == "missing":
+        events["trial_type"] = "n/a"
     cue = events.iloc[:1].copy()
     cue["value"] = 3
     cue["reaction_time"] = 9.0
