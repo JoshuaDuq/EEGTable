@@ -328,7 +328,9 @@ class Spectra:
                 # The grid and the sampling rate are on the object, and recording
                 # them means two runs that differ in resolution, range or rate
                 # cannot land on the same column even if the declaration matches.
-                **_axis_identity(np.asarray(spectrum.freqs, dtype=float), spectrum),
+                **_axis_identity(
+                    np.asarray(spectrum.freqs, dtype=float), getattr(spectrum, "sfreq", None)
+                ),
             ),
             passband=_passband(spectrum),
         )
@@ -544,6 +546,7 @@ class Spectra:
             ch_names=tuple(selected.ch_names),
             method="welch",
             settings=settings,
+            sfreq=sfreq,
             row_ids=epoch_row_ids(selected, recording, data.shape[0]),
             passband=_passband(selected),
         )
@@ -620,6 +623,7 @@ class Spectra:
             ch_names=tuple(selected.ch_names),
             method="multitaper",
             settings=settings,
+            sfreq=sfreq,
             row_ids=epoch_row_ids(selected, recording, data.shape[0]),
             passband=_passband(selected),
         )
@@ -778,15 +782,14 @@ def _check_declaration(
         )
 
 
-def _axis_identity(freqs: npt.NDArray[np.float64], spectrum: Any) -> dict[str, object]:
-    """Exact identity of a frequency axis, in four fields rather than the whole grid.
+def _axis_identity(freqs: npt.NDArray[np.float64], sfreq: float | None) -> dict[str, object]:
+    """Compact identity of the sampling rate and exact frequency axis.
 
     The axis itself can be a thousand numbers and would be repeated in every
     column's provenance and in the sidecar. The digest is the same identity at
     constant size; the three readable fields beside it are so a human reading the
     provenance can still see what grid was used.
     """
-    sfreq = getattr(spectrum, "sfreq", None)
     return {
         "n_frequencies": int(freqs.size),
         "frequency_first_hz": float(freqs[0]) if freqs.size else None,
@@ -1005,6 +1008,7 @@ def psd_spectra(
     ch_names: tuple[str, ...],
     method: str,
     settings: Mapping[str, object],
+    sfreq: float,
     row_ids: tuple[RowId, ...],
     passband: tuple[float | None, float | None] | None,
 ) -> Spectra:
@@ -1032,6 +1036,7 @@ def psd_spectra(
             method,
             normalization="full" if method == "multitaper" else "density",
             settings=dict(settings),
+            **_axis_identity(freqs, sfreq),
         ),
         passband=passband,
     )

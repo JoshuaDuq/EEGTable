@@ -110,6 +110,22 @@ def test_mismatched_trial_labels_raise() -> None:
         itpc([signal], windows=[WINDOW], trials=["a", "b"])
 
 
+@pytest.mark.parametrize("measure", [itpc, ppc])
+@pytest.mark.parametrize("trials", [[None, None], [1, 1], ["", "locked"], ["locked", 1]])
+def test_phase_measures_require_nonempty_string_trial_identities(measure, trials) -> None:
+    signal = _from_phase(np.zeros((2, 1, 201)))
+    with pytest.raises(ValueError, match="non-empty strings"):
+        measure([signal], windows=[WINDOW], trials=trials)
+
+
+@pytest.mark.parametrize("measure", [itpc, ppc])
+@pytest.mark.parametrize("minimum", [2.5, np.nan, np.inf])
+def test_phase_measures_require_integer_minimum_trial_counts(measure, minimum) -> None:
+    signal = _from_phase(np.zeros((3, 1, 201)))
+    with pytest.raises(ValueError, match="integer.*at least 2"):
+        measure([signal], windows=[WINDOW], min_valid_trials=minimum)
+
+
 def test_coherence_is_bounded() -> None:
     rng = np.random.RandomState(5)
     table = itpc(

@@ -244,6 +244,15 @@ scikit-learn's `nested cross-validation example
 <https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html>`_
 and `grouped split documentation
 <https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data>`_.
+
+Grouped fitting rejects pipeline components with their own ``cv`` parameter,
+including ``RidgeCV``, ``ElasticNetCV``, stacking, and ``RFECV``. Their internal
+splits do not receive this workflow's group labels, and preprocessing outside
+the component would be fitted before its validation split. Use an estimator
+without internal CV and choose its parameters through the grouped inner grid.
+The same restriction applies to grouped prediction intervals, including any
+preprocessing retained by the quantile method.
+
 Group separation does not by itself establish independence or a valid null.
 
 .. code-block:: python

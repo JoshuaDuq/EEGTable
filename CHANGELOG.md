@@ -9,6 +9,9 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
+- Welch and multitaper constructors and runner features record sampling rate and
+  the exact frequency grid in their column identities, as `from_spectrum` does.
+  Recompute existing PSD tables before combining them with new results.
 - Normalized custom spectral features record units on their resulting scale
   (`log10(unit)`, `log10 ratio`, `dB`, or `%`). Their corrected units change
   column identities; recompute those custom tables before combining them.
@@ -118,6 +121,18 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Model feature selection preserves time-window support, so minimum-support
+  exclusions apply to the selected columns. Model designs and saved bundles
+  retain support, and input support files are hashed and verified before publication.
+- Covariate imputation refuses columns without finite training values instead
+  of dropping them and shifting the columns used for deconfounding. Missingness
+  checks also accept `ColumnTransformer` slice selectors.
+- Grouped modeling and prediction intervals reject estimators with internal
+  cross-validation that cannot receive groups and fit preprocessing per split.
+- Trial grouping refuses missing or non-string identities, ITPC/PPC require
+  integer minimum trial counts, and microstate templates reject complex values.
+- Preprocessing refuses unknown or unused review decisions and validates
+  resampling against MNE's independently rounded epoch endpoints.
 - Split FIF continuations are discovered as parts of one recording, preventing
   repeated epochs from being counted under separate recording identities.
 - Welch and multitaper constructors refuse invalid frequency bounds and complex

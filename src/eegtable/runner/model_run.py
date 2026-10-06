@@ -20,7 +20,7 @@ from sklearn.model_selection import ParameterGrid
 from sklearn.pipeline import Pipeline
 
 from eegtable.group import GroupDesign, build_group_design, read_group_dataset
-from eegtable.io import read_dataset, write_table
+from eegtable.io import _read_sidecar, read_dataset, write_table
 from eegtable.model.aggregate import subject_level_r, subject_r_scorer
 from eegtable.model.crossfit import (
     FoldClassification,
@@ -272,7 +272,10 @@ def _fold_evidence(
 def _input_hashes(recipe: ModelRecipe) -> dict[str, str]:
     paths = [recipe.path]
     for path in recipe.inputs.paths:
+        sidecar = _read_sidecar(path)
         paths.extend((path, path.with_suffix(".json"), path.with_name(path.stem + "_coverage.tsv")))
+        if sidecar.get("support") is not None:
+            paths.append(path.with_name(sidecar["support"]))
     if recipe.inputs.targets is not None:
         paths.append(recipe.inputs.targets)
     return {str(path): file_hash(path) for path in paths}
@@ -322,6 +325,7 @@ def _prepare(recipe: ModelRecipe) -> _Prepared:
             if isinstance(design, GroupDesign)
             else None
         ),
+        support=design.support,
     )
     return _Prepared(
         design,

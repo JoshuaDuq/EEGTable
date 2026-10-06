@@ -81,8 +81,12 @@ def validate_processing(raw: Any, settings: ProcessingSettings) -> None:
     tmin, tmax = analysis_bounds(settings.epochs, sfreq)
     if settings.sampling is not None:
         padding = settings.epochs.padding
-        n_times = round((tmax - tmin + 2 * padding) * sfreq) + 1
-        validate_sampling(sfreq, settings.sampling, settings.filter, tmin - padding, n_times)
+        # MNE rounds each endpoint independently when constructing the epoch grid.
+        first = round((tmin - padding) * sfreq)
+        last = round((tmax + padding) * sfreq)
+        validate_sampling(
+            sfreq, settings.sampling, settings.filter, first / sfreq, last - first + 1
+        )
 
 
 def validate_source_destinations(raw: Any, config: PreprocessingConfig) -> None:

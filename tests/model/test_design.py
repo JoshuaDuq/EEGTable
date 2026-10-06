@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from eegtable.model.design import Selection, build_design, harmonize_fold, select
+from eegtable.quality import QualityPolicy
 from eegtable.table import FeatureMeta, FeatureTable
 
 
@@ -59,6 +60,26 @@ def test_unmatched_rows_are_counted_on_both_sides_and_named(
 def test_selecting_a_band_keeps_only_that_band(alpha_beta_table: FeatureTable) -> None:
     kept = select(alpha_beta_table, Selection(band=("alpha",)))
     assert {m.band.name for m in kept.meta if m.band is not None} == {"alpha"}
+
+
+def test_selected_features_retain_support_for_quality_exclusions(alpha_beta_table) -> None:
+    table = replace(alpha_beta_table, support=np.array([[0.2, 1.0], [0.9, 1.0]]))
+    targets = pd.DataFrame(table.row_ids, columns=["recording", "epoch", "event"])
+    targets["subject_id"] = targets.recording
+    targets["pain"] = [1.0, 9.0]
+
+    design = build_design(
+        table,
+        targets,
+        target="pain",
+        selection=Selection(band=("alpha",)),
+        quality=QualityPolicy(min_support=0.5),
+    )
+
+    assert np.isnan(design.X[0, 0])
+    assert design.X[1, 0] == table.values[1, 0]
+    np.testing.assert_array_equal(design.support, [[0.2], [0.9]])
+    assert design.quality_ledger.reason.tolist() == ["low_support"]
 
 
 def test_an_empty_field_places_no_restriction(alpha_beta_table: FeatureTable) -> None:

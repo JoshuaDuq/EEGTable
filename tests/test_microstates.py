@@ -485,6 +485,34 @@ def test_reference_templates_are_owned_and_spatially_validated() -> None:
         )
 
 
+def test_reference_templates_refuse_complex_topographies() -> None:
+    from eegtable import microstates
+
+    templates = np.array([[1.0, -1.0, 0.0], [1.0, 1.0, -2.0]]) + 1j
+    with pytest.raises(TypeError, match="real"):
+        microstates.MicrostateModel.from_templates(
+            templates,
+            ch_names=("F3", "F4", "Cz"),
+            labels=("A", "B"),
+            reference_name="external-study",
+        )
+
+
+def test_direct_microstate_models_refuse_complex_topographies() -> None:
+    from eegtable import microstates
+    from eegtable.table import ComputationSpec
+
+    templates = np.array([[1.0, -1.0, 0.0], [1.0, 1.0, -2.0]])
+    templates /= np.linalg.norm(templates, axis=1, keepdims=True)
+    with pytest.raises(TypeError, match="real"):
+        microstates.MicrostateModel(
+            templates + 1j,
+            ch_names=("F3", "F4", "Cz"),
+            labels=("A", "B"),
+            computation=ComputationSpec.create("provided_microstate_templates"),
+        )
+
+
 @requires_sklearn
 def test_segmentation_rejects_negative_peak_separation() -> None:
     signal, _ = _planted()

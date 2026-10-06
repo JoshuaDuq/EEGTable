@@ -24,6 +24,20 @@ from eegtable.preprocessing.review import save_review
 from .test_execution import config_for
 
 
+@pytest.mark.parametrize(
+    "decisions,match",
+    [
+        ({"review-epcohs": {"exclude": [0]}}, "unknown field"),
+        ({"review-artifact": {"fit_id": "unused", "exclude": []}}, "artifact"),
+        ({"review-raw": {"bads": [], "spans": [], "exclude": [0]}}, "unknown field"),
+        ({"review-epochs": {"exclude": [], "bads": ["C3"]}}, "unknown field"),
+    ],
+)
+def test_preprocess_rejects_unused_review_decisions(raw, decisions, match):
+    with pytest.raises(ValueError, match=match):
+        preprocess(raw, ProcessingSettings(FixedEpochSettings(2)), decisions=decisions)
+
+
 def test_no_stage_matches_direct_mne(raw):
     events = EventSettings("stim", {"stimulus": 1}, stim_channel="STI", shortest_event=1)
     result = preprocess(raw, ProcessingSettings(EventEpochSettings(events, -0.2, 0.8)))

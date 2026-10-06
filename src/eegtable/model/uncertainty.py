@@ -12,7 +12,7 @@ from sklearn.model_selection import GroupShuffleSplit, KFold, LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
 
 from eegtable.model.splits import _GroupKFold
-from eegtable.model.tuning import _validate_boosting_early_stopping, fit_untuned
+from eegtable.model.tuning import _validate_grouped_estimator, fit_untuned
 
 __all__ = [
     "Method",
@@ -355,8 +355,9 @@ def prediction_intervals(
     if X_te.shape[1] != X_tr.shape[1]:
         raise ValueError(f"X_test has {X_te.shape[1]} columns and X_train has {X_tr.shape[1]}.")
 
-    if groups is not None and method in ("split", "cv_plus"):
-        _validate_boosting_early_stopping(model)
+    if groups is not None:
+        grouped_model = _quantile_model(model, alpha / 2.0, seed) if method == "quantile" else model
+        _validate_grouped_estimator(grouped_model)
 
     # Scores remain one per trial, even with group-disjoint splits.
     cal_unit: Literal["trial", "subject"] = "trial"

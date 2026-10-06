@@ -106,6 +106,12 @@ def _validate_grouped_estimator(pipeline: Pipeline) -> None:
             "because calibration groups are not routed through this workflow."
         )
     for component in components:
+        if isinstance(component, BaseEstimator) and "cv" in component.get_params(deep=False):
+            raise ValueError(
+                f"{type(component).__name__} uses internal cross-validation, whose groups "
+                "and fold-fitted preprocessing are not routed through this workflow. "
+                "Use an estimator without internal CV and tune it through the grouped grid."
+            )
         if (
             isinstance(component, (SVC, NuSVC))
             and isinstance(component.probability, (bool, np.bool_))
@@ -151,9 +157,11 @@ def tune(
 
     Runs scikit-learn's ``GridSearchCV`` on splits from :func:`inner_cv` and refits
     the best candidate on all of ``X_train``. Every candidate is checked against
-    the grouped-fitting restrictions first. A failing candidate or a non-finite
-    inner score raises :class:`FoldFitError`. The cross-fitting functions call
-    this; call it directly only in a fold loop of your own.
+    the grouped-fitting restrictions first. Components with their own ``cv``
+    parameter are refused because their split groups and preprocessing are not
+    routed here. A failing candidate or a non-finite inner score raises
+    :class:`FoldFitError`. The cross-fitting functions call this; call it directly
+    only in a fold loop of your own.
 
     Parameters
     ----------

@@ -16,6 +16,17 @@ from eegtable.spectra import Window
 from eegtable.table import ComputationSpec, FeatureTable
 
 
+def _validate_minimum_trials(min_valid_trials: int) -> None:
+    if (
+        isinstance(min_valid_trials, bool)
+        or not isinstance(min_valid_trials, (int, np.integer))
+        or min_valid_trials < 2
+    ):
+        raise ValueError(
+            f"min_valid_trials must be an integer of at least 2, got {min_valid_trials!r}."
+        )
+
+
 def itpc(
     signals: Sequence[BandSignal],
     *,
@@ -72,8 +83,7 @@ def itpc(
     FeatureTable
         Coherence in ``[0, 1]``, with one row per trial group.
     """
-    if min_valid_trials < 2:
-        raise ValueError(f"min_valid_trials must be at least 2, got {min_valid_trials}.")
+    _validate_minimum_trials(min_valid_trials)
     n_epochs = signals[0].n_epochs if signals else 0
     row_groups, labels = _resolve_rows(trials, n_epochs)
 
@@ -149,8 +159,7 @@ def ppc(
     FeatureTable
         Consistency with one row per trial group, carrying ``row_labels``.
     """
-    if min_valid_trials < 2:
-        raise ValueError(f"min_valid_trials must be at least 2, got {min_valid_trials}.")
+    _validate_minimum_trials(min_valid_trials)
     n_epochs = signals[0].n_epochs if signals else 0
     row_groups, labels = _resolve_rows(trials, n_epochs)
 
@@ -625,14 +634,16 @@ def _resolve_rows(
 ) -> tuple[npt.NDArray[np.int_], tuple[str, ...]]:
     if trials is None:
         return np.zeros(n_epochs, dtype=int), ("all",)
-    labels = np.asarray(trials)
+    labels = np.asarray(trials, dtype=object)
     if labels.shape != (n_epochs,):
         raise ValueError(
             f"trials must have one label per epoch; got {labels.shape} for {n_epochs} epochs."
         )
-    unique = tuple(str(value) for value in sorted(set(labels.tolist())))
+    if any(not isinstance(value, str) or not value for value in labels):
+        raise ValueError("trials must contain non-empty strings.")
+    unique = tuple(sorted(set(labels.tolist())))
     index = {name: position for position, name in enumerate(unique)}
-    return np.array([index[str(value)] for value in labels], dtype=int), unique
+    return np.array([index[value] for value in labels], dtype=int), unique
 
 
 def _itpc(

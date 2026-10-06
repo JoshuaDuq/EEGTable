@@ -431,8 +431,8 @@ def test_default_spectral_recipe_column_names(tmp_path) -> None:
 
     assert welch.epochs is not None and morlet.epochs is not None
     assert list(welch.epochs.to_dataframe().columns) == [
-        "eeg_band-power_alpha_global_base_raw_p0baba8bb7201",
-        "eeg_band-power_alpha_global_stim_raw_p2f519bfa8753",
+        "eeg_band-power_alpha_global_base_raw_p8d57bc020bf0",
+        "eeg_band-power_alpha_global_stim_raw_p33863f92cacb",
     ]
     assert list(morlet.epochs.to_dataframe().columns) == [
         "eeg_mean-tfr-power_alpha_global_stim_raw_pb44a1a4fa6b1"

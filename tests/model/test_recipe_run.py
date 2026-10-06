@@ -118,6 +118,66 @@ def test_model_recipe_reads_a_minimum_support(tmp_path):
     assert load(path).quality.min_support == 0.5
 
 
+@pytest.mark.parametrize("rows", ["epochs", "groups"])
+def test_model_bundle_retains_selected_support_and_excludes_unsupported_values(tmp_path, rows):
+    from eegtable.group import read_group_dataset
+    from eegtable.io import read_dataset, read_table
+
+    path, record = _recipe(tmp_path, rows=rows)
+    reader = read_dataset if rows == "epochs" else read_group_dataset
+    sources = [tmp_path / name for name in record["inputs"]["paths"]]
+    for source in sources:
+        table = read_table(source)
+        descriptors = reader([source]).targets.drop(
+            columns="epoch" if rows == "epochs" else "group"
+        )
+        support = np.full(table.values.shape, 0.9)
+        support[0, 0] = 0.25
+        write_table(replace(table, support=support), source, rows=descriptors)
+    record["selection"] = {"measure": ["signal"]}
+    record["quality"]["min_support"] = 0.5
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
+
+    load, _, run = _api()
+    result = run(load(path))
+    restored = read_table(result.output / "design_features.tsv")
+
+    assert restored.support is not None
+    expected_support = np.full((48, 1), 0.9)
+    expected_support[::12] = 0.25
+    np.testing.assert_array_equal(restored.support, expected_support)
+    np.testing.assert_array_equal(np.flatnonzero(np.isnan(restored.values[:, 0])), [0, 12, 24, 36])
+    ledger = pd.read_csv(result.output / "quality_ledger.tsv", sep="\t")
+    assert ledger.reason.tolist() == ["low_support"] * 4
+    manifest = json.loads((result.output / "manifest.json").read_text(encoding="utf-8"))
+    for source in sources:
+        support_path = source.with_name(source.stem + "_support.tsv")
+        assert str(support_path) in manifest["provenance"]["inputs"]
+
+
+def test_model_run_refuses_support_modified_during_fitting(tmp_path, monkeypatch):
+    from eegtable.io import read_dataset
+    from eegtable.runner import model_run
+
+    path, record = _recipe(tmp_path)
+    source = tmp_path / record["inputs"]["paths"][0]
+    dataset = read_dataset([source])
+    table = replace(dataset.table, support=np.full(dataset.table.values.shape, 0.9))
+    write_table(table, source, rows=dataset.targets.drop(columns="epoch"))
+    predict = model_run._predictions
+
+    def mutate_after_fitting(recipe, prepared):
+        predictions = predict(recipe, prepared)
+        source.with_name(source.stem + "_support.tsv").write_text("changed", encoding="utf-8")
+        return predictions
+
+    monkeypatch.setattr(model_run, "_predictions", mutate_after_fitting)
+    load, _, run = _api()
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        run(load(path))
+    assert not (tmp_path / "results").exists()
+
+
 @pytest.mark.parametrize(
     "change", ["unknown", "duplicate", "bool_seed", "invalid_estimator", "bad_grid"]
 )

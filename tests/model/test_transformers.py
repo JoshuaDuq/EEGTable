@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import Pipeline
 
+from eegtable.model.crossfit import cross_fit_regression
 from eegtable.model.estimators import ridge_pipeline
+from eegtable.model.splits import InnerSplit, loso_folds
 from eegtable.model.transformers import (
     Deconfounder,
     DropAllNaNColumns,
+    MissingnessThreshold,
     PreprocessingConfig,
     ReplaceInfWithNaN,
     SpatialFeatureSelector,
     VarianceThreshold,
+    _check_subject_missingness,
     transform_feature_names,
     validate_subject_missingness,
 )
@@ -27,6 +34,44 @@ def test_feature_names_follow_the_columns_through_a_covariate_pipeline() -> None
     pipe.fit(with_covariate, rng.normal(size=60))
     names = transform_feature_names(pipe.steps[:-1], ["f0", "f1", "f2", "f3", "f4", "age"])
     assert names == ["f0", "f1", "f3", "f4"]
+
+
+@pytest.mark.parametrize("deconfound", [False, True])
+def test_covariate_preprocessing_refuses_an_entirely_missing_training_column(deconfound) -> None:
+    rng = np.random.default_rng(1)
+    values = np.column_stack([rng.normal(size=(20, 4)), np.full(20, np.nan)])
+    pipeline = ridge_pipeline(PreprocessingConfig(deconfound=deconfound), seed=0, n_covariates=2)
+
+    with pytest.raises(ValueError, match="Covariate columns.*no finite training values"):
+        pipeline.fit(values, rng.normal(size=20))
+
+
+def test_cross_fitting_checks_missingness_with_slice_column_selection() -> None:
+    rng = np.random.default_rng(2)
+    values = rng.normal(size=(24, 3))
+    groups = np.repeat(["a", "b", "c"], 8).astype(object)
+    pipeline = Pipeline(
+        [
+            ("columns", ColumnTransformer([("eeg", MissingnessThreshold(), slice(0, 2))])),
+            ("regressor", Ridge()),
+        ]
+    )
+    predictions = cross_fit_regression(
+        loso_folds(groups),
+        values,
+        values[:, 0],
+        groups,
+        pipeline,
+        {},
+        inner=InnerSplit("subject", n_splits=2),
+        seed=0,
+    )
+    assert sum(len(fold.rows) for fold in predictions) == len(values)
+
+    values[groups == "a", :2] = np.nan
+    fitted = pipeline.fit(values[groups != "a"], rng.normal(size=16))
+    with pytest.raises(ValueError, match="Subject a has missingness"):
+        _check_subject_missingness(fitted, values, groups)
 
 
 def test_a_subject_above_the_missingness_limit_is_named_in_the_error() -> None:

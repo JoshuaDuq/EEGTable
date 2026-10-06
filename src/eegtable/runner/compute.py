@@ -253,6 +253,7 @@ class RecordingInputs:
             ch_names=tuple(self.epochs.ch_names),
             method=self.recipe.spectra.method,
             settings=self.recipe.spectra.used(),
+            sfreq=self.sfreq,
             row_ids=epoch_row_ids(self.epochs, self.recording, len(self.epochs)),
             passband=_passband(self.epochs),
         )

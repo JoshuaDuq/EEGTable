@@ -58,6 +58,8 @@ class GroupDesign:
         Empty: group designs carry no covariates.
     coverage : ndarray, shape (n_samples, n_features)
         Coverage of each value.
+    support : ndarray, shape (n_samples, n_features) or None
+        Time-window support of each value, or None for full support.
     flags : dict of str to ndarray of bool
         Per-cell flags, including ``quality_rejected`` when a quality policy was
         applied.
@@ -75,6 +77,7 @@ class GroupDesign:
     feature_columns: npt.NDArray[np.intp]
     covariate_columns: npt.NDArray[np.intp]
     coverage: npt.NDArray[np.float64]
+    support: npt.NDArray[np.float64] | None
     flags: dict[str, npt.NDArray[np.bool_]]
     meta: tuple[FeatureMeta, ...]
     quality_ledger: pd.DataFrame
@@ -213,6 +216,7 @@ def build_group_design(
         np.arange(len(table.meta), dtype=np.intp),
         np.empty(0, dtype=np.intp),
         table.coverage,
+        table.support,
         dict(table.flags),
         table.meta,
         ledger,

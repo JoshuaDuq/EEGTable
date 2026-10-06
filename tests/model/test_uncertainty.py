@@ -4,8 +4,9 @@ import numpy as np
 import pytest
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
+from sklearn.feature_selection import RFECV
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge, RidgeCV
 from sklearn.pipeline import Pipeline
 from sklearn.random_projection import GaussianRandomProjection
 
@@ -38,6 +39,25 @@ def test_grouped_intervals_reject_boosting_internal_validation(method):
     model = Pipeline([("hgb", HistGradientBoostingRegressor(early_stopping=True, max_iter=3))])
     with pytest.raises(ValueError, match="early_stopping=False"):
         prediction_intervals(model, values, values[:, 0], values[:4], method=method, groups=groups)
+
+
+@pytest.mark.parametrize("method", ["split", "cv_plus"])
+def test_grouped_intervals_reject_estimators_with_internal_cv(method):
+    values = np.random.default_rng(31).normal(size=(40, 3))
+    groups = np.tile(["a", "b", "c", "d"], 10).astype(object)
+    model = Pipeline([("regressor", RidgeCV())])
+    with pytest.raises(ValueError, match="internal cross-validation"):
+        prediction_intervals(model, values, values[:, 0], values[:4], method=method, groups=groups)
+
+
+def test_grouped_quantile_intervals_reject_preprocessing_with_internal_cv():
+    values = np.random.default_rng(31).normal(size=(40, 3))
+    groups = np.tile(["a", "b", "c", "d"], 10).astype(object)
+    model = Pipeline([("selection", RFECV(Ridge(), cv=2)), ("regressor", Ridge())])
+    with pytest.raises(ValueError, match="internal cross-validation"):
+        prediction_intervals(
+            model, values, values[:, 0], values[:4], method="quantile", groups=groups
+        )
 
 
 def test_grouped_quantile_intervals_validate_the_replacement_estimator():

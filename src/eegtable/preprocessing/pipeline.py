@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ._validation import mapping
 from .artifacts import (
     ArtifactModel,
     ReviewedArtifact,
@@ -238,7 +239,12 @@ def _acquisition(state: StageData) -> dict[str, int]:
 def _require_decision(stage: str, decision: Any) -> dict[str, Any]:
     if decision is None:
         raise ValueError(f"{stage}: explicit decision required")
-    return dict(decision)
+    fields = {
+        "review-raw": {"bads", "spans"},
+        "review-artifact": {"fit_id", "exclude", "include", "apply"},
+        "review-epochs": {"exclude"},
+    }
+    return dict(mapping(decision, stage, fields[stage]))
 
 
 def _stage_annotate(
@@ -583,7 +589,13 @@ def preprocess(
     PreprocessingResult
     """
     # Same catalog as the checkpointed path; a review stage runs only with its decision.
-    reviews = {} if decisions is None else decisions
+    reviews = (
+        {}
+        if decisions is None
+        else mapping(decisions, "decisions", {"review-raw", "review-artifact", "review-epochs"})
+    )
+    if "review-artifact" in reviews and settings.artifact is None:
+        raise ValueError("decisions.review-artifact: artifact correction is not configured")
     workflow = WorkflowSettings(
         raw_review="required" if "review-raw" in reviews else "disabled",
         epoch_review="required" if "review-epochs" in reviews else "disabled",

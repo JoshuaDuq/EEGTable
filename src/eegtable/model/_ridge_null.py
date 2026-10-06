@@ -39,6 +39,7 @@ from eegtable.model.transformers import (
     MissingnessThreshold,
     ReplaceInfWithNaN,
     VarianceThreshold,
+    _CovariateImputer,
 )
 from eegtable.model.tuning import _assign_random_state
 
@@ -49,6 +50,7 @@ _LABEL_FREE: tuple[type, ...] = (
     MissingnessThreshold,
     VarianceThreshold,
     Deconfounder,
+    _CovariateImputer,
     SimpleImputer,
     StandardScaler,
     PCA,

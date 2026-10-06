@@ -1,5 +1,6 @@
 """Spectra computed from epochs in one call, recording their own settings."""
 
+import mne
 import numpy as np
 import pytest
 
@@ -38,6 +39,33 @@ def test_a_psd_constructor_names_its_columns_as_the_runner_does(method, settings
     assert runner is not None
     assert api.names == runner.names
     np.testing.assert_allclose(api.values, runner.values, rtol=1e-12)
+
+
+@pytest.mark.parametrize("method", ["welch", "multitaper"])
+def test_psd_constructor_records_the_effective_sampling_rate(method) -> None:
+    estimates = []
+    for sfreq in (100.0, 200.0):
+        times = np.arange(int(4 * sfreq)) / sfreq
+        epochs = mne.EpochsArray(
+            np.sin(2 * np.pi * 10 * times)[None, None],
+            mne.create_info(["C3"], sfreq, "eeg"),
+            verbose=False,
+        )
+        estimates.append(getattr(Spectra, method)(epochs, recording="r"))
+
+    assert estimates[0].computation != estimates[1].computation
+    for estimate, sfreq in zip(estimates, (100.0, 200.0), strict=True):
+        assert estimate.computation.parameters["sfreq_hz"] == sfreq
+
+
+def test_default_welch_grid_is_recorded_when_another_window_shortens_its_segments() -> None:
+    epochs = make_epochs(tmin=0.0)
+    long = Window("long", 0.0, 1.5)
+    alone = Spectra.welch(epochs, [long], recording="r")
+    together = Spectra.welch(epochs, [long, Window("short", 0.0, 0.5)], recording="r")
+
+    assert not np.array_equal(alone.freqs, together.freqs)
+    assert alone.computation != together.computation
 
 
 def test_the_morlet_constructor_is_the_tfr_route_without_restating_its_settings() -> None:

@@ -87,6 +87,8 @@ class Design:
         Positions of the covariate columns, which follow the features.
     coverage : ndarray, shape (n_rows, n_features)
         Coverage of the feature columns only.
+    support : ndarray, shape (n_rows, n_features) or None
+        Time-window support of the feature columns, or None for full support.
     flags : dict of str to ndarray of bool
         Per-cell flags of the feature columns, including ``quality_rejected`` when
         a quality policy was applied.
@@ -106,6 +108,7 @@ class Design:
     feature_columns: npt.NDArray[np.intp]
     covariate_columns: npt.NDArray[np.intp]
     coverage: npt.NDArray[np.float64]
+    support: npt.NDArray[np.float64] | None
     flags: dict[str, npt.NDArray[np.bool_]]
     meta: tuple[FeatureMeta, ...]
     quality_ledger: pd.DataFrame
@@ -163,15 +166,7 @@ def select(table: FeatureTable, selection: Selection) -> FeatureTable:
     if len(kept_indices) == len(table.meta):
         return table
 
-    idx = np.array(kept_indices, dtype=np.intp)
-    return FeatureTable(
-        values=table.values[:, idx],
-        coverage=table.coverage[:, idx],
-        meta=tuple(table.meta[i] for i in kept_indices),
-        flags={k: v[:, idx] for k, v in table.flags.items()},
-        row_labels=table.row_labels,
-        row_ids=table.row_ids,
-    )
+    return table._columns(np.array(kept_indices, dtype=np.intp))
 
 
 def _validate_precomputed_features(table: FeatureTable) -> None:
@@ -370,6 +365,7 @@ def build_design(
         flags=dict(table.flags),
         meta=table.meta,
         quality_ledger=quality_ledger,
+        support=table.support,
     )
 
 

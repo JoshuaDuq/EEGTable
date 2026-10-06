@@ -3,10 +3,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from sklearn.dummy import DummyRegressor
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, StackingRegressor
+from sklearn.feature_selection import RFECV
+from sklearn.linear_model import ElasticNetCV, Ridge, RidgeCV
 from sklearn.pipeline import Pipeline
 
 from eegtable.model.aggregate import subject_r_scorer
+from eegtable.model.crossfit import cross_fit_regression
 from eegtable.model.estimators import (
     elasticnet_grid,
     elasticnet_pipeline,
@@ -14,7 +17,7 @@ from eegtable.model.estimators import (
     ridge_pipeline,
 )
 from eegtable.model.scoring import scoring_dict
-from eegtable.model.splits import InnerSplit
+from eegtable.model.splits import InnerSplit, loso_folds
 from eegtable.model.transformers import PreprocessingConfig
 from eegtable.model.tuning import FoldFitError, fit_untuned, tune
 
@@ -26,6 +29,47 @@ TWO_SUBJECTS = np.array(["s1"] * 4 + ["s2"] * 4, dtype=object)
 TWO_RUNS = np.array(["r1"] * 4 + ["r2"] * 4, dtype=object)
 X8 = np.arange(8.0).reshape(-1, 1)
 Y8 = np.arange(8.0)
+
+
+@pytest.mark.parametrize(
+    "pipeline",
+    [
+        Pipeline([("regressor", RidgeCV())]),
+        Pipeline([("regressor", ElasticNetCV(cv=2))]),
+        Pipeline([("regressor", StackingRegressor([("ridge", Ridge())], cv=2))]),
+        Pipeline([("selection", RFECV(Ridge(), cv=2)), ("regressor", Ridge())]),
+    ],
+)
+def test_grouped_cross_fitting_refuses_estimators_with_internal_cv(pipeline) -> None:
+    rng = np.random.default_rng(3)
+    values = rng.normal(size=(24, 3))
+    groups = np.tile(["a", "b", "c"], 8).astype(object)
+
+    with pytest.raises(ValueError, match="internal cross-validation"):
+        cross_fit_regression(
+            loso_folds(groups),
+            values,
+            values[:, 0],
+            groups,
+            pipeline,
+            {},
+            inner=BY_SUBJECT,
+            seed=0,
+        )
+
+
+def test_grouped_tuning_refuses_a_candidate_that_introduces_internal_cv() -> None:
+    with pytest.raises(ValueError, match="internal cross-validation"):
+        tune(
+            Pipeline([("regressor", Ridge())]),
+            {"regressor": [RidgeCV()]},
+            X8,
+            Y8,
+            TWO_SUBJECTS,
+            split=BY_SUBJECT,
+            seed=0,
+            fold=1,
+        )
 
 
 def test_tuning_refuses_a_training_fold_with_one_group() -> None:

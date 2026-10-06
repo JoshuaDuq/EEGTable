@@ -388,6 +388,19 @@ class Deconfounder(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         return list(input_features[:n_features])
 
 
+class _CovariateImputer(SimpleImputer):  # type: ignore[misc]
+    """Impute covariates without silently removing their fixed trailing columns."""
+
+    def fit(self, X: Any, y: Any = None) -> _CovariateImputer:
+        missing = np.flatnonzero(~np.isfinite(np.asarray(X, dtype=float)).any(axis=0))
+        if missing.size:
+            raise ValueError(
+                f"Covariate columns {missing.tolist()} have no finite training values."
+            )
+        super().fit(X, y)
+        return self
+
+
 def base_preprocessing_steps(
     config: PreprocessingConfig,
     *,
@@ -402,7 +415,8 @@ def base_preprocessing_steps(
     optional percentile selection, scaling and PCA. With covariates, the trailing
     ``n_covariates`` columns get their own branch inside a ``ColumnTransformer``:
     infinities to NaN, most-frequent imputation, then scaling or passthrough,
-    optionally followed by :class:`Deconfounder`.
+    optionally followed by :class:`Deconfounder`. A covariate without any finite
+    training value raises instead of being dropped by imputation.
 
     Parameters
     ----------
@@ -474,7 +488,7 @@ def base_preprocessing_steps(
     if n_covariates > 0:
         cov_steps: list[tuple[str, object]] = [
             ("finite", ReplaceInfWithNaN()),
-            ("impute", SimpleImputer(strategy="most_frequent")),
+            ("impute", _CovariateImputer(strategy="most_frequent")),
         ]
         if include_scaling:
             cov_steps.append(("scaler", StandardScaler()))
@@ -560,8 +574,10 @@ def _missingness_inputs(
             data = step.transform(data)
     elif isinstance(estimator, ColumnTransformer):
         for _, transformer, columns in estimator.transformers_:
-            if not isinstance(transformer, str) and len(columns):
-                yield from _missingness_inputs(transformer, X[:, columns])
+            if not isinstance(transformer, str):
+                selected = X[:, columns]
+                if selected.size:
+                    yield from _missingness_inputs(transformer, selected)
 
 
 def _check_subject_missingness(

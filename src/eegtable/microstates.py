@@ -69,6 +69,11 @@ def _validate_topographies(data: npt.NDArray[np.float64]) -> None:
         )
 
 
+def _require_real_templates(templates: npt.NDArray[np.float64]) -> None:
+    if np.iscomplexobj(templates):
+        raise TypeError("Microstate templates must contain real topographies.")
+
+
 def _training_rows(rows: npt.NDArray[np.intp] | None, n_epochs: int) -> npt.NDArray[np.intp]:
     if rows is None:
         return np.arange(n_epochs, dtype=np.intp)
@@ -111,6 +116,7 @@ class MicrostateModel:
     computation: ComputationSpec
 
     def __post_init__(self) -> None:
+        _require_real_templates(self.templates)
         templates = np.array(self.templates, dtype=float, copy=True)
         if templates.ndim != 2 or templates.shape != (len(self.labels), len(self.ch_names)):
             raise ValueError("templates must have shape (n_states, n_channels).")
@@ -264,6 +270,7 @@ class MicrostateModel:
         """
         if not isinstance(reference_name, str) or not reference_name.strip():
             raise ValueError("reference_name must identify the external template set.")
+        _require_real_templates(templates)
         maps = np.asarray(templates, dtype=float)
         if maps.ndim != 2 or not np.isfinite(maps).all() or np.any(np.ptp(maps, axis=1) == 0):
             raise ValueError("Reference templates need finite, nonzero spatial variance.")
