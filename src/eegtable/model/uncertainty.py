@@ -25,6 +25,21 @@ Method = Literal["split", "cv_plus", "quantile"]
 
 @dataclass(frozen=True)
 class PredictionIntervals:
+    """Bounds from :func:`prediction_intervals`.
+
+    Parameters
+    ----------
+    lower, upper : ndarray, shape (n_test,)
+        Bounds for each test row; infinite when too few calibration scores support
+        the requested level.
+    alpha : float
+        Requested miscoverage.
+    method : {"split", "cv_plus", "quantile"}
+        Calibration method.
+    calibration_unit : {"trial", "subject"}
+        Unit of the calibration scores; ``"trial"`` here, also with groups.
+    """
+
     lower: npt.NDArray[np.float64]
     upper: npt.NDArray[np.float64]
     alpha: float
@@ -275,6 +290,38 @@ def prediction_intervals(
     trials or new subjects; calibration scores are still pooled over trials.
     ``seed`` controls both splits and stochastic pipeline fitting, without
     mutating the supplied model or the caller's global random state.
+
+    Parameters
+    ----------
+    model : Pipeline
+        Unfitted pipeline with fixed hyperparameters, cloned for every fit. This
+        function does not tune; choose hyperparameters without the calibration or
+        test outcomes.
+    X_train, y_train : ndarray
+        Rows used for fitting and calibration; ``y_train`` is finite.
+    X_test : ndarray
+        Rows to bound; they are only predicted.
+    alpha : float, default 0.1
+        Miscoverage level, in ``(0, 1)``.
+    method : {"split", "cv_plus", "quantile"}, default "cv_plus"
+        ``"split"`` fits on about 80% of the training rows, or of the groups, and
+        calibrates absolute residuals on the rest; it needs at least five rows.
+        ``"cv_plus"`` combines each fold's held-out residuals with that fold's test
+        predictions. ``"quantile"`` replaces the final step with quantile gradient
+        boosting at ``alpha / 2`` and ``1 - alpha / 2``, keeps the preprocessing,
+        and calibrates the conformity scores in CV+ form.
+    cv_splits : int, default 5
+        Folds of the CV+ methods. With ``groups``, leave-one-group-out is used when
+        there are fewer groups than folds.
+    seed : int, default 42
+        Seed of the splits and of stochastic fitting.
+    groups : ndarray, optional
+        Group label of each training row; fitting and calibration splits are then
+        group-disjoint. Calibration scores remain pooled over trials.
+
+    Returns
+    -------
+    PredictionIntervals
     """
     if not (0.0 < alpha < 1.0):
         msg = f"alpha must be between 0.0 and 1.0, got {alpha}."

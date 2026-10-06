@@ -96,6 +96,7 @@ def band_ratio(table: FeatureTable, numerator: str, denominator: str) -> Feature
         flags=_merge_flags(table, operands),
         row_labels=table.row_labels,
         row_ids=table.row_ids,
+        support=_paired_support(table, operands),
     )
 
 
@@ -161,6 +162,7 @@ def asymmetry(table: FeatureTable, pairs: Sequence[tuple[str, str]]) -> FeatureT
         flags=_merge_flags(table, operands),
         row_labels=table.row_labels,
         row_ids=table.row_ids,
+        support=_paired_support(table, operands),
     )
 
 
@@ -192,6 +194,16 @@ def _derived_spec(
             second_role: table.meta[second_index].record(),
         },
     )
+
+
+def _paired_support(
+    table: FeatureTable, operands: Sequence[tuple[int, int]]
+) -> npt.NDArray[np.float64] | None:
+    # As with coverage, a value combining two columns rests on the scarcer of the two.
+    if table.support is None:
+        return None
+    support = table.support
+    return np.stack([np.minimum(support[:, i], support[:, j]) for i, j in operands], axis=1)
 
 
 def _merge_flags(

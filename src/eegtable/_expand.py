@@ -18,6 +18,8 @@ from eegtable.spectra import (
     Window,
     band_integration_weights,
     gradient_weights,
+    require_within_axis,
+    sample_period,
     trapezoid_weights,
 )
 from eegtable.table import ComputationSpec, FeatureMeta, FeatureTable, Normalization, RowId
@@ -33,6 +35,7 @@ class _Column:
     meta: FeatureMeta
     values: npt.NDArray[np.float64]
     coverage: npt.NDArray[np.float64]
+    support: npt.NDArray[np.float64] | None = None
 
 
 def _collect(
@@ -42,6 +45,7 @@ def _collect(
     make_meta: Callable[[SpatialUnit, Window], FeatureMeta],
     *,
     skip_window: int | None,
+    support: npt.NDArray[np.float64] | None = None,
 ) -> tuple[list[_Column], dict[str, list[npt.NDArray[np.bool_]]]]:
     columns: list[_Column] = []
     flag_columns: dict[str, list[npt.NDArray[np.bool_]]] = {}
@@ -54,6 +58,11 @@ def _collect(
                     make_meta(spatial, window),
                     spatial.values[:, w_index],
                     spatial.coverage[:, w_index],
+                    (
+                        None
+                        if support is None
+                        else support[:, list(spatial.picks), w_index].mean(axis=1)
+                    ),
                 )
             )
             for key, array in flags.items():
@@ -70,6 +79,7 @@ def _assemble(
     row_labels: tuple[str, ...] | None = None,
     row_ids: tuple[RowId, ...] | None = None,
 ) -> FeatureTable:
+    restricted = any(c.support is not None for c in columns)
     return FeatureTable(
         values=np.stack([c.values for c in columns], axis=1),
         coverage=np.stack([c.coverage for c in columns], axis=1),
@@ -77,6 +87,14 @@ def _assemble(
         flags={key: np.stack(list(arrays), axis=1) for key, arrays in flag_columns.items()},
         row_labels=row_labels,
         row_ids=row_ids,
+        support=(
+            np.stack(
+                [c.support if c.support is not None else np.ones(c.values.shape) for c in columns],
+                axis=1,
+            )
+            if restricted
+            else None
+        ),
     )
 
 
@@ -116,6 +134,9 @@ def expand(
     )
     columns: list[_Column] = []
     flag_columns: dict[str, list[npt.NDArray[np.bool_]]] = {}
+    # Morlet spectra average only fully supported coefficients; when that left any window
+    # short of whole, how much of it each value rests on travels with the table.
+    restricted = bool(np.any(spectra.support < 1.0))
 
     for band in bands if bands is not None else (None,):
         if band is not None and spectra.passband is not None:
@@ -143,12 +164,16 @@ def expand(
             weights = np.ones(sub_freqs.size)
         values, flags = kernel(spectra.data[:, :, :, mask], sub_freqs, weights)
         coverage = band_coverage(spectra.coverage[:, :, :, mask], weights)
+        support = band_coverage(spectra.support[:, :, :, mask], weights) if restricted else None
 
         base = values[:, :, baseline_index] if baseline_index is not None else None
         values = normalize(values, baseline=base, mode=mode)
         all_flags = {**spectra.flags, **flags}
         if baseline_index is not None:
             coverage = np.minimum(coverage, coverage[:, :, baseline_index, np.newaxis])
+            # A ratio to the baseline rests on both windows, so on the less supported one.
+            if support is not None:
+                support = np.minimum(support, support[:, :, baseline_index, np.newaxis])
             all_flags = {
                 key: array | array[:, :, baseline_index, np.newaxis]
                 for key, array in all_flags.items()
@@ -190,7 +215,12 @@ def expand(
             )
 
         band_columns, band_flags = _collect(
-            units, spectra.windows, all_flags, make_meta, skip_window=baseline_index
+            units,
+            spectra.windows,
+            all_flags,
+            make_meta,
+            skip_window=baseline_index,
+            support=support,
         )
         columns.extend(band_columns)
         for key, arrays in band_flags.items():
@@ -373,6 +403,12 @@ def check_signals(signals: Sequence[TimeSeries], windows: Sequence[Window]) -> N
     Equal ``row_ids`` also settles the epoch count, since every series validates
     one identity per epoch on construction.
     """
+    if not isinstance(signals, Sequence):
+        raise TypeError(
+            "measures take a sequence of signals, one per band, such as [signal]; got "
+            f"{type(signals).__name__}. Build one from epochs with Signal.from_epochs or "
+            "BandSignal.from_epochs."
+        )
     if not signals:
         raise ValueError("at least one signal is required.")
     if not windows:
@@ -407,4 +443,5 @@ def window_mask(times: npt.NDArray[np.float64], window: Window) -> npt.NDArray[n
             f"window {window.name!r} ({window.tmin}, {window.tmax}) selects no samples "
             f"from a time axis spanning ({times[0]}, {times[-1]})."
         )
+    require_within_axis(times, window, tolerance=sample_period(times))
     return mask

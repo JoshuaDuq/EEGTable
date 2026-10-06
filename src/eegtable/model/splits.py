@@ -36,6 +36,19 @@ class _GroupKFold(GroupKFold):  # type: ignore[misc]
 
 @dataclass(frozen=True)
 class Fold:
+    """One outer split of the design rows.
+
+    Parameters
+    ----------
+    index : int
+        Fold number, from 1 in the fold factories; it also offsets per-fold seeds.
+    train, test : ndarray of int
+        Design rows fitted on and predicted.
+    subject : str, optional
+        The one subject of a within-subject fold. None marks a group-disjoint fold,
+        whose training and test groups must not overlap.
+    """
+
     index: int
     train: npt.NDArray[np.intp]
     test: npt.NDArray[np.intp]
@@ -44,6 +57,22 @@ class Fold:
 
 @dataclass(frozen=True)
 class InnerSplit:
+    """How the training rows of each outer fold are split for tuning.
+
+    Parameters
+    ----------
+    grouping : {"subject", "run"}
+        Label the inner splits keep disjoint: ``"subject"`` for group-disjoint
+        outer folds, ``"run"`` (with the design's runs) for within-subject folds.
+    stratified : bool, default False
+        Balance binary class labels across splits with a shuffled
+        ``StratifiedGroupKFold``; each class needs at least as many training rows
+        as there are splits.
+    n_splits : int, default 5
+        Requested number of splits, at least 2. The array evaluators cap it at the
+        number of distinct training labels.
+    """
+
     grouping: Literal["subject", "run"]
     stratified: bool = False
     n_splits: int = 5
@@ -99,6 +128,11 @@ def find_run_column(events: pd.DataFrame) -> pd.Series | None:
 
 
 def inner_cv_splits(n_unique_groups: int, *, default: int = 5) -> int:
+    """Inner split count for a number of training groups.
+
+    ``default`` capped at ``n_unique_groups``, and at least 2. Raises for fewer than
+    two groups.
+    """
     if n_unique_groups < 2:
         msg = f"Inner CV requires at least 2 training groups, got {n_unique_groups}."
         raise ValueError(msg)
@@ -111,6 +145,28 @@ def run_aware_cv(
     n_splits: int | None = None,
     default_splits: int = 5,
 ) -> tuple[GroupKFold | None, int]:
+    """Deterministic splitter that keeps runs whole.
+
+    Runs are assigned to splits largest first, ties in descending label order, each
+    to the split with the fewest rows so far, so no seed is needed.
+
+    Parameters
+    ----------
+    blocks : ndarray
+        Run label of each row; every row needs one.
+    n_splits : int, optional
+        Requested splits; None uses ``default_splits``. Capped at the number of
+        runs.
+    default_splits : int, default 5
+        Split count when ``n_splits`` is None.
+
+    Returns
+    -------
+    splitter : GroupKFold or None
+        None when there are fewer than two runs.
+    n_splits : int
+        Effective split count; 0 without a splitter.
+    """
     target_splits = default_splits if n_splits is None else n_splits
     # Runs are paradigm-specific, so a trial without one has no run to be held out with.
     n_unlabelled = int(np.sum(pd.isna(blocks)))
@@ -134,6 +190,19 @@ def run_aware_inner_cv(
 
     Takes no seed: runs are assigned to folds deterministically, by size and then by
     label, so these splits are reproducible without one.
+
+    Parameters
+    ----------
+    blocks_train : ndarray
+        Run label of each training row; every row needs one.
+    n_splits : int
+        Requested splits, capped at the number of runs.
+
+    Returns
+    -------
+    list of (ndarray, ndarray) or None
+        ``(train, validation)`` positions within ``blocks_train``, or None for
+        fewer than two runs.
     """
     block_cv, _ = run_aware_cv(blocks_train, n_splits=n_splits)
     if block_cv is None:
@@ -143,6 +212,22 @@ def run_aware_inner_cv(
 
 
 def loso_folds(groups: npt.NDArray[np.object_]) -> tuple[Fold, ...]:
+    """Leave-one-group-out outer folds.
+
+    Each fold tests every row of one group and trains on all other rows, so each
+    group is predicted by a model that never saw it. Folds follow the sorted group
+    labels and are numbered from 1.
+
+    Parameters
+    ----------
+    groups : ndarray, shape (n_rows,)
+        Group label of each design row, usually the subject.
+
+    Returns
+    -------
+    tuple of Fold
+        One fold per group, with ``subject=None``.
+    """
     groups_arr = np.asarray(groups)
     logo = LeaveOneGroupOut()
     dummy_x = np.zeros(len(groups_arr))
@@ -171,6 +256,31 @@ def within_subject_folds(
 
     Takes no seed: both the forward-ordered and the grouped path partition runs
     deterministically, so the folds are reproducible without one.
+
+    Parameters
+    ----------
+    groups : ndarray, shape (n_rows,)
+        Subject label of each design row.
+    blocks : ndarray, shape (n_rows,)
+        Run label of each design row. Every row needs one, and every subject at
+        least two runs.
+    inner_splits : int
+        Split count per subject when ``outer_splits`` is None.
+    outer_splits : int, optional
+        Test folds per subject. Either count is raised to at least 2 and capped at
+        the subject's row count and at its number of runs.
+    ordered_runs : bool, default False
+        Forward validation: each fold tests one run on the runs before it, so the
+        first two runs are never tested, and the latest folds are kept when there
+        are more than the split count. Run labels must carry distinct run numbers
+        (``3``, ``"run-3"`` or trailing digits) and each subject needs at least
+        three runs.
+
+    Returns
+    -------
+    tuple of Fold
+        Every subject's folds, numbered consecutively from 1, each with its
+        ``subject``.
     """
     if blocks is None:
         raise ValueError("Within-subject CV requires run labels for every subject.")
@@ -298,6 +408,28 @@ def inner_cv(
     y_train: npt.NDArray[np.intp] | None = None,
     random_state: int | None = None,
 ) -> GroupKFold | StratifiedGroupKFold:
+    """Group-disjoint splitter for tuning inside one outer training fold.
+
+    Parameters
+    ----------
+    train_groups : ndarray
+        Label of each training row for the grouping ``split`` names, subjects or
+        runs; at least two distinct labels.
+    split : InnerSplit
+        Grouping, stratification and requested split count. The count is capped at
+        the number of distinct labels.
+    y_train : ndarray of int, optional
+        Class labels, required by a stratified split; each class needs at least as
+        many rows as there are splits.
+    random_state : int, optional
+        Shuffling seed of the stratified splitter. The unstratified splitter is
+        deterministic, assigning groups as :func:`run_aware_cv` does.
+
+    Returns
+    -------
+    GroupKFold or StratifiedGroupKFold
+        Call ``split(X, y, groups=train_groups)`` on it.
+    """
     groups_arr = np.asarray(train_groups)
     n_unique = len(np.unique(groups_arr))
     if split.grouping == "subject" and n_unique == 1:

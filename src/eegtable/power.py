@@ -90,7 +90,7 @@ def mean_psd(
         spectra,
         _weighted_band_mean,
         measure="mean_psd",
-        unit=_PSD_MEAN_UNITS[normalize],
+        unit=_unit(_PSD_MEAN_UNITS, normalize),
         bands=bands,
         groups=groups,
         include_global=include_global,
@@ -116,13 +116,47 @@ def integrated_band_power(
     Piecewise-linear quadrature integrates from each band's numerical ``fmin``
     through ``fmax``, including interpolated boundary contributions. Raw EEG PSD
     input therefore yields V² rather than V²/Hz.
+
+    Unlike :func:`mean_psd`, no partial estimate is formed: a band with any
+    non-finite bin is NaN.
+
+    Parameters
+    ----------
+    spectra : Spectra
+        Power spectral density (``representation="psd"``). Time-frequency power
+        is refused; see :func:`mean_tfr_power`.
+    bands : sequence of Band, default BANDS_STANDARD
+        Bands to integrate; the frequency axis must span each band. When the
+        recording's passband is known, a band outside it is refused and one
+        partly outside it warns.
+    groups : mapping of str to sequence of str, optional
+        ROI name to member channels. None gives one column per channel; otherwise
+        ROI columns replace the channel columns, each the mean of its member
+        channels' values after normalization.
+    include_global : bool, default True
+        Also emit the mean across all channels.
+    baseline : str, optional
+        Name of the window to normalize against. That window is consumed and does
+        not appear in the output. Normalized coverage is the minimum of analysis
+        and baseline coverage; baseline flags propagate to the output.
+    normalize : {"raw", "log10", "log_ratio", "db", "percent"}, default "raw"
+        ``"log10"`` is ``log10(p)``. ``"log_ratio"`` is ``log10(p / b)``, ``"db"``
+        is ``10 * log10(p / b)`` and ``"percent"`` is ``(p - b) / b * 100`` for
+        the same band's baseline power ``b`` of each epoch and channel; these
+        three require ``baseline``, and the other two refuse one.
+
+    Returns
+    -------
+    FeatureTable
+        Measure ``"band_power"``, one column per band, spatial unit and emitted
+        window.
     """
     _require_representation(spectra, "psd", "integrated_band_power")
     return expand(
         spectra,
         _weighted_band_integral,
         measure="band_power",
-        unit=_PSD_INTEGRAL_UNITS[normalize],
+        unit=_unit(_PSD_INTEGRAL_UNITS, normalize),
         bands=bands,
         groups=groups,
         include_global=include_global,
@@ -157,13 +191,43 @@ def mean_tfr_power(
     the mean log power is no greater than the log of mean power; the population
     gap is about 2.51 dB for exponential power. Different spectral estimators and
     temporal support also affect comparisons between these functions.
+
+    Parameters
+    ----------
+    spectra : Spectra
+        Time-frequency power from :meth:`~eegtable.Spectra.from_tfr`
+        (``representation="time_frequency_power"``). A PSD is refused; see
+        :func:`mean_psd`.
+    bands : sequence of Band, default BANDS_STANDARD
+        Bands to average; the frequency axis must span each band. When the
+        recording's passband is known, a band outside it is refused and one
+        partly outside it warns.
+    groups : mapping of str to sequence of str, optional
+        ROI name to member channels. None gives one column per channel; otherwise
+        ROI columns replace the channel columns, each the mean of its member
+        channels' values after normalization.
+    include_global : bool, default True
+        Also emit the mean across all channels.
+    baseline : str, optional
+        Name of the window to normalize against. That window is consumed and does
+        not appear in the output. Normalized coverage is the minimum of analysis
+        and baseline coverage; baseline flags propagate to the output.
+    normalize : {"raw", "log10", "log_ratio", "db", "percent"}, default "raw"
+        As for :func:`integrated_band_power`, applied to the window-mean band
+        power. ``"log_ratio"``, ``"db"`` and ``"percent"`` require ``baseline``.
+
+    Returns
+    -------
+    FeatureTable
+        Measure ``"mean_tfr_power"``, one column per band, spatial unit and
+        emitted window, in V²/Hz for raw EEG input.
     """
     _require_representation(spectra, "time_frequency_power", "mean_tfr_power")
     return expand(
         spectra,
         _weighted_band_mean,
         measure="mean_tfr_power",
-        unit=_TFR_MEAN_UNITS[normalize],
+        unit=_unit(_TFR_MEAN_UNITS, normalize),
         bands=bands,
         groups=groups,
         include_global=include_global,
@@ -238,7 +302,7 @@ def periodic_power(
         ratio,
         _weighted_band_mean,
         measure="periodic_power",
-        unit=_PERIODIC_UNITS[normalize],
+        unit=_unit(_PERIODIC_UNITS, normalize),
         bands=bands,
         groups=groups,
         include_global=include_global,
@@ -282,7 +346,19 @@ def _weighted_band_integral(
     return np.where(complete, values, np.nan), {}
 
 
+def _unit(units: Mapping[str, str], normalize: str) -> str:
+    if normalize not in units:
+        raise ValueError(f"normalize must be one of {sorted(units)}, got {normalize!r}.")
+    return units[normalize]
+
+
 def _require_representation(spectra: Spectra, expected: str, operation: str) -> None:
+    if not isinstance(spectra, Spectra):
+        raise TypeError(
+            f"{operation} takes Spectra, got {type(spectra).__name__}. Compute them from "
+            "epochs with Spectra.welch, Spectra.multitaper or Spectra.morlet, or wrap an "
+            "MNE spectrum with Spectra.from_spectrum."
+        )
     if spectra.representation != expected:
         raise ValueError(
             f"{operation} requires spectral representation {expected!r}, got "

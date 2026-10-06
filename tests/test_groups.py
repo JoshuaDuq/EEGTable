@@ -44,6 +44,27 @@ def test_nan_channels_are_ignored_rather_than_poisoning_the_group() -> None:
     np.testing.assert_allclose(units[0].coverage, np.full((2, 2), 0.5))
 
 
+def test_coverage_counts_only_the_members_a_value_was_averaged_over() -> None:
+    # Only Cz found a peak. The ROI value is Cz's alone, so coverage must say it rests on a
+    # third of the ROI instead of reporting every member's finite input as full.
+    values = np.array([[[np.nan], [9.0], [np.nan]]])
+    coverage = np.ones_like(values)
+    [unit] = aggregate(values, coverage, CH, groups={"central": list(CH)}, include_global=False)
+    assert unit.values[0, 0] == 9.0
+    assert unit.coverage[0, 0] == pytest.approx(1.0 / 3.0)
+
+
+def test_a_group_with_no_member_value_reports_its_members_input_coverage() -> None:
+    # Withheld outright, the ROI reads as a withheld channel does: NaN beside the input it had.
+    values = np.full((1, 2, 1), np.nan)
+    coverage = np.array([[[1.0], [0.5]]])
+    [unit] = aggregate(
+        values, coverage, ("C3", "C4"), groups={"central": ["C3", "C4"]}, include_global=False
+    )
+    assert np.isnan(unit.values[0, 0])
+    assert unit.coverage[0, 0] == 0.75
+
+
 def test_a_group_whose_channels_are_all_nan_yields_nan() -> None:
     values, coverage = _inputs()
     values[:] = np.nan

@@ -225,14 +225,14 @@ a separate snapshot with the run identity. A documentation build renders the
 saved evidence without running the suite. Keep a snapshot with the analysis
 when it supports a scientific claim.
 
-The ``validation`` GitHub workflow runs weekly and on demand, checks MNE 1.8
+The ``validation`` GitHub workflow runs weekly and on demand, checks MNE 1.10
 and the installed current release, caches data, and uploads each job's evidence.
 The current-release job is not a fixed dependency environment; use the saved
 versions to identify what it tested.
 Both jobs explicitly import AntroPy, specparam, and NeuroDSP before running
 their comparisons. The current-release job also installs and checks the
 preprocessing dependencies. Preprocessing validation requires MNE 1.13.2 and
-is excluded from the MNE 1.8 job. Evidence records all installed analysis
+is excluded from the MNE 1.10 job. Evidence records all installed analysis
 packages, including the optional estimators and preprocessing backends,
 alongside the core dependencies.
 

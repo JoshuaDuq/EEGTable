@@ -17,6 +17,18 @@ from .raw import annotate_raw, good_eeg_names, physiology_names, require_names, 
 
 @dataclass(frozen=True)
 class QualityCandidates:
+    """Detector output for review; nothing in it has been applied.
+
+    Parameters
+    ----------
+    bads : tuple of str
+        Candidate bad channels.
+    annotations : tuple of mne.Annotations
+        Candidate BAD spans, one set per detector.
+    evidence : dict
+        Detector scores and verdicts.
+    """
+
     bads: tuple[str, ...] = ()
     annotations: tuple[Any, ...] = ()
     evidence: dict[str, Any] = field(default_factory=dict)
@@ -25,6 +37,29 @@ class QualityCandidates:
 def detect_annotations(
     raw: Any, settings: AnnotationSettings, events: NDArray[np.int64] | None = None
 ) -> QualityCandidates:
+    """Candidate BAD spans and bad channels from the configured annotation detectors.
+
+    Runs MNE's amplitude detector on the good EEG channels, its break detector
+    around ``events`` and its muscle z-score detector, each only when configured.
+    Nothing is applied to ``raw``, and manual ``bad_spans`` are not included; see
+    :func:`~eegtable.preprocessing.raw.annotate_raw`.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording.
+    settings : AnnotationSettings
+        Detector settings. The muscle band must lie below Nyquist and inside the
+        recording's stored passband.
+    events : ndarray of int, shape (n_events, 3), optional
+        Task events, required by the break detector.
+
+    Returns
+    -------
+    QualityCandidates
+        Amplitude-detector channels as ``bads``, the detected annotations, and
+        the amplitude channels and muscle scores as evidence.
+    """
     annotations, bads = [], []
     evidence: dict[str, Any] = {}
     if settings.amplitude is not None:
@@ -78,6 +113,28 @@ def detect_annotations(
 
 
 def detect_bad_channels(raw: Any, settings: BadChannelSettings) -> QualityCandidates:
+    """Candidate bad EEG channels from PyPREP's ``NoisyChannels`` tests.
+
+    Only the requested tests run, on a detrended copy of the good EEG channels with
+    annotated segments omitted, after a notch on that copy when ``notch_freqs`` is
+    set. Over ``repeats`` RANSAC draws, a channel is a candidate when a strict
+    majority flags it. Nothing is marked bad. Requires
+    ``eegtable[preprocessing-auto]``.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording. ``high_frequency`` needs a sampling rate above
+        100 Hz and a stored lowpass of at least 50 Hz; RANSAC needs electrode
+        positions and at least 16 good EEG channels.
+    settings : BadChannelSettings
+        Tests, RANSAC and its repeats, seed and diagnostic notch.
+
+    Returns
+    -------
+    QualityCandidates
+        Candidate ``bads`` and, as evidence, every draw's verdicts by test.
+    """
     # Explicit methods only; find_all_bads would run unrequested tests.
     pyprep = require("pyprep", "preprocessing-auto")
     if "high_frequency" in settings.methods and (
@@ -125,6 +182,22 @@ def detect_bad_channels(raw: Any, settings: BadChannelSettings) -> QualityCandid
 
 
 def detect_bridges(raw: Any) -> QualityCandidates:
+    """Bridged EEG electrode pairs, as review evidence.
+
+    Uses MNE's ``compute_bridged_electrodes``; nothing is marked bad. Requires
+    finite nonzero positions for every EEG channel and at least four good ones.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording.
+
+    Returns
+    -------
+    QualityCandidates
+        No candidates; ``evidence["bridged"]`` lists each pair with its median
+        electrical distance.
+    """
     validate_geometry(raw)
     pairs, distances = mne.preprocessing.compute_bridged_electrodes(raw.copy())
     # MNE names pairs by channel index but indexes the distance matrix by EEG pick position.
@@ -149,6 +222,24 @@ def apply_raw_review(
     acquisition_first_samp: int | None = None,
     acquisition_n_times: int | None = None,
 ) -> Any:
+    """Apply a raw review decision to a copy: set the bad channels, add BAD spans.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording.
+    bads : tuple of str
+        Replaces ``info["bads"]``; empty marks every channel good. Every name must
+        exist, and at least one good EEG channel must remain.
+    spans : tuple of BadSpan
+        BAD spans to append, with onsets in seconds from the first acquired sample.
+    acquisition_first_samp, acquisition_n_times : int, optional
+        As for :func:`~eegtable.preprocessing.raw.annotate_raw`.
+
+    Returns
+    -------
+    mne.io.Raw
+    """
     names(bads, "review.raw.bads")
     require_names(raw, bads, "review.raw.bads")
     working = annotate_raw(
@@ -197,6 +288,26 @@ def stimulation_intervals(
 
 
 def repair_stimulation(raw: Any, events: NDArray[np.int64], settings: StimulationSettings) -> Any:
+    """Repair stimulation artifacts on a copy with MNE's ``fix_stim_artifact``.
+
+    The window ``[tmin, tmax]`` around every event with one of the configured codes
+    is replaced on the named channels. Every code must occur, every window must hold
+    samples and keep a neighboring sample inside the recording on both sides, and
+    windows must not overlap.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording.
+    events : ndarray of int, shape (n_events, 3)
+        Events on the recording's sample grid.
+    settings : StimulationSettings
+        Event codes, EEG, EOG or ECG channels, window, mode and baseline.
+
+    Returns
+    -------
+    mne.io.Raw
+    """
     stimulation_intervals(raw, events, settings)
     working = raw.copy().load_data()
     for event_id in settings.event_ids:

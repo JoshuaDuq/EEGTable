@@ -1,0 +1,17 @@
+name: Feature or measure request
+description: A measure, option or workflow EEGTable should support.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you need to compute or do, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: definition
+    attributes:
+      label: Definition and references
+      description: >-
+        For a new measure: its formula, units, and the papers or packages that define
+        it, so the result can be validated against them.

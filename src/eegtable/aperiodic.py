@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import math
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from numbers import Integral, Real
 
 import numpy as np
 import numpy.typing as npt
-from scipy import stats
 
 from eegtable._expand import Kernel, expand
 from eegtable.bands import Band, passband_fraction
@@ -14,6 +15,10 @@ from eegtable.spectra import Spectra
 from eegtable.table import ComputationSpec, FeatureTable, concat
 
 _MIN_FIT_POINTS = 5
+# scipy's median_abs_deviation(scale="normal") divides by this: the standard normal's 0.75
+# quantile, which makes the MAD estimate a standard deviation.
+_NORMAL_MAD = 0.6744897501960817
+_CELLS_PER_BLOCK = 16384
 
 # In the order _fit_one returns the three measures.
 _UNITS: dict[str, str] = {
@@ -119,17 +124,7 @@ def aperiodic(
     ]
 
     # The fit range is not a named band, so these columns are broadband.
-    stripped = [
-        FeatureTable(
-            values=t.values,
-            coverage=t.coverage,
-            meta=tuple(replace(m, band=None) for m in t.meta),
-            flags=t.flags,
-            row_labels=t.row_labels,
-            row_ids=t.row_ids,
-        )
-        for t in tables
-    ]
+    stripped = [replace(t, meta=tuple(replace(m, band=None) for m in t.meta)) for t in tables]
     return concat(stripped)
 
 
@@ -226,10 +221,16 @@ def _fit_cells(
 ) -> npt.NDArray[np.float64]:
     """Slope, offset and r_squared of every cell, stacked on a last axis of three."""
     log_f = _log_frequency(freqs)
-    fits = np.full((*data.shape[:3], 3), np.nan)
-    for index in np.ndindex(data.shape[:3]):
-        fits[index] = _fit_one(log_f, data[index], z, iterations)
-    return fits
+    # The row count is explicit: a fit range outside the axis leaves no bins to infer it from.
+    cells = data.reshape(math.prod(data.shape[:3]), data.shape[-1])
+    # Every cell at once rather than one polyfit each, in blocks that bound the memory a
+    # 256-channel recording would otherwise take for its intermediate arrays.
+    blocks = [
+        _fit_block(log_f, cells[start : start + _CELLS_PER_BLOCK], z, iterations)
+        for start in range(0, cells.shape[0], _CELLS_PER_BLOCK)
+    ]
+    fits = np.concatenate(blocks) if blocks else np.empty((0, 3))
+    return fits.reshape(*data.shape[:3], 3)
 
 
 def _log_frequency(freqs: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
@@ -240,53 +241,84 @@ def _log_frequency(freqs: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     return log_f
 
 
-def _fit_one(
+def _fit_block(
     log_f: npt.NDArray[np.float64],
     power: npt.NDArray[np.float64],
     z: float,
     iterations: int,
-) -> tuple[float, float, float]:
-    usable = np.isfinite(power) & (power > 0.0) & np.isfinite(log_f)
-    if int(usable.sum()) < _MIN_FIT_POINTS:
-        return np.nan, np.nan, np.nan
-    log_p = np.full(power.shape, np.nan)
-    log_p[usable] = np.log10(power[usable])
-
-    keep = usable.copy()
-    slope, offset = np.polyfit(log_f[keep], log_p[keep], 1)
+) -> npt.NDArray[np.float64]:
+    """Fit each row: a line in log-log space, refitted without positive outliers."""
+    x = np.broadcast_to(log_f, power.shape)
+    usable = np.isfinite(power) & (power > 0.0) & np.isfinite(x)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_p = np.where(usable, np.log10(np.where(usable, power, 1.0)), np.nan)
+    enough = usable.sum(axis=1) >= _MIN_FIT_POINTS
+    keep = usable
+    slope, offset = _lines(x, log_p, keep)
+    active = enough.copy()
     for _ in range(iterations):
-        residuals = log_p - (offset + slope * log_f)
-        mad = stats.median_abs_deviation(residuals[keep], scale="normal", nan_policy="omit")
-        if not np.isfinite(mad) or mad < 1e-12:
-            break
-        tightened = keep & (residuals <= z * mad)
-        if int(tightened.sum()) < _MIN_FIT_POINTS or np.array_equal(tightened, keep):
+        residuals = log_p - (offset[:, np.newaxis] + slope[:, np.newaxis] * x)
+        kept = np.where(keep, residuals, np.nan)
+        with warnings.catch_warnings():
+            # A row with too few points to fit is all NaN by design; it never refits.
+            warnings.filterwarnings("ignore", "All-NaN slice", RuntimeWarning)
+            centre = np.nanmedian(kept, axis=1)
+            mad = np.nanmedian(np.abs(kept - centre[:, np.newaxis]), axis=1) / _NORMAL_MAD
+        with np.errstate(invalid="ignore"):
+            tightened = keep & (residuals <= z * mad[:, np.newaxis])
+        # A row stops as the cell-by-cell fit did: no spread left, too few points left, or
+        # nothing new rejected. It keeps the line it had.
+        active &= ~(
+            ~np.isfinite(mad)
+            | (mad < 1e-12)
+            | (tightened.sum(axis=1) < _MIN_FIT_POINTS)
+            | (tightened == keep).all(axis=1)
+        )
+        if not active.any():
             break
         # Refit on every tightened mask, so the line and r_squared share one point set.
-        keep = tightened
-        slope, offset = np.polyfit(log_f[keep], log_p[keep], 1)
-    return float(slope), float(offset), _r_squared(log_f, log_p, keep, slope, offset)
+        keep = np.where(active[:, np.newaxis], tightened, keep)
+        refit_slope, refit_offset = _lines(x, log_p, keep)
+        slope = np.where(active, refit_slope, slope)
+        offset = np.where(active, refit_offset, offset)
+    fits = np.stack([slope, offset, _r_squared(x, log_p, keep, slope, offset)], axis=1)
+    fits[~enough] = np.nan
+    return fits
+
+
+def _lines(
+    x: npt.NDArray[np.float64], y: npt.NDArray[np.float64], keep: npt.NDArray[np.bool_]
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Least-squares slope and intercept of each row's kept points."""
+    n = keep.sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x_mean = np.where(keep, x, 0.0).sum(axis=1) / n
+        y_mean = np.where(keep, y, 0.0).sum(axis=1) / n
+        dx = np.where(keep, x - x_mean[:, np.newaxis], 0.0)
+        dy = np.where(keep, y - y_mean[:, np.newaxis], 0.0)
+        slope = (dx * dy).sum(axis=1) / (dx * dx).sum(axis=1)
+    return slope, y_mean - slope * x_mean
 
 
 def _r_squared(
-    log_f: npt.NDArray[np.float64],
-    log_p: npt.NDArray[np.float64],
+    x: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
     keep: npt.NDArray[np.bool_],
-    slope: float,
-    offset: float,
-) -> float:
-    """Fit quality over the points the line was actually fitted to.
+    slope: npt.NDArray[np.float64],
+    offset: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    """Fit quality over the points each line was actually fitted to.
 
     Rejected peaks are excluded, so this statistic describes the retained
     straight-line fit. A bend within the fitted range can reduce its value and
     bias the slope; the statistic alone does not validate the decomposition.
     """
-    picks = np.flatnonzero(keep)
-    if picks.size < _MIN_FIT_POINTS or not np.isfinite(slope) or not np.isfinite(offset):
-        return float("nan")
-    observed = log_p[picks]
-    residual = float(np.sum((observed - (offset + slope * log_f[picks])) ** 2))
-    total = float(np.sum((observed - observed.mean()) ** 2))
-    if total <= 0.0:
-        return float("nan")
-    return float(1.0 - residual / total)
+    n = keep.sum(axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mean = np.where(keep, y, 0.0).sum(axis=1) / n
+        fitted = offset[:, np.newaxis] + slope[:, np.newaxis] * x
+        residual = np.where(keep, (y - fitted) ** 2, 0.0).sum(axis=1)
+        total = np.where(keep, (y - mean[:, np.newaxis]) ** 2, 0.0).sum(axis=1)
+        r_squared = 1.0 - residual / total
+    defined = (n >= _MIN_FIT_POINTS) & np.isfinite(slope) & np.isfinite(offset) & (total > 0.0)
+    return np.where(defined, r_squared, np.nan)

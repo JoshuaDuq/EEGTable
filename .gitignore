@@ -7,6 +7,11 @@ __pycache__/
 .ruff_cache/
 dist/
 docs/_build/
+docs/auto_tutorials/
 .claude/launch.json
+.claude/worktrees/
 tui/eegtable-tui
 docs/superpowers/
+.DS_Store
+# A tool's stray session file; Windows cannot check out a name containing ':'.
+:memory:*

@@ -1,3 +1,4 @@
+import importlib
 from dataclasses import replace
 
 import numpy as np
@@ -232,3 +233,60 @@ def test_one_refit_round_rejects_the_peak_and_scores_the_line_it_fitted() -> Non
     assert table.select(measure="slope").values.item() == pytest.approx(slope)
     assert table.select(measure="offset").values.item() == pytest.approx(offset)
     assert table.select(measure="r_squared").values.item() == pytest.approx(r_squared)
+
+
+def test_an_aperiodic_fit_keeps_the_support_of_the_spectra_it_fitted() -> None:
+    power = 1.0 / FREQS**1.5
+    support = np.full((1, 1, 1, FREQS.size), 0.5)
+    spectra = replace(_spectra(power), representation="time_frequency_power", support=support)
+    table = aperiodic(spectra, include_global=False)
+    assert table.support is not None
+    np.testing.assert_allclose(table.support, 0.5)
+
+
+def _fit_cell_by_cell(log_f, power, z, iterations):
+    # The per-cell fit the vectorized one replaced: numpy's polyfit, scipy's normal-scaled
+    # MAD, and the same rules for stopping, kept here as the reference for its numbers.
+    usable = np.isfinite(power) & (power > 0.0) & np.isfinite(log_f)
+    if usable.sum() < 5:
+        return np.nan, np.nan, np.nan
+    log_p = np.full(power.shape, np.nan)
+    log_p[usable] = np.log10(power[usable])
+    keep = usable.copy()
+    slope, offset = np.polyfit(log_f[keep], log_p[keep], 1)
+    for _ in range(iterations):
+        residuals = log_p - (offset + slope * log_f)
+        mad = stats.median_abs_deviation(residuals[keep], scale="normal", nan_policy="omit")
+        if not np.isfinite(mad) or mad < 1e-12:
+            break
+        tightened = keep & (residuals <= z * mad)
+        if tightened.sum() < 5 or np.array_equal(tightened, keep):
+            break
+        keep = tightened
+        slope, offset = np.polyfit(log_f[keep], log_p[keep], 1)
+    observed = log_p[keep]
+    total = np.sum((observed - observed.mean()) ** 2)
+    residual = np.sum((observed - (offset + slope * log_f[keep])) ** 2)
+    return slope, offset, (1.0 - residual / total) if total > 0 else np.nan
+
+
+def test_the_fit_of_every_cell_matches_a_cell_by_cell_fit() -> None:
+    # The package exports a function of the same name, so the module comes by its path.
+    aperiodic_module = importlib.import_module("eegtable.aperiodic")
+
+    rng = np.random.default_rng(3)
+    freqs = np.linspace(0.0, 40.0, 81)
+    power = rng.lognormal(0.0, 0.3, size=(6, 4, 2, 81)) / np.maximum(freqs, 1.0) ** 1.7
+    power[..., 20:24] *= 6.0
+    power[0, 0, 0, 5:12] = np.nan
+    power[1, 1, 1, :] = np.nan
+    power[2, 2, 0, 30] = 0.0
+    power[3, 3, 1, 10:78] = np.nan
+
+    fits = aperiodic_module._fit_cells(power, freqs, 2.5, 3)
+
+    log_f = aperiodic_module._log_frequency(freqs)
+    expected = np.array(
+        [_fit_cell_by_cell(log_f, power[index], 2.5, 3) for index in np.ndindex(power.shape[:3])]
+    ).reshape(*power.shape[:3], 3)
+    np.testing.assert_allclose(fits, expected, rtol=1e-9, atol=1e-12)

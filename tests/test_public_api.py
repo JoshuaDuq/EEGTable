@@ -4,6 +4,9 @@ import eegtable
 
 EXPECTED = {
     "spectral_parameterization",
+    "extract",
+    "signal_measure",
+    "spectral_measure",
     "irasa",
     "cycle_features",
     "permutation_entropy",

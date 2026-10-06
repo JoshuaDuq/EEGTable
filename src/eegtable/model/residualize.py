@@ -31,6 +31,21 @@ _ROUNDING = 1e-12
 
 @dataclass(frozen=True)
 class FoldNuisanceFit:
+    """One fold's nuisance model of the target, from :func:`fit_nuisance_model`.
+
+    Parameters
+    ----------
+    train_target, test_target : ndarray
+        Target values of the training and test rows.
+    train_prediction, test_prediction : ndarray
+        Nuisance predictions, from coefficients fitted on the training rows.
+    train_residual, test_residual : ndarray
+        Target minus prediction.
+    details : mapping
+        ``columns``, ``n_parameters`` (intercept included), ``n_train`` and
+        ``n_test``.
+    """
+
     train_target: npt.NDArray[np.float64]
     test_target: npt.NDArray[np.float64]
     train_prediction: npt.NDArray[np.float64]
@@ -170,6 +185,28 @@ def fit_nuisance_model(
     should be scored against. Residualizing the target also changes the estimand
     -- performance is now on the part of the target the confound does not explain
     -- so it is not a free correction.
+
+    Parameters
+    ----------
+    y : array-like, shape (n_rows,)
+        Target of every design row; finite on the selected rows.
+    covariates : DataFrame or ndarray
+        Nuisance values with one row per design row, finite on the selected rows. A
+        DataFrame supplies ``columns`` by name; an array has exactly one column per
+        name, in order.
+    train : array-like of int
+        Rows the model is fitted on. They must outnumber its parameters, and on
+        them no nuisance column may be constant or linearly dependent on the
+        others.
+    test : array-like of int, optional
+        Rows the fitted model is applied to; disjoint from ``train``.
+    columns : sequence of str
+        Nuisance column names; blank names are ignored and an intercept is always
+        added.
+
+    Returns
+    -------
+    FoldNuisanceFit
     """
     column_names = tuple(str(c).strip() for c in columns if str(c).strip())
     if not column_names:
@@ -242,6 +279,15 @@ def residualize_targets(
     The pair :func:`~eegtable.model.cross_fit_regression` uses internally when it
     is given ``residualize_on``; call that rather than this unless you are
     building your own fold loop.
+
+    Parameters
+    ----------
+    y, covariates, train, test, columns
+        As for :func:`fit_nuisance_model`.
+
+    Returns
+    -------
+    train_residual, test_residual : ndarray
     """
     fit = fit_nuisance_model(y, covariates, train, test, columns=columns)
     return fit.train_residual, fit.test_residual
@@ -271,6 +317,30 @@ def residualize_within_subjects(
     defines a within-subject residual association, not a training-only transform
     for prospective prediction of an unseen raw outcome. Missing values remain
     missing.
+
+    Parameters
+    ----------
+    values : ndarray, shape (n_rows,) or (n_rows, n_features)
+        Target or features of every design row. A target must be finite on the
+        rows fitted; NaN features are fitted on their finite rows.
+    covariates : DataFrame or ndarray
+        Nuisance values with one row per design row; see :func:`fit_nuisance_model`.
+    groups : ndarray, shape (n_rows,)
+        Subject label of each design row.
+    train, test : array-like of int
+        Disjoint training and held-out rows.
+    columns : sequence of str
+        Nuisance column names; blank names are ignored and an intercept is always
+        added.
+
+    Returns
+    -------
+    train_residual, test_residual : ndarray
+        Residuals of the ``train`` and ``test`` rows. A residual within rounding
+        of zero, relative to the largest value the subject's fit used, is set to
+        0. A target subject left with fewer than three residual degrees of freedom
+        raises; a feature column without enough rows to fit is NaN for that
+        subject.
     """
     column_names = tuple(str(c).strip() for c in columns if str(c).strip())
     if not column_names:
@@ -374,6 +444,31 @@ def _finite_feature_block(
 
 @dataclass(frozen=True)
 class StagedResidualPreprocessor:
+    """One fold's training-fitted feature and target adjustments.
+
+    Built by :func:`fit_staged_residual_preprocessor`; its methods apply the fitted
+    adjustments to any rows of the same design.
+
+    Parameters
+    ----------
+    columns : tuple of str
+        Nuisance columns.
+    feature_support : ndarray of bool
+        Feature columns kept by the missingness limit.
+    feature_medians : ndarray
+        Training medians that fill missing values of the kept features.
+    feature_coefficients : ndarray
+        Nuisance coefficients of each kept feature, intercept first.
+    target_coefficients : ndarray
+        Nuisance coefficients of the target, intercept first.
+    power_transform : sklearn.preprocessing.PowerTransformer
+        Standardizing Yeo-Johnson transform of the training target residual.
+    n_fit_rows : int
+        Number of training rows fitted.
+    max_subject_missingness : float
+        Limit :meth:`transform_features` checks for each subject.
+    """
+
     columns: tuple[str, ...]
     feature_support: npt.NDArray[np.bool_]
     feature_medians: npt.NDArray[np.float64]
@@ -399,6 +494,12 @@ class StagedResidualPreprocessor:
         rows: npt.NDArray[np.intp],
         groups: Sequence[object] | npt.NDArray[Any],
     ) -> npt.NDArray[np.float64]:
+        """Kept features of ``rows``, median-filled, minus their nuisance prediction.
+
+        Non-finite values count as missing. Raises when a subject among ``rows``
+        exceeds the missingness limit. ``X``, ``covariates`` and ``groups`` cover
+        every design row.
+        """
         values = _finite_feature_block(X, rows)[:, self.feature_support]
         validate_subject_missingness(
             values,
@@ -414,6 +515,7 @@ class StagedResidualPreprocessor:
         covariates: pd.DataFrame | npt.NDArray[np.float64],
         rows: npt.NDArray[np.intp],
     ) -> npt.NDArray[np.float64]:
+        """Nuisance prediction of the target for ``rows``."""
         design = self._design(covariates, rows, check_rank=False)
         return design @ self.target_coefficients
 
@@ -423,6 +525,7 @@ class StagedResidualPreprocessor:
         covariates: pd.DataFrame | npt.NDArray[np.float64],
         rows: npt.NDArray[np.intp],
     ) -> npt.NDArray[np.float64]:
+        """Target residual of ``rows`` after the nuisance prediction, Yeo-Johnson transformed."""
         pred = self.nuisance_prediction(covariates, rows)
         residual = np.asarray(y, dtype=np.float64)[rows] - pred
         from sklearn.preprocessing import PowerTransformer
@@ -432,6 +535,7 @@ class StagedResidualPreprocessor:
         return cast(npt.NDArray[np.float64], transformed)
 
     def inverse_transform_target(self, values: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+        """Undo the Yeo-Johnson transform, giving target residuals in target units."""
         from sklearn.preprocessing import PowerTransformer
 
         pt = cast(PowerTransformer, self.power_transform)
@@ -467,6 +571,31 @@ def fit_staged_residual_preprocessor(
     ``covariates`` and ``residualize_on`` to
     :func:`~eegtable.model.cross_fit_regression`, which does the same thing per
     fold without the caller holding the contract.
+
+    Parameters
+    ----------
+    X : ndarray, shape (n_rows, n_features)
+        Features of every design row; non-finite values count as missing.
+    y : ndarray, shape (n_rows,)
+        Target of every design row; finite on ``rows``.
+    covariates : DataFrame or ndarray, optional
+        Nuisance values with one row per design row; see :func:`fit_nuisance_model`.
+    meta : DataFrame or ndarray, optional
+        Used in place of ``covariates`` when that is None; one of the two is
+        required.
+    groups : array-like, shape (n_rows,)
+        Subject label of every design row, for the subject missingness limit.
+    rows : ndarray of int
+        The fold's training rows. They must outnumber the nuisance parameters, and
+        every kept feature needs a finite value among them.
+    columns : sequence of str
+        Nuisance column names; an intercept is added.
+    config : PreprocessingConfig, optional
+        Feature and subject missingness limits; the defaults when None.
+
+    Returns
+    -------
+    StagedResidualPreprocessor
     """
     from sklearn.preprocessing import PowerTransformer
 
@@ -565,6 +694,30 @@ def reconstruct_staged_permutation_target_for_fold(
 
     ``permutation_indices`` must be a permutation of every row index that maps
     each fold row to another row of the same fold; both are checked.
+
+    Parameters
+    ----------
+    y : ndarray, shape (n_rows,)
+        Unpermuted target of every design row.
+    covariates : DataFrame or ndarray, optional
+        Nuisance values with one row per design row; see :func:`fit_nuisance_model`.
+    meta : DataFrame or ndarray, optional
+        Used in place of ``covariates`` when that is None; one of the two is
+        required.
+    train, test : ndarray of int, optional
+        Disjoint training and test rows of the fold; both are required.
+    train_idx, test_idx : ndarray of int, optional
+        Used in place of ``train`` and ``test`` when those are None.
+    columns : sequence of str
+        Nuisance column names; an intercept is added.
+    permutation_indices : ndarray of int, shape (n_rows,)
+        Source row of every design row.
+
+    Returns
+    -------
+    ndarray
+        Copy of ``y`` whose fold rows hold their nuisance prediction plus the
+        residual of their source row; other rows are unchanged.
     """
     cov = covariates if covariates is not None else meta
     if cov is None:

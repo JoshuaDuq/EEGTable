@@ -9,7 +9,8 @@ import pandas as pd
 import pytest
 import yaml
 
-from eegtable.preprocessing.provenance import file_hash
+from eegtable.preprocessing.provenance import file_hash, identity
+from eegtable.runner.batch import _upstream_provenance
 
 SCRIPT = (
     Path(__file__).resolve().parents[2] / "paradigm_specific" / "thermal_pain" / "repair_markers.py"
@@ -118,6 +119,10 @@ def bundle(tmp_path):
     epochs = mne.EpochsArray(
         np.zeros((2, 1, 10)), info, events=events, event_id={"Stimulus/S  1": 1}
     )
+    provenance = {"events": {"event_id": {"Stimulus/S  1": 1}}}
+    epochs.info["description"] = (
+        f"preprocessing={stem.name}_preprocessing.json; identity={identity(provenance)}"
+    )
     epochs.save(f"{stem}_epo.fif", verbose=False)
     pd.DataFrame({"label": ["Stimulus/S  1", "Stimulus/S  1"], "retained": [True, False]}).to_csv(
         f"{stem}_events.tsv", sep="\t", index=False
@@ -131,7 +136,7 @@ def bundle(tmp_path):
             f"{stem.name}_epo.fif": file_hash(Path(f"{stem}_epo.fif")),
             f"{stem.name}_events.tsv": file_hash(Path(f"{stem}_events.tsv")),
         },
-        "provenance": {"events": {"event_id": {"Stimulus/S  1": 1}}},
+        "provenance": provenance,
     }
     Path(f"{stem}_preprocessing.json").write_text(json.dumps(manifest))
     return stem
@@ -148,6 +153,17 @@ def test_bundle_repair_renames_everywhere_and_rehashes(tmp_path):
     assert manifest["provenance"]["events"]["event_id"] == {"Trig_therm/T  1": 1}
     for name, digest in manifest["files"].items():
         assert file_hash(tmp_path / name) == digest
+
+
+# The 2026-09-22 repair left the old identity in the FIF, so eegtable run refused every bundle.
+def test_bundle_repair_restamps_the_epochs_identity(tmp_path):
+    stem = bundle(tmp_path)
+    manifest_path = Path(f"{stem}_preprocessing.json")
+    repair.repair_bundle(manifest_path)
+    epochs = mne.read_epochs(f"{stem}_epo.fif", verbose=False)
+    provenance = _upstream_provenance(Path(f"{stem}_epo.fif"), epochs)
+    assert provenance is not None
+    assert provenance["identity"] == identity(json.loads(manifest_path.read_text())["provenance"])
 
 
 def test_bundle_repair_preserves_other_trigger_codes(tmp_path):

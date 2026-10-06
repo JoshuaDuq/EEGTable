@@ -29,7 +29,18 @@ jobs:
       - name: Install docs dependencies
         run: pip install -e ".[docs,connectivity,microstates,model,importance,bids,spectral-model,irasa,cycles,complexity,pac,riemann]"
 
+      # The tutorials run during the build and download public data; cached, a build
+      # does not depend on the data servers being up.
+      - uses: actions/cache@v4
+        with:
+          path: mne_data
+          key: tutorial-data-${{ hashFiles('tutorials/*.py') }}
+      - run: mkdir -p mne_data
+
       - name: Build Sphinx docs
+        env:
+          MNE_DATA: ${{ github.workspace }}/mne_data
+          MPLBACKEND: Agg
         run: sphinx-build -b html -W docs docs/_build/html
 
       - name: Upload pages artifact

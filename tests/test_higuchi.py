@@ -115,3 +115,38 @@ def test_it_is_recorded_with_its_k_max() -> None:
     ten = ef.higuchi_fractal_dimension([signal], windows=window, include_global=False, k_max=10)
     assert five.meta[0].computation.parameters["parameters"] == {"k_max": 5}
     assert five.names[0] != ten.names[0]
+
+
+def _higuchi_one_trace(x, k_max):
+    # The per-trace estimate the vectorized one replaced, kept as the reference for its numbers.
+    n = x.size
+    if n < 2 * k_max or not np.isfinite(x).all():
+        return np.nan
+    lengths = np.array(
+        [
+            np.mean(
+                [
+                    np.abs(np.diff(x[m::k])).sum() * (n - 1) / (((n - m - 1) // k) * k * k)
+                    for m in range(k)
+                ]
+            )
+            for k in range(1, k_max + 1)
+        ]
+    )
+    usable = np.isfinite(lengths) & (lengths > 0.0)
+    if usable.sum() < 2:
+        return np.nan
+    log_k = -np.log(np.arange(1, k_max + 1, dtype=float))
+    return np.polyfit(log_k[usable], np.log(lengths[usable]), 1)[0]
+
+
+def test_every_trace_is_estimated_as_one_trace_at_a_time_would_be() -> None:
+    from eegtable import complexity
+
+    traces = np.random.default_rng(5).normal(size=(4, 5, 300)).cumsum(axis=-1)
+    traces[0, 0] = 1.0
+    traces[1, 1, 150:] = 2.0
+    traces[2, 2, 40] = np.nan
+    expected = np.array([[_higuchi_one_trace(trace, 10) for trace in rows] for rows in traces])
+    np.testing.assert_allclose(complexity._higuchi(traces, 10), expected, rtol=1e-10)
+    np.testing.assert_array_equal(complexity._higuchi(traces[..., :15], 10), np.nan)

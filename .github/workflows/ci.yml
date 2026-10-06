@@ -20,11 +20,22 @@ jobs:
       - run: mypy
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.11", "3.14"]
+        # The README installs on Windows and macOS too. Paths, file replacement and the
+        # floats hashed into column names differ there, so they are tested, not assumed.
+        include:
+          - os: windows-latest
+            python-version: "3.12"
+          - os: macos-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,6 +47,23 @@ jobs:
       # or that the complete modeling suite remained collectable.
       - run: test -f tests/fixtures/model_reference.npz
       - run: pytest tests/model tests/test_equivalence_model.py -ra
+
+  # The oldest releases pyproject.toml admits. Every other job resolves newer ones, so
+  # without this the stated minimums would be claims rather than tested facts.
+  minimum-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: >
+          pip install -e ".[model]" pytest
+          "numpy==1.26.*" "scipy==1.11.*" "pandas==2.0.*" "mne==1.10.*"
+      - run: python -c "import numpy, scipy, pandas, mne; print(numpy.__version__, scipy.__version__, pandas.__version__, mne.__version__)"
+      - run: >
+          pytest -ra --ignore=tests/preprocessing --ignore=tests/validation
+          --ignore=tests/paradigm_specific
 
   optional-integrations:
     runs-on: ubuntu-latest

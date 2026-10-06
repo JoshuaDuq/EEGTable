@@ -137,7 +137,39 @@ def irasa(
     Periodic residuals retain their sign; no clipping or thresholding occurs.
     Broadband finite inputs must support the resampled frequency range and a
     full Welch segment at every factor. The fit range is half-open; component
-    integrals reach both exact band boundaries.
+    integrals reach both exact band boundaries. Requires ``eegtable[irasa]``.
+
+    Parameters
+    ----------
+    series : sequence of Signal
+        Broadband epochs, finite and nonconstant. Each window must hold at least
+        ``segment_seconds`` times the largest factor in ``hset``.
+    windows : sequence of Window
+        Analysis windows, each decomposed separately.
+    bands : sequence of Band
+        Bands, with unique names inside ``fit_range``, for the aperiodic and
+        periodic component integrals.
+    fit_range : tuple of float, default (2.0, 40.0)
+        Frequency range of the log-log aperiodic fit, in Hz. The lower edge must
+        be above zero, at least five bins must fall inside, and the range
+        stretched by the ``hset`` factors must stay below Nyquist and, when the
+        passband is known, inside it.
+    hset : sequence of float, optional
+        Resampling factors, distinct and strictly between 1 and 2. The default
+        runs from 1.1 to 1.9 in steps of 0.05.
+    segment_seconds : float, default 2.0
+        Welch segment length; at least four samples.
+    groups : mapping of str to sequence of str, optional
+        ROI name to member channels. None gives one column per channel.
+    include_global : bool, default True
+        Also emit the mean across all channels.
+
+    Returns
+    -------
+    FeatureTable
+        ``irasa_offset`` (log10 power) and ``irasa_slope`` (log10 power per log10
+        Hz) of the aperiodic fit, then ``irasa_aperiodic_power`` and
+        ``irasa_periodic_power`` integrals for each band, in V² for EEG in volts.
     """
     check_signals(series, windows)
     factors = _validate_factors(hset)

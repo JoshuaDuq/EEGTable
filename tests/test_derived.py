@@ -268,3 +268,30 @@ def test_asymmetry_refuses_signed_change_scales(norm: Normalization) -> None:
     table = _table(np.array([[30.0, -20.0]]), [THETA, THETA], ["C3", "C4"], norm=norm)
     with pytest.raises(ValueError, match="percent"):
         asymmetry(table, [("C3", "C4")])
+
+
+def test_a_ratio_rests_on_the_less_supported_of_its_two_bands() -> None:
+    # Like coverage: the ratio cannot rest on more of its window than either operand did.
+    base = _table(np.array([[8.0, 2.0]]), [THETA, BETA], ["C3", "C3"])
+    table = FeatureTable(
+        values=base.values,
+        coverage=base.coverage,
+        meta=base.meta,
+        row_ids=base.row_ids,
+        support=np.array([[0.3, 0.9]]),
+    )
+    ratio = band_ratio(table, "theta", "beta")
+    assert ratio.support is not None and ratio.support.tolist() == [[0.3]]
+
+
+def test_an_asymmetry_rests_on_the_less_supported_of_its_two_channels() -> None:
+    base = _table(np.array([[2.0, 1.0]]), [THETA, THETA], ["C3", "C4"])
+    table = FeatureTable(
+        values=base.values,
+        coverage=base.coverage,
+        meta=base.meta,
+        row_ids=base.row_ids,
+        support=np.array([[0.8, 0.4]]),
+    )
+    result = asymmetry(table, [("C3", "C4")])
+    assert result.support is not None and result.support.tolist() == [[0.4]]

@@ -93,6 +93,25 @@ def test_a_window_outside_the_time_axis_raises() -> None:
         _run(windows=[Window("late", 30.0, 40.0)])
 
 
+def test_a_window_reaching_past_the_time_axis_raises() -> None:
+    # Truncated, it would measure 0-2.99 s under a name and bounds claiming 0-5 s, so a typo
+    # or a recording with shorter epochs would pass unnoticed.
+    with pytest.raises(ValueError, match="reaches outside"):
+        _run(windows=[Window("late", 0.0, 5.0)])
+
+
+def test_a_window_may_end_where_the_last_sample_ends() -> None:
+    # The last sample, at 2.99 s, stands for the interval up to 3 s: a window written to the
+    # end of the data, 0 to 3 s, is whole, as 0 to 30 s is for a 30 s sleep epoch.
+    table = _run(windows=[Window("late", 0.0, 3.0)])
+    np.testing.assert_allclose(table.select(measure="count").values, 300.0)  # type: ignore[attr-defined]
+
+
+def test_an_infinite_window_bound_runs_to_the_edge_of_the_axis() -> None:
+    table = _run(windows=[Window("late", 0.0, np.inf)])
+    np.testing.assert_allclose(table.select(measure="count").values, 300.0)  # type: ignore[attr-defined]
+
+
 def test_signals_disagreeing_on_the_time_axis_raise() -> None:
     other = _signal(BETA, 4.0)
     shifted = BandSignal.from_arrays(
@@ -191,3 +210,9 @@ def test_every_multi_signal_measure_rejects_misaligned_trials(compute: Measure) 
     signals = [_signal(ALPHA, 2.0), _reordered(_signal(BETA, 4.0))]
     with pytest.raises(ValueError, match="row identities"):
         compute(signals)
+
+
+def test_a_single_signal_outside_a_list_is_named() -> None:
+    # Measures take a sequence of signals, one per band; a bare one used to fail on indexing.
+    with pytest.raises(TypeError, match=r"\[signal\]"):
+        ef.variance(_signal(ALPHA, 1.0), windows=[EARLY])  # type: ignore[arg-type]

@@ -40,6 +40,16 @@ class FoldFitError(ValueError, RuntimeError):
 
 @dataclass(frozen=True)
 class TunedFit:
+    """Best candidate of :func:`tune`.
+
+    Parameters
+    ----------
+    estimator : Pipeline
+        The chosen candidate, refitted on all training rows of the fold.
+    best_params : dict
+        Its grid values.
+    """
+
     estimator: Pipeline
     best_params: dict[str, object]
 
@@ -132,6 +142,47 @@ def tune(
     scoring: object = None,
     refit: str | bool | None = None,
 ) -> TunedFit:
+    """Grid-search a pipeline over group-disjoint inner splits of one training fold.
+
+    Runs scikit-learn's ``GridSearchCV`` on splits from :func:`inner_cv` and refits
+    the best candidate on all of ``X_train``. Every candidate is checked against
+    the grouped-fitting restrictions first. A failing candidate or a non-finite
+    inner score raises :class:`FoldFitError`. The cross-fitting functions call
+    this; call it directly only in a fold loop of your own.
+
+    Parameters
+    ----------
+    pipeline : Pipeline
+        Unfitted pipeline; it is cloned, not modified.
+    grid : mapping of str to sequence
+        Parameter grid.
+    X_train, y_train : ndarray
+        Training rows of the outer fold only.
+    inner_groups_train : ndarray
+        Label of each training row that the inner splits keep disjoint: subjects,
+        or runs inside a within-subject fold. At least two distinct labels.
+    split : InnerSplit
+        Grouping, stratification and requested split count; the count is capped
+        at the number of distinct labels.
+    seed : int
+        Assigned to every ``random_state`` in the pipeline; with ``fold`` it also
+        seeds stratified splits and the global generators during the search.
+    fold : int
+        Outer fold index, used in error messages and to vary seeds by fold.
+    n_jobs : int, default 1
+        ``GridSearchCV`` parallel jobs.
+    scoring : str, callable or mapping, optional
+        Selection score; None uses the estimator's ``score``.
+        :func:`subject_r_scorer` is refused because ``GridSearchCV`` cannot pass it
+        the validation subjects.
+    refit : str or bool, optional
+        With multi-metric ``scoring``, the metric that chooses the candidate.
+        False is refused.
+
+    Returns
+    -------
+    TunedFit
+    """
     if refit is False:
         raise ValueError("refit=False cannot return a fitted outer-fold model.")
     _validate_grouped_estimator(pipeline)
@@ -194,6 +245,26 @@ def fit_untuned(
     seed: int,
     fold: int = 0,
 ) -> Pipeline:
+    """Fit a clone of a pipeline as configured, without a search.
+
+    Parameters
+    ----------
+    pipeline : Pipeline
+        Unfitted pipeline; it is cloned, not modified.
+    X, y : ndarray
+        Training rows.
+    seed : int
+        Assigned to every ``random_state`` in the clone. ``seed + fold`` seeds the
+        global NumPy and ``random`` generators during the fit; their previous state
+        is restored afterwards.
+    fold : int, default 0
+        Fold index, used in error messages and seeding.
+
+    Returns
+    -------
+    Pipeline
+        The fitted clone. A failed fit raises :class:`FoldFitError`.
+    """
     with seeded(seed, fold):
         pipe_clone = cast(Pipeline, clone(pipeline))
         _assign_random_state(pipe_clone, seed)

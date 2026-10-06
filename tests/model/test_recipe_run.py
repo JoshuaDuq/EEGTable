@@ -110,6 +110,14 @@ def test_model_recipe_resolves_paths_and_quality(tmp_path):
     assert recipe.validation.scoring == "neg_mean_squared_error"
 
 
+def test_model_recipe_reads_a_minimum_support(tmp_path):
+    path, record = _recipe(tmp_path)
+    record["quality"]["min_support"] = 0.5
+    path.write_text(yaml.safe_dump(record))
+    load, _, _ = _api()
+    assert load(path).quality.min_support == 0.5
+
+
 @pytest.mark.parametrize(
     "change", ["unknown", "duplicate", "bool_seed", "invalid_estimator", "bad_grid"]
 )
@@ -562,6 +570,42 @@ def test_external_targets_refuse_missing_identity(tmp_path):
     load, check, _ = _api()
     with pytest.raises(ValueError, match="exactly"):
         check(load(path))
+
+
+def test_external_targets_keyed_by_another_name_show_both_sides(tmp_path):
+    # Keyed by subject, where feature samples carry the epochs file's path, every row fails
+    # to match; the error has to show what each side holds for the mistake to be visible.
+    from eegtable.io import read_dataset
+
+    path, record = _recipe(tmp_path)
+    dataset = read_dataset([tmp_path / name for name in record["inputs"]["paths"]])
+    targets = dataset.targets[["recording", "epoch", "event", "outcome"]].copy()
+    targets["recording"] = "sub-01"
+    targets.rename(columns={"outcome": "external_score"}).drop_duplicates(
+        ["recording", "epoch", "event"]
+    ).to_csv(tmp_path / "targets.tsv", sep="\t", index=False)
+    record["inputs"]["targets"] = "targets.tsv"
+    record["analysis"]["target"] = "external_score"
+    path.write_text(yaml.safe_dump(record))
+    load, check, _ = _api()
+    with pytest.raises(ValueError) as error:
+        check(load(path))
+    message = str(error.value)
+    assert "sub-01" in message and dataset.targets["recording"].iloc[0] in message
+
+
+def test_model_cli_run_reports_its_scores_beside_the_baselines(tmp_path, capsys):
+    # The scores were only in metrics.json; a run should say how it did.
+    from eegtable.runner.model_command import register
+
+    parser = argparse.ArgumentParser()
+    register(parser.add_subparsers(required=True))
+    path, _ = _recipe(tmp_path)
+    args = parser.parse_args(["model", "run", str(path)])
+    assert args.handler(args) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any(line.lstrip().startswith("model") and "r2" in line for line in lines)
+    assert any(line.lstrip().startswith("dummy") and "r2" in line for line in lines)
 
 
 def test_external_group_labels_preserve_distinct_numeric_strings(tmp_path):

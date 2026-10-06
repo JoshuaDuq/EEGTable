@@ -43,12 +43,39 @@ HELP = {
 
 @dataclass(frozen=True)
 class Workflow:
+    """One recording's configuration bound to its checkpoint workspace.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        The recording's configuration.
+    workspace : pathlib.Path
+        Directory holding its checkpoints, pointers and review decisions.
+    """
+
     config: PreprocessingConfig
     workspace: Path
 
 
 @dataclass(frozen=True)
 class StepStatus:
+    """State of one stage, from :func:`list_steps`.
+
+    Parameters
+    ----------
+    stage : str
+        Stage name.
+    state : str
+        ``"completed"``, ``"stale"``, ``"pending"``, ``"needs-review"`` or
+        ``"disabled"``.
+    reason : str
+        Why the stage is disabled; empty otherwise.
+    path : pathlib.Path or None
+        Checkpoint directory the stage's pointer names, if any.
+    next_action : str
+        Command-line action, with ``CONFIG`` standing for the recipe path.
+    """
+
     stage: str
     state: str
     reason: str
@@ -58,6 +85,20 @@ class StepStatus:
 
 @dataclass(frozen=True)
 class StepResult:
+    """Outcome of running one stage.
+
+    Parameters
+    ----------
+    stage : str
+        Stage name.
+    state : str
+        ``"completed"``, or ``"needs-review"`` when a review gate has no decision.
+    path : pathlib.Path or None
+        The checkpoint directory, or the pending decision file of a review.
+    next_action : str
+        Follow-up command-line action, with ``CONFIG`` standing for the recipe path.
+    """
+
     stage: str
     state: str
     path: Path | None
@@ -66,12 +107,38 @@ class StepResult:
 
 @dataclass(frozen=True)
 class RunOutcome:
+    """Outcome of :func:`run_until`.
+
+    Parameters
+    ----------
+    state : str
+        ``"completed"``, or ``"needs-review"`` when a review gate stopped the run.
+    steps : tuple of StepResult
+        The stages run, in order.
+    next_action : str
+        Follow-up command-line action, with ``CONFIG`` standing for the recipe path.
+    """
+
     state: str
     steps: tuple[StepResult, ...]
     next_action: str
 
 
 def open_workflow(config: PreprocessingConfig) -> Workflow:
+    """Bind a recording's configuration to its checkpoint workspace.
+
+    Nothing is read or written. The workspace is
+    ``output.directory / ".preprocessing" / output.name``.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        One recording's configuration, e.g. a value of :func:`load_recipe`.
+
+    Returns
+    -------
+    Workflow
+    """
     return Workflow(config, config.output.directory / ".preprocessing" / config.output.name)
 
 
@@ -247,12 +314,47 @@ def read_stage(workflow: Workflow, name: str, identities: dict[str, str]) -> Che
 
 
 def read_checkpoint(workflow: Workflow, stage: str) -> Checkpoint:
+    """Load the checkpoint holding a stage's data, verifying its payload.
+
+    A disabled stage resolves to the enabled stage whose data it passes on. The
+    checkpoint must exist and match the current recipe and saved decisions;
+    otherwise this raises with the command that repairs it.
+
+    Parameters
+    ----------
+    workflow : Workflow
+        From :func:`open_workflow`.
+    stage : str
+        Stage name, e.g. ``"filter"`` or ``"epoch"``.
+
+    Returns
+    -------
+    Checkpoint
+    """
     get_stage(stage)
     identities = stage_identities(workflow, source_identity(workflow) or "pending")
     return read_stage(workflow, data_source(workflow, stage), identities)
 
 
 def list_steps(workflow: Workflow) -> tuple[StepStatus, ...]:
+    """State of every stage, in pipeline order, from checkpoint metadata.
+
+    A stage is ``"completed"`` when its checkpoint matches the current recipe and
+    saved decisions, ``"stale"`` when a checkpoint exists but no longer matches,
+    ``"needs-review"`` for a review gate whose parents have checkpoints but which
+    has no decision for them, ``"disabled"`` when the recipe turns it off, and
+    ``"pending"`` otherwise. Neither the source recording nor checkpoint payloads
+    are read.
+
+    Parameters
+    ----------
+    workflow : Workflow
+        From :func:`open_workflow`.
+
+    Returns
+    -------
+    tuple of StepStatus
+    """
     # Reads metadata only; payload hashes are verified when a checkpoint is consumed.
     identities = stage_identities(workflow, source_identity(workflow) or "pending")
     result = []
@@ -445,6 +547,32 @@ def _policies(workflow: WorkflowSettings) -> dict[str, Any]:
 def run_step(
     workflow: Workflow, stage: str, *, n_jobs: int = 1, overwrite: bool = False
 ) -> StepResult:
+    """Run one stage whose enabled parents already have current checkpoints.
+
+    Reads and fingerprints the source recording, then runs the stage under the
+    workspace's writer lock; a second writer raises instead of waiting. A current
+    checkpoint is reused and a stale one raises until it is reset. A review stage
+    without a saved decision writes a pending decision file and returns
+    ``"needs-review"``, unless its policy is ``"suggested"``, which saves the
+    detectors' verdict as the decision and runs.
+
+    Parameters
+    ----------
+    workflow : Workflow
+        From :func:`open_workflow`.
+    stage : str
+        Stage name; a disabled stage raises.
+    n_jobs : int, default 1
+        Passed to filtering and resampling.
+    overwrite : bool, default False
+        Let ``export`` replace existing bundle files, including republishing a
+        bundle that already matches its checkpoint. A missing bundle is
+        republished without it.
+
+    Returns
+    -------
+    StepResult
+    """
     get_stage(stage)
     if not _enabled(workflow, stage):
         raise ValueError(f"{stage}: disabled by configuration")
@@ -466,6 +594,24 @@ def _step(
 
 
 def run_next(workflow: Workflow, *, n_jobs: int = 1, overwrite: bool = False) -> StepResult:
+    """Run the first stage, in pipeline order, that is neither completed nor disabled.
+
+    Runs as :func:`run_step`. When every stage is completed, ``export`` runs again,
+    which verifies the bundle or republishes it.
+
+    Parameters
+    ----------
+    workflow : Workflow
+        From :func:`open_workflow`.
+    n_jobs : int, default 1
+        Passed to filtering and resampling.
+    overwrite : bool, default False
+        As for :func:`run_step`.
+
+    Returns
+    -------
+    StepResult
+    """
     pending = (
         status.stage
         for status in list_steps(workflow)
@@ -483,6 +629,30 @@ def run_until(
     overwrite: bool = False,
     on_step: Callable[[StepResult, int, int], None] | None = None,
 ) -> RunOutcome:
+    """Run, in order, every enabled stage up to and including ``stage``.
+
+    The source recording is read and fingerprinted once. Each stage runs as by
+    :func:`run_step`, reusing current checkpoints, and the run stops at the first
+    review gate without a decision.
+
+    Parameters
+    ----------
+    workflow : Workflow
+        From :func:`open_workflow`.
+    stage : str, default "export"
+        Last stage to run.
+    n_jobs : int, default 1
+        Passed to filtering and resampling.
+    overwrite : bool, default False
+        As for :func:`run_step`.
+    on_step : callable, optional
+        Called as ``on_step(result, index, total)`` after each stage, ``index``
+        counting from 1.
+
+    Returns
+    -------
+    RunOutcome
+    """
     get_stage(stage)
     needed: set[str] = set()
 
@@ -511,6 +681,24 @@ def run_until(
 
 
 def reset_from(workflow: Workflow, stage: str) -> tuple[str, ...]:
+    """Retire a stage and every stage that depends on it.
+
+    Their checkpoint pointers are removed and saved decisions renamed aside;
+    checkpoint payloads stay on disk. The stage also gets a new reset token, so
+    it is recomputed on the next run even with unchanged settings.
+
+    Parameters
+    ----------
+    workflow : Workflow
+        From :func:`open_workflow`.
+    stage : str
+        First stage to retire.
+
+    Returns
+    -------
+    tuple of str
+        The retired stages, in pipeline order.
+    """
     # Pointers and decisions are retired, never the immutable payloads.
     get_stage(stage)
     descendants = {stage}

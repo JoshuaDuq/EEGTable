@@ -124,8 +124,14 @@ def _merge_targets(
     source_keys = set(map(tuple, descriptors[keys].to_numpy()))
     target_keys = set(map(tuple, targets[keys].to_numpy()))
     if source_keys != target_keys:
+        # Show what each side holds: keys written another way, a subject label where samples
+        # carry a file path, mismatch on every row and are otherwise hard to spot.
+        unmatched = sorted(source_keys - target_keys)[:2]
+        unexpected = sorted(target_keys - source_keys)[:2]
         raise ValueError(
-            "external targets must match every feature sample exactly, with no extra rows."
+            "external targets must match every feature sample exactly, with no extra rows. "
+            f"Samples without a target, e.g. {unmatched}; targets without a sample, e.g. "
+            f"{unexpected}. A sample's recording is its epochs file's path under inputs.root."
         )
     overlap = {str(column) for column in set(targets) & set(descriptors) - set(keys)}
     if overlap:
@@ -218,7 +224,10 @@ def _fold_evidence(
     for fold in folds:
         groups = design.groups[fold.train]
         if np.unique(groups).size < inner.n_splits:
-            raise ValueError(f"Fold {fold.index} has fewer training groups than inner_splits.")
+            raise ValueError(
+                f"Fold {fold.index} has {np.unique(groups).size} training groups, fewer than "
+                f"validation.inner_splits = {inner.n_splits}; lower inner_splits or add groups."
+            )
         labels = design.y[fold.train].astype(np.intp) if inner.stratified else None
         splitter = inner_cv(
             groups,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields
 from functools import cached_property
@@ -78,10 +79,65 @@ def _json_value(value: object) -> object:
     raise TypeError(f"computation parameter {value!r} is not JSON-serializable.")
 
 
+# A string no field can hold, encoded once, marking where the computation's text goes.
+_SPLICE = "\x00computation\x00"
+_SPLICE_JSON = json.dumps(_SPLICE)
+
+
 def _band_record(band: Band | None) -> dict[str, object] | None:
     if band is None:
         return None
     return {"name": band.name, "fmin": band.fmin, "fmax": band.fmax}
+
+
+_ROW_ID_FIELDS = ("recording", "epoch", "event")
+_GROUP_FIELD = "group"
+_LONG_FIELDS = (
+    "feature",
+    "measure",
+    "band",
+    "band_fmin",
+    "band_fmax",
+    "space",
+    "space_kind",
+    "window",
+    "window_tmin",
+    "window_tmax",
+    "normalization",
+    "unit",
+    "source",
+)
+
+
+def _long_record(meta: FeatureMeta) -> tuple[object, ...]:
+    tmin, tmax = meta.window_bounds if meta.window_bounds is not None else (None, None)
+    band = meta.band
+    return (
+        meta.name,
+        meta.measure,
+        meta.band_label,
+        band.fmin if band is not None else None,
+        band.fmax if band is not None else None,
+        meta.space,
+        meta.space_kind,
+        meta.window,
+        tmin,
+        tmax,
+        meta.normalization,
+        meta.unit,
+        meta.source,
+    )
+
+
+def _matches(field: object, value: object) -> bool:
+    # Feature names and recipes write a band by its name, so a name selects it too.
+    if isinstance(field, Band) and isinstance(value, str):
+        return field.name == value
+    return field == value
+
+
+def _label(field: object) -> object:
+    return field.name if isinstance(field, Band) else field
 
 
 @dataclass(frozen=True)
@@ -137,6 +193,10 @@ class FeatureMeta:
 
     def record(self) -> dict[str, object]:
         """JSON-serializable form of every field that defines this column."""
+        return {**self.fields_record(), "computation": self.computation.record()}
+
+    def fields_record(self) -> dict[str, object]:
+        """:meth:`record` without the computation, which a sidecar stores once per table."""
         return {
             "measure": self.measure,
             "band": _band_record(self.band),
@@ -151,7 +211,6 @@ class FeatureMeta:
             "phase_band": _band_record(self.phase_band),
             "amplitude_band": _band_record(self.amplitude_band),
             "nodes": self.nodes,
-            "computation": self.computation.record(),
         }
 
     # Cached because the record is immutable and hashing it is not cheap: reading a cohort
@@ -159,21 +218,34 @@ class FeatureMeta:
     @cached_property
     def parameter_hash(self) -> str:
         """Stable digest of every field that defines this feature column."""
-        canonical = json.dumps(
-            _json_value(self.record()), sort_keys=True, separators=(",", ":"), allow_nan=False
+        # The canonical JSON of record(), byte for byte, with the computation spliced in from
+        # its own canonical text: decoding and re-encoding it, a 64-channel list for every
+        # connectivity column, was most of the cost of naming a table.
+        fields = json.dumps(
+            _json_value({**self.fields_record(), "computation": _SPLICE}),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
         )
-        return hashlib.sha256(canonical.encode()).hexdigest()
+        computation = (
+            f'{{"method":{json.dumps(self.computation.method)},'
+            f'"parameters":{self.computation.parameters_json}}}'
+        )
+        return hashlib.sha256(fields.replace(_SPLICE_JSON, computation, 1).encode()).hexdigest()
+
+    @property
+    def band_label(self) -> str | None:
+        """The band as the name writes it: phase and amplitude bands for coupling."""
+        if self.phase_band is not None and self.amplitude_band is not None:
+            return f"phase-{self.phase_band.name}--amp-{self.amplitude_band.name}"
+        return self.band.name if self.band is not None else None
 
     @cached_property
     def name(self) -> str:
         """The canonical feature name for this column."""
         readable = feature_name(
             measure=self.measure,
-            band=(
-                f"phase-{self.phase_band.name}--amp-{self.amplitude_band.name}"
-                if self.phase_band is not None and self.amplitude_band is not None
-                else self.band.name if self.band is not None else None
-            ),
+            band=self.band_label,
             space=self.space,
             window=self.window,
             normalization=self.normalization,
@@ -192,9 +264,7 @@ class FeatureTable:
         condition; see ``coverage`` for how much valid input it had.
     coverage : ndarray, shape (n_epochs, n_features)
         Fraction of numerically finite input that produced each value, in
-        ``[0, 1]``. This is not an artifact-free-data score. For Morlet input,
-        :attr:`Spectra.support` separately records the fraction of the requested
-        window with complete wavelet support.
+        ``[0, 1]``. This is not an artifact-free-data score.
     meta : tuple of FeatureMeta
         One record per column.
     flags : mapping of str to ndarray, optional
@@ -208,6 +278,12 @@ class FeatureTable:
         Recording, original epoch index and event identity for every epoch row.
         Required when concatenating per-epoch tables. Group-row tables use
         ``row_labels`` instead, and cannot also carry ``row_ids``.
+    support : ndarray, shape (n_epochs, n_features), optional
+        Fraction of the requested window each value rests on, in ``[0, 1]``. Morlet
+        power is averaged only over coefficients whose whole wavelet fits the
+        window, so a short window, or a low frequency, can leave a sliver of it.
+        None, the default, means every value rests on its whole window, as Welch,
+        multitaper and time-domain values do.
     """
 
     values: npt.NDArray[np.float64]
@@ -216,6 +292,7 @@ class FeatureTable:
     flags: Mapping[str, npt.NDArray[np.bool_]] = field(default_factory=dict)
     row_labels: tuple[str, ...] | None = None
     row_ids: tuple[RowId, ...] | None = None
+    support: npt.NDArray[np.float64] | None = None
 
     def __post_init__(self) -> None:
         if self.values.ndim != 2:
@@ -225,6 +302,13 @@ class FeatureTable:
                 f"coverage shape {self.coverage.shape} does not match values {self.values.shape}."
             )
         validate_fraction_array(self.coverage, "coverage")
+        if self.support is not None:
+            if self.support.shape != self.values.shape:
+                raise ValueError(
+                    f"support shape {self.support.shape} does not match values "
+                    f"{self.values.shape}."
+                )
+            validate_fraction_array(self.support, "support")
         if len(self.meta) != self.values.shape[1]:
             raise ValueError(
                 f"meta has {len(self.meta)} records but values has {self.values.shape[1]} columns."
@@ -272,13 +356,65 @@ class FeatureTable:
         """Number of rows: epochs, or trial groups when ``row_labels`` is set."""
         return int(self.values.shape[0])
 
+    def __repr__(self) -> str:
+        # The generated repr printed every array and metadata record, hundreds of kilobytes.
+        rows = "epoch" if self.row_labels is None else "group"
+        measures = sorted({m.measure for m in self.meta})
+        shown = ", ".join(measures[:5]) + (", …" if len(measures) > 5 else "")
+        return (
+            f"FeatureTable({self.n_rows} {rows} rows × {len(self.meta)} columns; "
+            f"measures: {shown or 'none'})"
+        )
+
     def to_dataframe(self) -> pd.DataFrame:
         """Render the values as a DataFrame with canonical column names.
 
-        The index is the row labels when the rows are trial groups, and a plain
-        range when they are epochs.
+        Epoch rows are indexed by ``(recording, epoch, event)``. MNE keeps each epoch's
+        original number in ``epochs.metadata`` after a drop, so
+        ``frame.join(epochs.metadata, on="epoch")`` pairs every row with its own
+        trial, where a positional index would shift them. Trial-group rows are
+        indexed by their label, and rows without an identity by position.
         """
-        return pd.DataFrame(self.values, columns=self.names, index=self.row_labels)
+        return pd.DataFrame(self.values, columns=self.names, index=self._row_index())
+
+    def to_long(self) -> pd.DataFrame:
+        """Return one row per cell: the row's identity, the column's metadata, the value.
+
+        This is the shape mixed models, R and plotting libraries read. Identity columns
+        are ``recording``, ``epoch`` and ``event`` (``group`` for trial-group rows),
+        followed by ``feature`` (the canonical name) and the column's ``measure``,
+        ``band``, ``band_fmin``, ``band_fmax``, ``space``, ``space_kind``, ``window``,
+        ``window_tmin``, ``window_tmax``, ``normalization``, ``unit`` and ``source``,
+        then ``value``, ``coverage`` and ``support``. Each flag becomes a boolean column
+        of its name.
+        """
+        n_rows, n_columns = self.values.shape
+        rows = self._row_frame().iloc[np.repeat(np.arange(n_rows), n_columns)]
+        columns = pd.DataFrame([_long_record(m) for m in self.meta], columns=list(_LONG_FIELDS))
+        columns = columns.iloc[np.tile(np.arange(n_columns), n_rows)]
+        frame = pd.concat([rows.reset_index(drop=True), columns.reset_index(drop=True)], axis=1)
+        frame["value"] = self.values.reshape(-1)
+        frame["coverage"] = self.coverage.reshape(-1)
+        frame["support"] = self.support.reshape(-1) if self.support is not None else 1.0
+        for key in sorted(self.flags):
+            if key in frame.columns:
+                raise ValueError(f"flag {key!r} would overwrite the long table's {key!r} column.")
+            frame[key] = self.flags[key].reshape(-1)
+        return frame
+
+    def _row_index(self) -> pd.Index:
+        if self.row_ids is not None:
+            return pd.MultiIndex.from_frame(self._row_frame())
+        if self.row_labels is not None:
+            return pd.Index(self.row_labels, name=_GROUP_FIELD)
+        return pd.RangeIndex(self.n_rows)
+
+    def _row_frame(self) -> pd.DataFrame:
+        if self.row_ids is not None:
+            return pd.DataFrame(list(self.row_ids), columns=list(_ROW_ID_FIELDS))
+        if self.row_labels is not None:
+            return pd.DataFrame({_GROUP_FIELD: list(self.row_labels)})
+        return pd.DataFrame({"row": np.arange(self.n_rows)})
 
     def select(self, **conditions: object) -> FeatureTable:
         """Return the columns whose metadata matches every given field.
@@ -286,12 +422,15 @@ class FeatureTable:
         Parameters
         ----------
         **conditions
-            Field name to required value, e.g. ``select(space="C4")``.
+            Field name to required value, e.g. ``select(space="C4")``. A band field
+            also matches the band's name, as in ``select(band="alpha")``.
 
         Returns
         -------
         FeatureTable
-            A new table holding only the matching columns.
+            A new table holding only the matching columns. A value that no column
+            carries at all warns, since that is usually a misspelled label rather
+            than a feature this recording lacks.
         """
         known = {f.name for f in fields(FeatureMeta)}
         unknown = set(conditions) - known
@@ -299,10 +438,19 @@ class FeatureTable:
             raise ValueError(
                 f"{sorted(unknown)} is not a FeatureMeta field; known fields: {sorted(known)}"
             )
+        for key, value in conditions.items():
+            present = [getattr(m, key) for m in self.meta]
+            if present and not any(_matches(field, value) for field in present):
+                labels = sorted({str(_label(field)) for field in present})
+                warnings.warn(
+                    f"no column has {key}={value!r}; this table's {key} values are {labels}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
         keep = [
             i
             for i, m in enumerate(self.meta)
-            if all(getattr(m, key) == value for key, value in conditions.items())
+            if all(_matches(getattr(m, key), value) for key, value in conditions.items())
         ]
         return self._columns(np.asarray(keep, dtype=int))
 
@@ -354,6 +502,7 @@ class FeatureTable:
                 None if self.row_labels is None else tuple(self.row_labels[i] for i in index)
             ),
             row_ids=None if self.row_ids is None else tuple(self.row_ids[i] for i in index),
+            support=None if self.support is None else self.support[index],
         )
 
     def _columns(self, index: npt.NDArray[np.intp]) -> FeatureTable:
@@ -364,6 +513,7 @@ class FeatureTable:
             flags={k: v[:, index] for k, v in self.flags.items()},
             row_labels=self.row_labels,
             row_ids=self.row_ids,
+            support=None if self.support is None else self.support[:, index],
         )
 
 
@@ -427,6 +577,7 @@ def concat(tables: Sequence[FeatureTable]) -> FeatureTable:
         flags=flags,
         row_labels=row_labels,
         row_ids=row_ids,
+        support=_joined_support(tables, axis=1),
     )
 
 
@@ -498,6 +649,20 @@ def stack_rows(
         meta=meta,
         flags=flags,
         row_ids=row_ids,
+        support=_joined_support(tables, axis=0),
+    )
+
+
+def _joined_support(tables: Sequence[FeatureTable], *, axis: int) -> npt.NDArray[np.float64] | None:
+    # A table without support rests on its whole windows, so it joins as complete.
+    if all(table.support is None for table in tables):
+        return None
+    return np.concatenate(
+        [
+            table.support if table.support is not None else np.ones(table.values.shape)
+            for table in tables
+        ],
+        axis=axis,
     )
 
 
@@ -554,6 +719,9 @@ def _stack_union(
     coverage = np.zeros((n_rows, n_columns))
     flag_names = sorted({name for table in tables for name in table.flags})
     flags = {name: np.zeros((n_rows, n_columns), dtype=bool) for name in flag_names}
+    # Like coverage, a column a recording never measured rests on none of its window.
+    restricted = any(table.support is not None for table in tables)
+    support = np.zeros((n_rows, n_columns)) if restricted else None
 
     start = 0
     for table, placement in zip(tables, placements, strict=True):
@@ -562,6 +730,8 @@ def _stack_union(
         coverage[rows, placement] = table.coverage
         for name, array in table.flags.items():
             flags[name][rows, placement] = array
+        if support is not None:
+            support[rows, placement] = 1.0 if table.support is None else table.support
         start += table.n_rows
 
     return FeatureTable(
@@ -571,4 +741,5 @@ def _stack_union(
         flags=flags,
         row_ids=row_ids,
         row_labels=row_labels,
+        support=support,
     )

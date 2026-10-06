@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Workflow actions only. Library dependencies are ranges in pyproject.toml, tested at
+  # their floors and at the latest releases, so there is nothing for a bot to pin.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -1,15 +1,49 @@
 [build-system]
-requires = ["hatchling"]
+# 1.27 reads the SPDX license expression below (PEP 639).
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "eegtable"
-version = "0.1.0.dev0"
+dynamic = ["version"]
 description = "Labelled EEG feature extraction and modeling for MNE objects"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
-dependencies = ["numpy>=1.26", "scipy>=1.11", "pandas>=2.0,<3.0", "mne>=1.8"]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Joshua Duquette", email = "joshua.duquette.1@ulaval.ca" }]
+keywords = [
+    "EEG",
+    "MNE",
+    "feature extraction",
+    "event-related desynchronization",
+    "ERD/ERS",
+    "time-frequency",
+    "provenance",
+    "neuroscience",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Typing :: Typed",
+]
+dependencies = ["numpy>=1.26", "scipy>=1.11", "pandas>=2.0", "mne>=1.10"]
+
+[project.urls]
+Homepage = "https://github.com/JoshuaDuq/EEGTable"
+Documentation = "https://joshuaduq.github.io/EEGTable/"
+Source = "https://github.com/JoshuaDuq/EEGTable"
+Issues = "https://github.com/JoshuaDuq/EEGTable/issues"
+Changelog = "https://github.com/JoshuaDuq/EEGTable/blob/main/CHANGELOG.md"
 
 [project.scripts]
 eegtable = "eegtable.runner.cli:main"
@@ -20,9 +54,12 @@ preprocessing-gui = ["mne-qt-browser", "PyQt6"]
 bids = ["mne-bids>=0.19", "pybv>=0.8.1"]
 connectivity = ["mne-connectivity>=0.7"]
 pac = ["tensorpac>=0.6.5"]
-spectral-model = ["specparam==2.0.0rc7"]
+# Written against the 2.0 API, first released as 2.0.0rc7; the version used is recorded
+# in every output's provenance, so a range does not cost reproducibility.
+spectral-model = ["specparam>=2.0.0rc7,<2.1"]
 irasa = ["neurodsp>=2.3.0"]
-cycles = ["bycycle>=1.2.0"]
+# bycycle 1.2.0 writes into an array that pandas 3's copy-on-write hands back read-only.
+cycles = ["bycycle>=1.2.0", "pandas<3.0"]
 complexity = ["antropy>=0.2.2"]
 riemann = ["scikit-learn>=1.3", "pyriemann>=0.11"]
 microstates = ["scikit-learn>=1.3"]
@@ -39,8 +76,13 @@ docs = [
     "sphinx-copybutton>=0.5",
     "sphinx-design>=0.6",
     "sphinx-notfound-page>=1.0",
+    "sphinx-gallery>=0.17",
 ]
 dev = ["pytest>=8.0", "ruff>=0.6", "black>=24.0", "mypy>=1.11", "pandas-stubs", "scipy-stubs", "types-PyYAML", "pybv>=0.8.1"]
+
+[tool.hatch.version]
+# One version, read from the package, so the wheel and eegtable.__version__ cannot disagree.
+path = "src/eegtable/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/eegtable"]

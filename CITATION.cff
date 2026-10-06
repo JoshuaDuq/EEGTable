@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: >-
+  If you use EEGTable in your research, please cite it as below, together with the
+  methods and packages your analysis relied on, which each method page lists.
+title: EEGTable
+abstract: >-
+  Labelled EEG feature extraction and modeling for MNE objects. Trial-level spectral,
+  temporal, connectivity, complexity, cycle and microstate measures over named
+  windows and baselines, whose columns carry units, computation parameters,
+  coverage and provenance.
+type: software
+authors:
+  - family-names: Duquette
+    given-names: Joshua
+repository-code: "https://github.com/JoshuaDuq/EEGTable"
+url: "https://joshuaduq.github.io/EEGTable/"
+license: MIT
+version: 0.1.0.dev0
+keywords:
+  - EEG
+  - MNE-Python
+  - feature extraction
+  - event-related desynchronization
+  - provenance

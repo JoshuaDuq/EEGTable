@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from importlib import resources, util
+from pathlib import Path
 
 from eegtable.runner.model_cli import register as register
 
@@ -17,6 +19,22 @@ def _require_dependencies() -> None:
                 "Install it with: pip install 'eegtable[model]'",
                 name=dependency,
             )
+
+
+# The headline scores of each task; every metric is in the bundle's JSON files.
+_HEADLINE = ("pearson_r", "r2", "mean_absolute_error", "balanced_accuracy", "auc")
+
+
+def _score_lines(path: Path) -> list[str]:
+    summaries = json.loads(path.read_text())
+    lines = ["Held-out scores, pooled over folds:"]
+    for name, summary in summaries.items():
+        overall = summary["overall"]
+        shown = [
+            f"{key} {overall[key]:.3f}" for key in _HEADLINE if isinstance(overall.get(key), float)
+        ]
+        lines.append(f"  {name:<12} {', '.join(shown)}")
+    return lines
 
 
 def handle(args: argparse.Namespace) -> int:
@@ -51,6 +69,8 @@ def handle(args: argparse.Namespace) -> int:
                 f"Saved {result.n_rows} held-out predictions from {result.n_folds} "
                 f"outer folds to {result.output}"
             )
+            for line in _score_lines(result.output / "benchmark_metrics.json"):
+                print(line)
         else:
             raise ValueError(f"unknown model command {args.model_command!r}.")
     except (ValueError, OSError, ModuleNotFoundError) as error:

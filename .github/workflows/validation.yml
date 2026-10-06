@@ -22,8 +22,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - mne: "mne==1.8.*"
-            # MNE 1.8 imports a SciPy function removed in 1.15.
+          # The oldest supported MNE, and the oldest to import with SciPy 1.15 or later.
+          - mne: "mne==1.10.*"
             extras: "dev,model,connectivity,microstates,spectral-model,irasa,complexity"
             pytest_args: "--ignore=tests/validation/test_preprocessing.py"
           - mne: "mne"
@@ -38,9 +38,12 @@ jobs:
         with:
           path: mne_data
           key: mne-datasets-${{ hashFiles('tests/validation/loaders.py') }}
+      # A cache miss leaves no directory behind, and MNE will not download into a
+      # MNE_DATA that does not exist: every test then errors at setup.
+      - run: mkdir -p "$MNE_DATA"
       - run: pip install -e ".[${{ matrix.extras }}]"
-      - if: matrix.mne == 'mne==1.8.*'
-        run: pip install "mne==1.8.*" "scipy<1.15" "numpy<2.3"
+      - if: matrix.mne == 'mne==1.10.*'
+        run: pip install "mne==1.10.*"
       - run: python -c "import mne; print(mne.__version__)"
       - run: python -c "import antropy, specparam, neurodsp"
       - if: matrix.mne == 'mne'

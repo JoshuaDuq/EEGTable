@@ -105,7 +105,7 @@ def test_from_continuous_spectrum_gains_epoch_and_window_axes() -> None:
     mne = pytest.importorskip("mne")
     info = mne.create_info(["C3", "C4"], 200.0, "eeg")
     raw = mne.io.RawArray(np.random.RandomState(0).randn(2, 4000) * 1e-6, info, verbose="ERROR")
-    spectrum = raw.compute_psd("welch", fmin=2.0, fmax=40.0, verbose="ERROR")
+    spectrum = raw.compute_psd("welch", fmin=2.0, fmax=40.0, n_fft=400, verbose="ERROR")
     spectra = Spectra.from_spectrum(spectrum, recording="test", estimator_parameters={"n_fft": 400})
     assert spectra.data.shape[0] == 1
     assert spectra.data.shape[2] == 1
@@ -136,6 +136,64 @@ def test_from_spectrum_preserves_explicitly_retained_channels(epoched: bool) -> 
     np.testing.assert_array_equal(spectra.data[:, :, 0], expected)
     assert spectrum.ch_names == ["C3", "C4", "VEOG"]
     assert spectrum.info["bads"] == ["C4"]
+
+
+def _welch_spectrum(**parameters: object):
+    import mne
+
+    info = mne.create_info(["C3"], 160.0, "eeg")
+    data = np.random.default_rng(0).normal(size=(2, 1, 800)) * 1e-6
+    epochs = mne.EpochsArray(data, info, verbose="ERROR")
+    return epochs.compute_psd("welch", verbose="ERROR", **parameters)
+
+
+def test_from_spectrum_rejects_a_parameter_the_estimator_does_not_take() -> None:
+    # A typo would otherwise enter the column identity as though it were a setting.
+    spectrum = _welch_spectrum(n_fft=160)
+    with pytest.raises(ValueError, match="nfft"):
+        Spectra.from_spectrum(spectrum, recording="test", estimator_parameters={"nfft": 160})
+
+
+def test_from_spectrum_rejects_an_n_fft_its_frequency_grid_contradicts() -> None:
+    # 160 Hz over 160 points gives 1 Hz bins; n_fft = 320 would have given 0.5 Hz ones.
+    spectrum = _welch_spectrum(n_fft=160)
+    with pytest.raises(ValueError, match="n_fft"):
+        Spectra.from_spectrum(spectrum, recording="test", estimator_parameters={"n_fft": 320})
+
+
+@pytest.mark.parametrize(("declared", "key"), [({"fmin": 2.0}, "fmin"), ({"fmax": 30.0}, "fmax")])
+def test_from_spectrum_rejects_a_frequency_range_its_axis_contradicts(declared, key) -> None:
+    spectrum = _welch_spectrum(n_fft=160, fmin=1.0, fmax=45.0)
+    with pytest.raises(ValueError, match=key):
+        Spectra.from_spectrum(
+            spectrum, recording="test", estimator_parameters={"n_fft": 160, **declared}
+        )
+
+
+def test_from_spectrum_refuses_execution_settings_that_would_split_columns() -> None:
+    spectrum = _welch_spectrum(n_fft=160)
+    with pytest.raises(ValueError, match="n_jobs"):
+        Spectra.from_spectrum(
+            spectrum, recording="test", estimator_parameters={"n_fft": 160, "n_jobs": 2}
+        )
+
+
+def test_from_spectrum_accepts_declarations_that_match_the_spectrum() -> None:
+    parameters = {
+        "fmin": 1.0,
+        "fmax": 45.0,
+        "n_fft": 160,
+        "n_per_seg": 160,
+        "n_overlap": 80,
+        "window": "hamming",
+        "average": "mean",
+        "remove_dc": True,
+    }
+    spectrum = _welch_spectrum(**parameters)
+    spectra = Spectra.from_spectrum(
+        spectrum, recording="test", estimator_parameters={"method": "welch", **parameters}
+    )
+    assert spectra.source == "welch"
 
 
 @pytest.mark.parametrize("parameters", [{}, {"normalization": "length"}])
@@ -291,7 +349,7 @@ def test_spectra_require_nonempty_axes() -> None:
         )
 
 
-def _toy_tfr(n_epochs: int = 4, method: str = "morlet"):
+def _toy_tfr(n_epochs: int = 4, method: str = "morlet", decim: int = 1):
     mne = pytest.importorskip("mne")
     info = mne.create_info(["C3", "C4"], 200.0, "eeg")
     rng = np.random.RandomState(0)
@@ -300,6 +358,7 @@ def _toy_tfr(n_epochs: int = 4, method: str = "morlet"):
         method,
         freqs=np.array([8.0, 10.0, 12.0]),
         n_cycles=3.0,
+        decim=decim,
         return_itc=False,
         verbose="ERROR",
     )
@@ -352,7 +411,7 @@ def test_from_tfr_window_mean_equals_a_manual_mean_over_the_time_mask() -> None:
 
 @pytest.mark.parametrize(
     ("tmin", "tmax"),
-    [(-np.inf, np.inf), (-10.0, 10.0), (-np.inf, 1.0), (-1.0, np.inf)],
+    [(-np.inf, np.inf), (-np.inf, 1.0), (-1.0, np.inf)],
 )
 def test_from_tfr_limits_wavelet_support_to_available_times(tmin: float, tmax: float) -> None:
     tfr = _toy_tfr()
@@ -463,6 +522,24 @@ def test_from_tfr_rejects_a_window_outside_the_time_axis() -> None:
         Spectra.from_tfr(
             _toy_tfr(), (Window("late", 30.0, 40.0),), recording="test", n_cycles=3.0, sfreq=200.0
         )
+
+
+def test_from_tfr_rejects_a_finite_window_bound_past_the_time_axis() -> None:
+    # The epochs end at 1.995 s. Clipped, the column would claim 0-3 s and measure 0-1.995 s.
+    with pytest.raises(ValueError, match="reaches outside"):
+        Spectra.from_tfr(
+            _toy_tfr(), (Window("stim", 0.0, 3.0),), recording="test", n_cycles=3.0, sfreq=200.0
+        )
+
+
+def test_from_tfr_accepts_a_window_ending_where_a_decimated_axis_stops_short() -> None:
+    # Decimating by 4 keeps the sample at 1.98 s but not the epochs' last one at 1.995 s, so a
+    # window ending at the epochs' end lies within one step of the axis and is still data.
+    tfr = _toy_tfr(decim=4)
+    spectra = Spectra.from_tfr(
+        tfr, (Window("stim", 0.0, 1.995),), recording="test", n_cycles=3.0, sfreq=200.0
+    )
+    assert spectra.data.shape[2] == 1
 
 
 def test_from_tfr_requires_at_least_one_window() -> None:
@@ -712,11 +789,12 @@ def _epochs_for_hashing(sfreq: float = 500.0):
 
 
 def _declared(spectrum) -> Spectra:
-    # The same declaration in both arms: what varies is the data, not the dict.
+    # The same declaration in both arms: what varies is the data, not the dict. It names no
+    # bounds, which a narrower arm would contradict and so be refused before it is hashed.
     return Spectra.from_spectrum(
         spectrum,
         recording="r",
-        estimator_parameters={"method": "welch", "fmin": 1.0, "fmax": 45.0},
+        estimator_parameters={"method": "welch"},
     )
 
 

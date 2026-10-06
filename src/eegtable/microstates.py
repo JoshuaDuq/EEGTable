@@ -37,6 +37,13 @@ class MicrostateSegmentation:
         Time axis in seconds.
     sfreq : float
         Sampling frequency in Hz.
+    row_ids : tuple of (str, int, str)
+        Identity of each segmented epoch.
+    global_explained_variance : float
+        Squared spatial correlation of each sample with its assigned template,
+        averaged with squared global field power as weights.
+    computation : ComputationSpec
+        How the templates were obtained and the segmentation settings.
     """
 
     templates: npt.NDArray[np.float64]
@@ -85,6 +92,17 @@ class MicrostateModel:
     same channels in the same order. Use :meth:`from_templates` for an identified
     external reference, and :meth:`match_reference` to assign its state identities
     to a training fit. Unmatched fits have arbitrary ``state1`` onward labels.
+
+    Parameters
+    ----------
+    templates : ndarray, shape (n_states, n_channels)
+        Average-referenced unit topographies, 2 to 12 of them; stored read-only.
+    ch_names : tuple of str
+        Channel order of the template columns.
+    labels : tuple of str
+        Name of each state, in template order.
+    computation : ComputationSpec
+        How the templates were obtained.
     """
 
     templates: npt.NDArray[np.float64]
@@ -130,6 +148,29 @@ class MicrostateModel:
         No held-out epoch contributes a GFP peak, a seed, or a template update.
         ``rows=None`` fits all supplied epochs and is descriptive unless the
         supplied signal itself contains only training epochs.
+
+        Parameters
+        ----------
+        signal : Signal
+            Broadband epochs. Topographies of the fitted epochs must be finite and
+            vary across channels at every sample.
+        rows : ndarray of int, optional
+            Epochs that may contribute; unique and in range. None uses all.
+        n_states : int, default 4
+            Number of templates, from 2 to 12.
+        min_peak_distance_ms : float, default 10.0
+            Minimum separation between global field power peaks, in milliseconds.
+        max_peaks_per_epoch : int, default 400
+            Strongest peaks kept per epoch.
+        peak_prominence : float, optional
+            Minimum prominence for a peak to count, in the signal's units.
+        random_state : int, default 42
+            Seed of the k-means initialization.
+
+        Returns
+        -------
+        MicrostateModel
+            Labelled ``state1`` onward.
         """
         kmeans = _require_sklearn()
         if isinstance(n_states, bool) or not isinstance(n_states, (int, np.integer)):
@@ -204,6 +245,22 @@ class MicrostateModel:
 
         Channel means, scales, and polarities are normalized. Label identity is
         supplied by the reference; arbitrary clusters never acquire A-D labels.
+
+        Parameters
+        ----------
+        templates : ndarray, shape (n_states, n_channels)
+            Maps, finite and varying across channels.
+        ch_names : tuple of str
+            Channel order of the map columns.
+        labels : tuple of str
+            Name of each state, in map order.
+        reference_name : str
+            Nonempty identity of the template set, required by
+            :meth:`match_reference`.
+
+        Returns
+        -------
+        MicrostateModel
         """
         if not isinstance(reference_name, str) or not reference_name.strip():
             raise ValueError("reference_name must identify the external template set.")
@@ -230,6 +287,17 @@ class MicrostateModel:
         The Hungarian assignment maximizes total similarity; templates are
         reordered into reference order. The reference must be fixed independently
         of held-out recordings when state identities are used for prediction.
+
+        Parameters
+        ----------
+        reference : MicrostateModel
+            Identified templates, as from :meth:`from_templates`, with the same
+            channels in the same order and the same number of states.
+
+        Returns
+        -------
+        MicrostateModel
+            This fit's templates in reference order, under the reference's labels.
         """
         if self.ch_names != reference.ch_names or self.templates.shape != reference.templates.shape:
             raise ValueError("Reference matching requires the same states and channels in order.")
@@ -257,7 +325,21 @@ class MicrostateModel:
         )
 
     def segment(self, signal: Signal, *, min_duration_ms: float = 20.0) -> MicrostateSegmentation:
-        """Assign a new recording using these frozen templates, without fitting."""
+        """Assign a new recording using these frozen templates, without fitting.
+
+        Parameters
+        ----------
+        signal : Signal
+            Epochs with the fitted channels in the same order. Topographies must be
+            finite and vary across channels at every sample.
+        min_duration_ms : float, default 20.0
+            Segments shorter than this, in milliseconds, are absorbed into a
+            neighbor or split between neighbors on a duration tie.
+
+        Returns
+        -------
+        MicrostateSegmentation
+        """
         if signal.ch_names != self.ch_names:
             raise ValueError("Microstate segmentation requires fitted channels in the same order.")
         if not np.isfinite(min_duration_ms) or min_duration_ms < 0.0:

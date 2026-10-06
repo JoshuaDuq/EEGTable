@@ -6,6 +6,7 @@ power change.
 """
 
 import json
+from dataclasses import replace
 
 import mne
 import numpy as np
@@ -367,6 +368,34 @@ def test_log_frequency_grid_is_correctly_rounded() -> None:
     assert _log_grid(8.0, 8.0, 1).tolist() == [8.0]
 
 
+WELCH_ALPHA = '[[features]]\nmeasure = "integrated_band_power"\nbands = ["alpha"]\n'
+
+
+def test_welch_columns_ignore_settings_only_other_methods_read(tmp_path) -> None:
+    # Morlet's cycles and multitaper's bandwidth never touch a Welch estimate; if they named
+    # its columns, changing one of their defaults would rename every Welch feature.
+    path = tmp_path / "recipe.toml"
+    path.write_text(HEAD + WELCH_ALPHA)
+    recipe = load_recipe(path)
+    others = replace(
+        recipe,
+        spectra=replace(recipe.spectra, n_freqs=60, min_cycles=4.0, bandwidth=3.0, decim=2),
+    )
+    tables = [
+        compute_features(make_epochs(), r, recording="sub-test_task-test").epochs
+        for r in (recipe, others)
+    ]
+    assert tables[0] is not None and tables[1] is not None
+    assert tables[0].names == tables[1].names
+
+
+def test_a_setting_welch_reads_still_names_its_columns(tmp_path) -> None:
+    default = features(tmp_path, WELCH_ALPHA)
+    overlapped = features(tmp_path, "[spectra]\nn_overlap = 10\n\n" + WELCH_ALPHA)
+    assert default.epochs is not None and overlapped.epochs is not None
+    assert set(default.epochs.names).isdisjoint(overlapped.epochs.names)
+
+
 def test_default_spectral_recipes_keep_their_column_names(tmp_path) -> None:
     # Names include the global mean's member channels and the exact frequency grid.
     welch = features(
@@ -384,8 +413,8 @@ def test_default_spectral_recipes_keep_their_column_names(tmp_path) -> None:
 
     assert welch.epochs is not None and morlet.epochs is not None
     assert list(welch.epochs.to_dataframe().columns) == [
-        "eeg_band-power_alpha_global_base_raw_p763e6435f03b",
-        "eeg_band-power_alpha_global_stim_raw_p6708c176f841",
+        "eeg_band-power_alpha_global_base_raw_p0baba8bb7201",
+        "eeg_band-power_alpha_global_stim_raw_p2f519bfa8753",
     ]
     assert list(morlet.epochs.to_dataframe().columns) == [
         "eeg_mean-tfr-power_alpha_global_stim_raw_p8b079340cb80"

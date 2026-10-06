@@ -387,7 +387,7 @@ def higuchi_fractal_dimension(
         mask: npt.NDArray[np.bool_],
     ) -> dict[str, npt.NDArray[np.float64]]:
         del s, times, mask
-        return {"higuchi_fd": _per_channel(trace, lambda x: _higuchi(x, strides))}
+        return {"higuchi_fd": _higuchi(trace, strides)}
 
     return expand_signal(
         series,
@@ -402,32 +402,40 @@ def higuchi_fractal_dimension(
     )
 
 
-def _higuchi(x: npt.NDArray[np.float64], k_max: int) -> float:
-    """Curve length against stride, fitted in log-log space."""
-    values = np.asarray(x, dtype=float)
-    n = values.size
-    # A gap would shorten one sub-curve and not the others, tilting the fit; the
-    # measure is about how length scales, so a partial curve is not comparable.
-    if n < 2 * k_max or not np.isfinite(values).all():
-        return float("nan")
+def _higuchi(trace: npt.NDArray[np.float64], k_max: int) -> npt.NDArray[np.float64]:
+    """Curve length against stride, fitted in log-log space, for every trace at once."""
+    values = np.asarray(trace, dtype=float)
+    n = values.shape[-1]
+    if n < 2 * k_max:
+        return np.full(values.shape[:-1], np.nan)
 
-    lengths = np.empty(k_max, dtype=float)
+    lengths = np.empty((*values.shape[:-1], k_max))
     for k in range(1, k_max + 1):
-        per_start = np.empty(k, dtype=float)
+        total = np.zeros(values.shape[:-1])
         for m in range(k):
-            sub = values[m::k]
-            steps = int((n - m - 1) // k)
+            steps = (n - m - 1) // k
             # (n - 1) / (steps * k) restores the scale the stride removed, and the
             # remaining 1/k makes lengths at different strides comparable.
-            per_start[m] = np.abs(np.diff(sub)).sum() * (n - 1) / (steps * k * k)
-        lengths[k - 1] = per_start.mean()
+            curve = np.abs(np.diff(values[..., m::k], axis=-1)).sum(axis=-1)
+            total += curve * (n - 1) / (steps * k * k)
+        lengths[..., k - 1] = total / k
 
-    usable = np.isfinite(lengths) & (lengths > 0.0)
-    if int(usable.sum()) < 2:
-        return float("nan")
     log_k = -np.log(np.arange(1, k_max + 1, dtype=float))
-    slope = np.polyfit(log_k[usable], np.log(lengths[usable]), 1)[0]
-    return float(slope)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_length = np.log(lengths)
+    # A zero length, from a flat stretch at that stride, has no logarithm to fit.
+    usable = np.isfinite(log_length)
+    count = usable.sum(axis=-1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x_mean = np.where(usable, log_k, 0.0).sum(axis=-1) / count
+        y_mean = np.where(usable, log_length, 0.0).sum(axis=-1) / count
+        dx = np.where(usable, log_k - x_mean[..., np.newaxis], 0.0)
+        dy = np.where(usable, log_length - y_mean[..., np.newaxis], 0.0)
+        slope = (dx * dy).sum(axis=-1) / (dx * dx).sum(axis=-1)
+    # A gap would shorten one sub-curve and not the others, tilting the fit; the
+    # measure is about how length scales, so a partial curve is not comparable.
+    complete = np.isfinite(values).all(axis=-1)
+    return np.where(complete & (count >= 2), slope, np.nan)
 
 
 def _scale_name(scale: int) -> str:

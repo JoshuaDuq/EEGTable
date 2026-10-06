@@ -149,6 +149,32 @@ def elasticnet_pipeline(
     tol: float = 1e-4,
     selection: str = "cyclic",
 ) -> Pipeline:
+    """Elastic-net regression after the shared preprocessing, with scaling.
+
+    Each fit divides the target by its training standard deviation and scales the
+    solution back, so a penalty means the same whatever the target's unit.
+    Predictions are in the original unit.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        ElasticNet ``random_state``, used when ``selection="random"``.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+    max_iter : int, default 10000
+        Coordinate-descent iteration limit.
+    tol : float, default 1e-4
+        Coordinate-descent tolerance.
+    selection : {"cyclic", "random"}, default "cyclic"
+        Coordinate update order.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"regressor"``; :func:`elasticnet_grid` tunes it.
+    """
     steps = base_preprocessing_steps(
         config,
         include_scaling=True,
@@ -190,6 +216,26 @@ def ridge_pipeline(
     seed: int,
     n_covariates: int = 0,
 ) -> Pipeline:
+    """Ridge regression after the shared preprocessing, with scaling.
+
+    The penalty is used as given at every fit. :func:`ridge_grid` scales its
+    candidates to the array it is built from, once; :func:`scaled_ridge_pipeline`
+    rescales the penalty at each fit instead.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        Ridge ``random_state``.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"regressor"``; tune ``regressor__alpha``.
+    """
     steps = base_preprocessing_steps(
         config,
         include_scaling=True,
@@ -203,7 +249,27 @@ def ridge_pipeline(
 def scaled_ridge_pipeline(
     config: PreprocessingConfig, *, seed: int, n_covariates: int = 0
 ) -> Pipeline:
-    """Fit Ridge with alpha multiplied by training rows × retained columns at each fit."""
+    """Fit Ridge with alpha multiplied by training rows × retained columns at each fit.
+
+    The grid's dimensionless ``alpha`` is scaled by the rows and the columns left
+    after preprocessing in each inner fit and outer refit, so no held-out rows or
+    full-cohort counts enter it. The fitted regressor's ``alpha_`` records the
+    effective penalty. Use with :func:`scaled_ridge_grid`.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        Ridge ``random_state``.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"regressor"``; tune ``regressor__alpha``.
+    """
     pipeline = ridge_pipeline(config, seed=seed, n_covariates=n_covariates)
     pipeline.set_params(regressor=_TrainingScaledRidge(random_state=seed))
     return pipeline
@@ -218,6 +284,29 @@ def random_forest_pipeline(
     n_jobs: int = 1,
     bootstrap: bool = True,
 ) -> Pipeline:
+    """Random-forest regression after the shared preprocessing, unscaled unless PCA is on.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        Forest ``random_state``.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+    n_estimators : int, default 500
+        Number of trees.
+    n_jobs : int, default 1
+        Forest jobs for fitting and prediction.
+    bootstrap : bool, default True
+        Fit each tree on a bootstrap sample of the training rows, drawn without
+        regard to groups.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"rf"``; :func:`random_forest_grid` tunes it.
+    """
     steps = base_preprocessing_steps(
         config,
         include_scaling=False,
@@ -241,7 +330,28 @@ def random_forest_pipeline(
 def hist_gradient_boosting_pipeline(
     config: PreprocessingConfig, *, seed: int, n_covariates: int = 0
 ) -> Pipeline:
-    """Fit histogram gradient boosting without an internal validation split."""
+    """Fit histogram gradient boosting without an internal validation split.
+
+    ``early_stopping=False`` keeps scikit-learn from holding out a random,
+    ungrouped validation split; grouped fitting refuses pipelines that enable it.
+    Missing values are imputed by the shared preprocessing. Scaling is added only
+    with PCA.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        Booster ``random_state``.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"hgb"``; :func:`hist_gradient_boosting_grid` tunes
+        ``hgb__max_iter`` and tree complexity through the grouped inner folds.
+    """
     steps = base_preprocessing_steps(
         config, include_scaling=False, n_covariates=n_covariates, score_func=f_regression
     )
@@ -254,6 +364,20 @@ def svr_pipeline(config: PreprocessingConfig, *, seed: int, n_covariates: int = 
 
     Predictions retain the original target units. Tune the SVR through
     ``svr__regressor__`` parameters. The estimator is deterministic.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        Unused; the estimator is deterministic.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"svr"``; :func:`svr_grid` tunes it.
     """
     steps = base_preprocessing_steps(
         config, include_scaling=True, n_covariates=n_covariates, score_func=f_regression
@@ -272,6 +396,37 @@ def svm_pipeline(
     resampler: str = "none",
     resampler_seed: int = 42,
 ) -> Pipeline:
+    """Support-vector classification after the shared preprocessing, with scaling.
+
+    Built with ``probability=False``: the fitted pipeline gives labels and decision
+    scores but no probabilities, because scikit-learn's probability calibration
+    splits trials without regard to groups.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        SVC ``random_state``, unused while ``probability=False``.
+    kernel : str, default "rbf"
+        SVC kernel.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+    class_weight : "balanced", dict or None, default "balanced"
+        Class weights; ``"balanced"`` weights inversely to the training class
+        frequencies.
+    resampler : {"none", "undersample", "smote"}, default "none"
+        Resample the training rows after preprocessing with imbalanced-learn's
+        ``RandomUnderSampler`` or ``SMOTE``, drawn without regard to groups.
+        Requires ``imbalanced-learn`` and returns its ``Pipeline``.
+    resampler_seed : int, default 42
+        Resampler ``random_state``.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"svm"``; :func:`svm_grid` tunes it.
+    """
     steps = base_preprocessing_steps(
         config,
         include_scaling=True,
@@ -304,6 +459,35 @@ def logistic_pipeline(
     resampler: str = "none",
     resampler_seed: int = 42,
 ) -> Pipeline:
+    """Logistic regression after the shared preprocessing, with scaling.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        LogisticRegression ``random_state``.
+    penalty : {"l2", "l1", "elasticnet", "none"}, default "l2"
+        ``"l1"`` and ``"elasticnet"`` use the saga solver, the others lbfgs.
+        ``"elasticnet"`` uses an L1 ratio of 0.5 unless ``lr__l1_ratio`` is
+        tuned. ``"none"`` fits without a penalty.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+    max_iter : int, default 1000
+        Solver iteration limit.
+    class_weight : "balanced", dict or None, default "balanced"
+        Class weights; ``"balanced"`` weights inversely to the training class
+        frequencies.
+    resampler : {"none", "undersample", "smote"}, default "none"
+        As in :func:`svm_pipeline`.
+    resampler_seed : int, default 42
+        Resampler ``random_state``.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"lr"``; :func:`logistic_grid` tunes it.
+    """
     solver = "saga" if penalty in ("l1", "elasticnet") else "lbfgs"
     steps = base_preprocessing_steps(
         config,
@@ -339,6 +523,33 @@ def random_forest_classifier_pipeline(
     resampler: str = "none",
     resampler_seed: int = 42,
 ) -> Pipeline:
+    """Random-forest classification after the shared preprocessing, unscaled unless PCA is on.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        Forest ``random_state``.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+    n_estimators : int, default 500
+        Number of trees.
+    n_jobs : int, default 1
+        Forest jobs for fitting and prediction.
+    class_weight : "balanced", dict or None, default "balanced"
+        Class weights; ``"balanced"`` weights inversely to the training class
+        frequencies.
+    resampler : {"none", "undersample", "smote"}, default "none"
+        As in :func:`svm_pipeline`.
+    resampler_seed : int, default 42
+        Resampler ``random_state``.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"rf"``; :func:`random_forest_classifier_grid` tunes it.
+    """
     steps = base_preprocessing_steps(
         config,
         include_scaling=False,
@@ -363,7 +574,26 @@ def random_forest_classifier_pipeline(
 def hist_gradient_boosting_classifier_pipeline(
     config: PreprocessingConfig, *, seed: int, n_covariates: int = 0
 ) -> Pipeline:
-    """Fit balanced histogram boosting without an internal validation split."""
+    """Fit balanced histogram boosting without an internal validation split.
+
+    Class weights are balanced on each training fit. Early stopping is off, as in
+    :func:`hist_gradient_boosting_pipeline`.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        Booster ``random_state``.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"hgb"``; :func:`hist_gradient_boosting_classifier_grid`
+        tunes it.
+    """
     steps = base_preprocessing_steps(
         config, include_scaling=False, n_covariates=n_covariates, score_func=f_classif
     )
@@ -379,7 +609,26 @@ def hist_gradient_boosting_classifier_pipeline(
 
 
 def lda_pipeline(config: PreprocessingConfig, *, seed: int, n_covariates: int = 0) -> Pipeline:
-    """Fit deterministic LDA with automatic covariance shrinkage and empirical priors."""
+    """Fit deterministic LDA with automatic covariance shrinkage and empirical priors.
+
+    Uses the ``lsqr`` solver with ``shrinkage="auto"`` after the shared
+    preprocessing with scaling. Shrinkage regularizes the shared covariance
+    estimate; it does not relax LDA's equal-covariance assumption.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        Unused; the estimator is deterministic.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"lda"``; :func:`lda_grid` tunes it.
+    """
     steps = base_preprocessing_steps(
         config, include_scaling=True, n_covariates=n_covariates, score_func=f_classif
     )
@@ -399,6 +648,40 @@ def ensemble_pipeline(
     resampler: str = "none",
     resampler_seed: int = 42,
 ) -> Pipeline:
+    """Hard-voting ensemble of an SVM, logistic regression and a random forest.
+
+    The members share the preprocessing, with scaling, and use balanced class
+    weights. Hard voting gives labels only: the pipeline has neither probabilities
+    nor decision scores.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Training-fitted preprocessing settings.
+    seed : int
+        ``random_state`` of every member.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``, preprocessed separately.
+    svm_kernel : str, default "rbf"
+        SVC kernel.
+    lr_penalty : {"l2", "l1", "elasticnet", "none"}, default "l2"
+        As in :func:`logistic_pipeline`.
+    rf_n_estimators : int, default 500
+        Number of trees.
+    calibrate_ensemble : bool, default False
+        True raises: calibrated probabilities would need group-disjoint
+        calibration splits, which this workflow does not provide.
+    resampler : {"none", "undersample", "smote"}, default "none"
+        As in :func:`svm_pipeline`.
+    resampler_seed : int, default 42
+        Resampler ``random_state``.
+
+    Returns
+    -------
+    Pipeline
+        Final step ``"ensemble"``; member parameters are named like
+        ``ensemble__svm__C``.
+    """
     if calibrate_ensemble:
         raise ValueError(
             "Ensemble probabilities need group-disjoint calibration with preprocessing "
@@ -448,6 +731,11 @@ def ensemble_pipeline(
 
 
 def elasticnet_grid() -> dict[str, list[object]]:
+    """Penalty and L1 mix for :func:`elasticnet_pipeline`.
+
+    ``regressor__alpha`` from 0.001 to 10 in decades, on the target in units of its
+    training standard deviation, and ``regressor__l1_ratio`` of 0.2, 0.5 and 0.8.
+    """
     return {
         "regressor__alpha": [0.001, 0.01, 0.1, 1.0, 10.0],
         "regressor__l1_ratio": [0.2, 0.5, 0.8],
@@ -455,11 +743,32 @@ def elasticnet_grid() -> dict[str, list[object]]:
 
 
 def scaled_ridge_grid() -> dict[str, list[object]]:
-    """Dimensionless penalties for :func:`scaled_ridge_pipeline`."""
+    """Dimensionless penalties for :func:`scaled_ridge_pipeline`.
+
+    ``regressor__alpha`` of ``10**k`` for ``k`` from -6 to 1.
+    """
     return {"regressor__alpha": [10.0**power for power in range(-6, 2)]}
 
 
 def ridge_grid(X: npt.ArrayLike) -> dict[str, list[object]]:
+    """Ridge penalties scaled to the size of a design, for :func:`ridge_pipeline`.
+
+    The candidates are ``n_rows * n_features * 10**k`` for ``k`` from -6 to 1, where
+    ``n_features`` counts the columns with at least one finite value. For a
+    standardized design this runs from effectively unpenalized to strong
+    shrinkage at any cohort size. The scale is fixed here and does not follow
+    fold-local row counts or column drops; :func:`scaled_ridge_pipeline` does.
+
+    Parameters
+    ----------
+    X : array-like, shape (n_rows, n_features)
+        The design whose row count and measured-column count set the scale.
+
+    Returns
+    -------
+    dict
+        ``{"regressor__alpha": [...]}``.
+    """
     # scikit-learn's Ridge does not divide its penalty by the number of trials, and the
     # eigenvalues of a standardized design's Gram matrix sum to n_trials * n_features. A fixed
     # grid therefore stops shrinking as the cohort grows: at 1,200 trials and 12,600 features
@@ -472,6 +781,11 @@ def ridge_grid(X: npt.ArrayLike) -> dict[str, list[object]]:
 
 
 def random_forest_grid() -> dict[str, list[object]]:
+    """Tree depth and split and leaf minimums for a forest step named ``"rf"``.
+
+    ``rf__max_depth`` of 5, 10, 20 or unlimited, ``rf__min_samples_split`` of 2, 5
+    or 10, and ``rf__min_samples_leaf`` of 1, 2 or 4: 36 candidates.
+    """
     return {
         "rf__max_depth": [5, 10, 20, None],
         "rf__min_samples_split": [2, 5, 10],
@@ -480,6 +794,7 @@ def random_forest_grid() -> dict[str, list[object]]:
 
 
 def svm_grid() -> dict[str, list[object]]:
+    """``svm__C`` of 0.1, 1 or 10 and ``svm__gamma`` of ``"scale"`` or ``"auto"``."""
     return {
         "svm__C": [0.1, 1.0, 10.0],
         "svm__gamma": ["scale", "auto"],
@@ -487,6 +802,21 @@ def svm_grid() -> dict[str, list[object]]:
 
 
 def logistic_grid(*, penalty: str = "l2") -> dict[str, list[object]]:
+    """Inverse penalty strength for :func:`logistic_pipeline`.
+
+    ``lr__C`` of 0.01, 0.1, 1 or 10, plus ``lr__l1_ratio`` of 0.1, 0.5 or 0.9 for
+    elastic net.
+
+    Parameters
+    ----------
+    penalty : str, default "l2"
+        The pipeline's penalty. ``"none"`` gives an empty grid, since searching
+        ``C`` would refit the unpenalized model with a penalty.
+
+    Returns
+    -------
+    dict
+    """
     if penalty == "none":
         # C is the inverse penalty strength; searching it would refit this model as L2.
         return {}
@@ -497,6 +827,7 @@ def logistic_grid(*, penalty: str = "l2") -> dict[str, list[object]]:
 
 
 def random_forest_classifier_grid() -> dict[str, list[object]]:
+    """The :func:`random_forest_grid` candidates, for the classifier's ``"rf"`` step."""
     return random_forest_grid()
 
 
@@ -511,6 +842,7 @@ def hist_gradient_boosting_grid() -> dict[str, list[object]]:
 
 
 def hist_gradient_boosting_classifier_grid() -> dict[str, list[object]]:
+    """The :func:`hist_gradient_boosting_grid` candidates, for the classifier's ``"hgb"`` step."""
     return hist_gradient_boosting_grid()
 
 

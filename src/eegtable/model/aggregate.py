@@ -26,6 +26,25 @@ __all__ = [
 
 @dataclass(frozen=True)
 class AggregationConfig:
+    """How per-subject scores are combined, and whether an interval is computed.
+
+    Parameters
+    ----------
+    subject_weighting : {"equal", "trial_count"}, default "equal"
+        ``"trial_count"`` weights Fisher-z correlations by ``n - 3`` and errors by
+        ``n``, the subject's trial count; correlations then need more than three
+        trials per subject.
+    bootstrap_iterations : int, default 10000
+        Subject resamples for ``ci_method="bootstrap"``.
+    ci_method : {"none", "fixed_effects", "bootstrap"}, default "none"
+        Interval over subjects. Any interval treats subject scores as independent,
+        which scores held out from cross-subject folds are not: they share
+        training data. Test those with :func:`permutation_test` instead.
+        ``"fixed_effects"`` applies to correlations only.
+    seed : int, default 42
+        Bootstrap seed.
+    """
+
     subject_weighting: Literal["equal", "trial_count"] = "equal"
     bootstrap_iterations: int = 10_000
     # An interval over subjects treats their scores as independent, which holds only when no
@@ -56,6 +75,19 @@ _DEFAULT_CONFIG = AggregationConfig()
 
 @dataclass(frozen=True)
 class SubjectLevelR:
+    """Result of :func:`subject_level_r`.
+
+    Parameters
+    ----------
+    r : float
+        Weighted mean of the subjects' Fisher-z correlations, transformed back to r.
+    per_subject : tuple of (str, float)
+        Each subject's correlation.
+    ci_low, ci_high : float
+        Interval bounds in r units; NaN unless ``AggregationConfig.ci_method``
+        requests an interval.
+    """
+
     r: float
     per_subject: tuple[tuple[str, float], ...]
     ci_low: float
@@ -73,6 +105,22 @@ def bootstrap_mean_ci(
     Resampling subjects treats them as independent, which scores held out from
     cross-subject folds are not (see :class:`AggregationConfig`); test those with
     :func:`~eegtable.model.permutation_test`.
+
+    Parameters
+    ----------
+    values : ndarray, shape (n_subjects,)
+        One finite value per subject, chosen before analysis. Pass Fisher-z values
+        rather than correlations.
+    iterations : int
+        Bootstrap resamples.
+    seed : int
+        Resampling seed.
+
+    Returns
+    -------
+    low, high : float
+        2.5th and 97.5th percentiles of the resampled means. NaN for no subjects;
+        the value itself for one.
     """
     vals = np.asarray(values, dtype=float)
     if vals.ndim != 1:
@@ -105,6 +153,22 @@ def paired_signflip_p_value(
     Finite-sample validity requires independent differences whose null distributions are
     symmetric about zero; zero mean alone is insufficient. Scores held out from
     cross-subject folds are not independent (see :class:`AggregationConfig`).
+
+    Parameters
+    ----------
+    differences : ndarray, shape (n_subjects,)
+        One finite paired difference per subject.
+    iterations : int
+        Random sign-flip draws.
+    seed : int
+        Seed of the draws.
+
+    Returns
+    -------
+    float
+        ``(b + 1) / (iterations + 1)``, where ``b`` counts draws whose absolute
+        mean is at least the observed absolute mean. NaN for no subjects or no
+        draws.
     """
     vals = np.asarray(differences, dtype=float)
     if vals.ndim != 1:
@@ -126,6 +190,21 @@ def paired_signflip_p_value(
 
 
 class FoldResults(NamedTuple):
+    """Held-out predictions of every fold, concatenated in fold order.
+
+    Parameters
+    ----------
+    y_true, y_pred : ndarray
+        Targets and predictions.
+    groups : list of str
+        Group label of each prediction; empty when no record carried one.
+    rows : list of int
+        Design row of each prediction; empty when the records carry no rows.
+    folds : list of int
+        Fold index of each prediction, the ``folds`` that
+        :func:`regression_metrics` takes.
+    """
+
     y_true: npt.NDArray[np.float64]
     y_pred: npt.NDArray[np.float64]
     groups: list[str]
@@ -137,6 +216,24 @@ def fold_results(
     results: Sequence[object],
     groups: npt.NDArray[np.object_] | None = None,
 ) -> FoldResults:
+    """Concatenate fold predictions in fold order and label them with their groups.
+
+    Parameters
+    ----------
+    results : sequence of FoldPrediction, FoldClassification or dict
+        Records with ``fold``, ``y_true`` and ``y_pred``, and optionally the test
+        ``rows`` (``test_idx`` or ``rows`` for a dict) and a group label: a
+        record's ``subject``, or a dict's ``groups``. Records are sorted by fold.
+    groups : ndarray, optional
+        The design's group labels, indexed by each record's rows. Pass them for
+        group-disjoint folds, whose records carry no subject of their own.
+
+    Returns
+    -------
+    FoldResults
+        Raises when only some records carry group labels.
+    """
+
     def _get_fold(r: object) -> int:
         if hasattr(r, "fold"):
             return int(getattr(r, "fold"))  # noqa: B009
@@ -421,6 +518,18 @@ def subject_r_scorer(config: AggregationConfig = _DEFAULT_CONFIG) -> _SubjectRSc
 
     Cross-fitting selects regression hyperparameters with it by default. It needs the subject
     of every validation row, so it works only through eegtable's own tuning loop.
+
+    Parameters
+    ----------
+    config : AggregationConfig, optional
+        Subject weighting; interval settings are ignored.
+
+    Returns
+    -------
+    callable
+        Called as ``scorer(estimator, X, y, groups)``. Raises when a validation
+        subject has fewer than three trials; a subject whose correlation is
+        undefined, as with constant predictions, scores 0.
     """
     return _SubjectRScorer(config)
 

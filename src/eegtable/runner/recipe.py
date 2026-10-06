@@ -8,7 +8,9 @@ reported at once, so a typo fails before the first recording is read.
 
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 import math
 import os
 import re
@@ -21,13 +23,13 @@ from typing import Any, Literal, TypeVar
 from eegtable.bands import BANDS_STANDARD, Band
 from eegtable.runner.measures import (
     GRAPH,
-    MEASURES,
     REQUIRES,
     SEGMENTATION,
     SPECTRAL_INPUT,
     Measure,
     Mismatch,
     convert,
+    lookup,
 )
 from eegtable.runner.measures import describe as describe_annotation
 from eegtable.spectra import Window, WindowStatistic
@@ -109,6 +111,18 @@ class SpectraSettings:
     max_cycles: float = 15.0
     decim: int = 4
     window_statistic: WindowStatistic = "mean"
+
+    def used(self) -> dict[str, object]:
+        # Only what this method reads enters its columns' identity: were another method's
+        # settings recorded, changing one of their defaults would rename every column. The
+        # statistic is left out at the mean, so columns computed before it existed keep names.
+        keys = ("method", "fmin", "fmax", *_SPECTRA_KEYS[self.method])
+        values = {key: getattr(self, key) for key in keys}
+        return {
+            key: value
+            for key, value in values.items()
+            if value is not None and (key, value) != ("window_statistic", "mean")
+        }
 
 
 @dataclass(frozen=True)
@@ -192,13 +206,17 @@ class RecipeError(ValueError):
         super().__init__(f"{path}: {len(self.problems)} {noun}\n{listing}")
 
 
-def load_recipe(path: str | os.PathLike[str]) -> Recipe:
+def load_recipe(source: str | os.PathLike[str] | Mapping[str, Any]) -> Recipe:
     """Read and validate a recipe.
 
     Parameters
     ----------
-    path : path-like
-        The TOML file. Relative paths inside it resolve against its directory.
+    source : path-like or mapping
+        The TOML file, whose relative paths resolve against its directory; or a
+        mapping with the same structure, for a recipe built in code, whose relative
+        paths resolve against the working directory. A mapping may leave out
+        ``inputs`` and ``output``, which only a batch run reads: applied to epochs
+        in memory with :func:`eegtable.extract`, it needs neither.
 
     Returns
     -------
@@ -209,13 +227,27 @@ def load_recipe(path: str | os.PathLike[str]) -> Recipe:
     RecipeError
         Listing every problem found.
     """
-    source = Path(path)
+    if isinstance(source, Mapping):
+        return _recipe_from_mapping(source)
+    source = Path(source)
     text = source.read_text()
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise RecipeError(source, [f"not valid TOML: {exc}"]) from exc
     return _Parser(source).parse(text, data)
+
+
+def _recipe_from_mapping(source: Mapping[str, Any]) -> Recipe:
+    data = copy.deepcopy(dict(source))
+    for section in ("inputs", "output"):
+        table = data.setdefault(section, {})
+        if isinstance(table, dict):
+            table.setdefault("root", ".")
+    # Stands in for a file's text in the provenance, so the same mapping always hashes
+    # the same; settings_sha256 hashes the parsed recipe either way.
+    text = json.dumps(source, sort_keys=True, default=str)
+    return _Parser(Path.cwd() / "<recipe>").parse(text, data)
 
 
 class _Parser:
@@ -502,7 +534,11 @@ class _Parser:
         if not isinstance(name, str):
             self.problem(f"features[{index}]: 'measure' naming the measure is required")
             return None
-        measure = MEASURES.get(name)
+        try:
+            measure = lookup(name)
+        except ValueError as exc:
+            self.problem(f"features[{index}]: {exc}")
+            return None
         if measure is None:
             self.problem(f"features[{index}]: unknown measure {name!r}")
             return None

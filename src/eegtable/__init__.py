@@ -33,6 +33,7 @@ from eegtable.connectivity import (
     wpli,
 )
 from eegtable.csp import CommonSpatialPattern, csp_features
+from eegtable.custom import signal_measure, spectral_measure
 from eegtable.cycles import cycle_features
 from eegtable.derived import asymmetry, band_ratio
 from eegtable.descriptors import (
@@ -53,6 +54,7 @@ from eegtable.erds import (
     ers_duration,
     ers_magnitude,
 )
+from eegtable.extraction import extract
 from eegtable.irasa import irasa
 from eegtable.microstates import (
     MicrostateModel,
@@ -137,6 +139,9 @@ __all__ = [
     "erd_duration",
     "erd_magnitude",
     "erds_mean",
+    "extract",
+    "signal_measure",
+    "spectral_measure",
     "erds_onset_latency",
     "erds_peak_latency",
     "erds_rebound_latency",

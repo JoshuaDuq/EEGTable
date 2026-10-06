@@ -104,6 +104,19 @@ def test_check_exits_zero_and_writes_nothing(tmp_path, capsys) -> None:
     assert not (tmp_path / "out").exists()
 
 
+def test_check_prints_warnings_and_still_exits_zero(tmp_path, capsys) -> None:
+    # A split global mean is a problem the run would not stop for, so check reports it
+    # beside the readiness line instead of failing.
+    _recording(tmp_path, "sub-01")
+    _recording(tmp_path, "sub-02", bads=["Pz"])
+
+    code = main(["check", str(_recipe(tmp_path))])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "sub-02_task-rest lacks Pz" in out and "Ready" in out
+
+
 def test_check_exits_one_when_the_trial_recording_fails(tmp_path, capsys) -> None:
     _recording(tmp_path, "sub-01")
 

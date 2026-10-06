@@ -31,6 +31,36 @@ __all__ = [
 
 @dataclass(frozen=True)
 class PreprocessingConfig:
+    """Settings of the training-fitted steps built by :func:`base_preprocessing_steps`.
+
+    Parameters
+    ----------
+    max_feature_missingness : float, default 0.2
+        Largest fraction of missing training values a feature may have and still
+        be kept, in ``[0, 1]``.
+    max_subject_missingness : float, default 0.5
+        Largest fraction of missing cells, over the kept features, allowed for any
+        one training subject, in ``[0, 1]``. Cross-fitting raises when a subject
+        exceeds it rather than dropping the subject.
+    feature_selection_percentile : float, optional
+        Keep this percentile of features ranked by a univariate F statistic
+        against the training target (``f_regression`` or ``f_classif``). None or
+        100 skips selection.
+    deconfound : bool, default False
+        Regress the covariate columns out of the features, after which the
+        estimator sees only the feature residuals. Ignored without covariates.
+    pca_enabled : bool, default False
+        Standardize the features and reduce them with PCA.
+    pca_n_components : int or float, optional
+        Number of components, or the fraction of variance to keep; None keeps 95%.
+    pca_whiten : bool, default False
+        Whiten the components.
+    pca_svd_solver : str, default "auto"
+        scikit-learn PCA solver.
+    pca_random_state : int, default 42
+        PCA random state, used by the randomized solvers.
+    """
+
     max_feature_missingness: float = 0.2
     max_subject_missingness: float = 0.5
     feature_selection_percentile: float | None = None
@@ -58,6 +88,18 @@ def validate_subject_missingness(
     *,
     maximum: float,
 ) -> None:
+    """Raise when any group's fraction of NaN cells exceeds ``maximum``.
+
+    Parameters
+    ----------
+    values : ndarray, shape (n_rows, n_features)
+        The retained feature columns; at least one is required. Only NaN counts as
+        missing.
+    groups : ndarray, shape (n_rows,)
+        Group label of each row, usually the subject.
+    maximum : float
+        Largest allowed fraction of NaN over all of a group's cells.
+    """
     x_arr = np.asarray(values, dtype=float)
     groups_arr = np.asarray(groups)
 
@@ -75,6 +117,8 @@ def validate_subject_missingness(
 
 
 class ReplaceInfWithNaN(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """Turn infinite values into NaN, so later steps treat them as missing. Stateless."""
+
     def fit(self, X: Any, y: Any = None) -> ReplaceInfWithNaN:
         _ = (X, y)
         return self
@@ -91,6 +135,15 @@ class ReplaceInfWithNaN(BaseEstimator, TransformerMixin):  # type: ignore[misc]
 
 
 class DropAllNaNColumns(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """Drop columns with fewer than ``min_finite`` finite values in the fitting rows.
+
+    Parameters
+    ----------
+    min_finite : int, default 1
+        Finite values a column needs to be kept. The default drops only columns
+        with no finite value at all.
+    """
+
     def __init__(self, min_finite: int = 1) -> None:
         self.min_finite = min_finite
 
@@ -117,6 +170,18 @@ class DropAllNaNColumns(BaseEstimator, TransformerMixin):  # type: ignore[misc]
 
 
 class VarianceThreshold(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """Drop columns whose variance in the fitting rows, ignoring NaN, is not above a threshold.
+
+    A column without any finite value is dropped as well.
+
+    Parameters
+    ----------
+    threshold : float, default 0.0
+        Variance a column must exceed. The default removes only constant columns.
+        A positive value compares variances of features measured in different
+        units, so it selects by unit.
+    """
+
     def __init__(self, threshold: float = 0.0) -> None:
         self.threshold = threshold
 
@@ -143,6 +208,18 @@ class VarianceThreshold(BaseEstimator, TransformerMixin):  # type: ignore[misc]
 
 
 class MissingnessThreshold(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """Keep the features whose NaN fraction in the fitting rows is within a limit.
+
+    Parameters
+    ----------
+    max_feature_missingness : float, default 0.2
+        Largest NaN fraction a kept feature may have.
+    max_subject_missingness : float, default 0.5
+        Largest NaN fraction over the kept features for any one group. ``fit``
+        checks it only when given ``groups``, which scikit-learn pipelines do not
+        pass; cross-fitting checks it on the fitted pipeline instead.
+    """
+
     def __init__(
         self,
         max_feature_missingness: float = 0.2,
@@ -180,6 +257,22 @@ class MissingnessThreshold(BaseEstimator, TransformerMixin):  # type: ignore[mis
 
 
 class SpatialFeatureSelector(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """Keep the features whose names contain any of the given region tokens.
+
+    Matching is a case-insensitive substring test on the feature name, so a short
+    token can match unintended names. ``Selection(space=...)`` when building the
+    design matches the metadata exactly instead. ``fit`` raises when no feature
+    matches.
+
+    Parameters
+    ----------
+    allowed_regions : sequence of str
+        Tokens to look for. Empty keeps every feature.
+    feature_names : sequence of str, optional
+        One name per column. Required when ``allowed_regions`` is set, unless ``X``
+        is a DataFrame whose columns supply the names.
+    """
+
     def __init__(
         self,
         allowed_regions: Sequence[str] = (),
@@ -233,6 +326,20 @@ class SpatialFeatureSelector(BaseEstimator, TransformerMixin):  # type: ignore[m
 
 
 class Deconfounder(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+    """Replace features by their residuals on the trailing covariate columns.
+
+    ``fit`` regresses every feature column on an intercept and the last
+    ``n_covariates`` columns by least squares; the covariate design must be finite
+    and of full rank. ``transform`` subtracts the fitted prediction and returns the
+    feature residuals without the covariate columns. Expects finite input, as
+    after imputation.
+
+    Parameters
+    ----------
+    n_covariates : int, default 0
+        Number of trailing covariate columns. 0 passes the input through.
+    """
+
     def __init__(self, n_covariates: int = 0) -> None:
         self.n_covariates = int(n_covariates)
 
@@ -284,6 +391,32 @@ def base_preprocessing_steps(
     n_covariates: int = 0,
     score_func: Callable[..., object] | None = None,
 ) -> list[tuple[str, object]]:
+    """The training-fitted preprocessing steps shared by the pipeline factories.
+
+    Feature steps, in order: infinities to NaN, dropping all-NaN columns, the
+    missingness limit, median imputation and dropping constant columns, then
+    optional percentile selection, scaling and PCA. With covariates, the trailing
+    ``n_covariates`` columns get their own branch inside a ``ColumnTransformer``:
+    infinities to NaN, most-frequent imputation, then scaling or passthrough,
+    optionally followed by :class:`Deconfounder`.
+
+    Parameters
+    ----------
+    config : PreprocessingConfig
+        Missingness limits, feature selection, deconfounding and PCA settings.
+    include_scaling : bool
+        Standardize the features and covariates. PCA standardizes the features
+        regardless.
+    n_covariates : int, default 0
+        Trailing covariate columns of ``X``.
+    score_func : callable, optional
+        Univariate score for percentile selection; None uses ``f_regression``.
+
+    Returns
+    -------
+    list of (str, object)
+        Named pipeline steps, to which the factories append an estimator.
+    """
     # Choosing channels or ROIs is a fixed choice of columns, made with Selection(space=...)
     # when the design is built, so no spatial step is fitted here.
     feature_steps: list[tuple[str, object]] = [
@@ -375,6 +508,25 @@ def transform_feature_names(
     steps: Sequence[tuple[str, object]],
     feature_names: Sequence[str],
 ) -> list[str]:
+    """Carry input feature names through fitted pipeline steps.
+
+    A step with ``get_feature_names_out`` renames or drops columns; a step with
+    only ``get_support`` drops the unsupported ones; other steps leave the names
+    unchanged.
+
+    Parameters
+    ----------
+    steps : sequence of (str, object)
+        Fitted steps, e.g. ``pipeline.steps[:-1]``.
+    feature_names : sequence of str
+        Names of the columns entering the first step.
+
+    Returns
+    -------
+    list of str
+        Names of the columns leaving the last step. A step that derives new
+        columns, such as PCA, reports its own names (``"pca0"``, ...).
+    """
     # A step that cannot report its output names raises: keeping the input names would
     # silently attribute values to the wrong columns.
     names = list(feature_names)

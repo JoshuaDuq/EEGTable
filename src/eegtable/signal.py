@@ -487,7 +487,9 @@ class BandSignal:
         )
         analytic = hilbert(filtered, axis=-1)
         if pad:
-            analytic = analytic[:, pad:-pad]
+            # A copy, not a view: a view would keep the padded array, often twice the
+            # epochs' length, alive for as long as the band signal is.
+            analytic = np.ascontiguousarray(analytic[:, pad:-pad])
 
         analytic = analytic.reshape(n_epochs, n_channels, n_times)
         return cls.from_arrays(
@@ -502,13 +504,14 @@ class BandSignal:
             # would claim a channel is intact when every output sample is NaN.
             coverage=np.isfinite(analytic).astype(float),
             row_ids=epoch_row_ids(selected, recording, n_epochs),
+            # n_jobs is left out: it spreads the same filtering over workers without changing
+            # a value, and the identity must not split one feature into per-run columns.
             computation=ComputationSpec.create(
                 "mne.filter.filter_data+scipy.signal.hilbert",
                 band={"name": band.name, "fmin": band.fmin, "fmax": band.fmax},
                 pad_sec=pad_sec,
                 pad_cycles=pad_cycles,
                 filter_length=required,
-                n_jobs=n_jobs,
                 picks=picks,
                 exclude=exclude,
             ),

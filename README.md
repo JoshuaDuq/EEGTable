@@ -1,14 +1,14 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/branding/eegtable-logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/branding/eegtable-logo.svg">
-    <img src="assets/branding/eegtable-logo.svg" width="402" height="96" alt="EEGTable">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/JoshuaDuq/EEGTable/main/assets/branding/eegtable-logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/JoshuaDuq/EEGTable/main/assets/branding/eegtable-logo.svg">
+    <img src="https://raw.githubusercontent.com/JoshuaDuq/EEGTable/main/assets/branding/eegtable-logo.svg" width="402" height="96" alt="EEGTable">
   </picture>
 </h1>
 
 [![Python ≥ 3.11](https://img.shields.io/badge/python-≥3.11-blue.svg)](https://www.python.org)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![MNE-Python ≥ 1.8](https://img.shields.io/badge/mne--python-≥1.8-blue.svg)](https://mne.tools/stable/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/JoshuaDuq/EEGTable/blob/main/LICENSE)
+[![MNE-Python ≥ 1.10](https://img.shields.io/badge/mne--python-≥1.10-blue.svg)](https://mne.tools/stable/)
 [![Docs](https://img.shields.io/badge/docs-Sphinx-blue.svg)](https://joshuaduq.github.io/EEGTable/)
 
 EEGTable extracts labelled EEG features from MNE objects and supports reproducible cohort analysis, regression, and binary classification. Spectral, temporal, connectivity, complexity, cycle, and microstate measures return structured `FeatureTable` objects.
@@ -31,16 +31,16 @@ source .venv/bin/activate
 python -m pip install -e ".[model]"
 ```
 
-On Windows PowerShell, activate with `.\.venv\Scripts\Activate.ps1`. The core package requires NumPy ≥ 1.26, SciPy ≥ 1.11, pandas ≥ 2.0 and < 3.0, and MNE ≥ 1.8. The `model` extra adds modeling and YAML recipes; it is optional for core feature extraction.
+On Windows PowerShell, activate with `.\.venv\Scripts\Activate.ps1`. The core package requires NumPy ≥ 1.26, SciPy ≥ 1.11, pandas ≥ 2.0, and MNE ≥ 1.10. The `model` extra adds modeling and YAML recipes; it is optional for core feature extraction.
 
 | Extra | Capability |
 | :--- | :--- |
 | `model` | Estimator pipelines, grouped evaluation, metrics, nulls, and uncertainty |
 | `connectivity` | Spectral connectivity, wPLI, and per-epoch time-frequency connectivity via MNE-Connectivity |
 | `microstates` | Microstate template fitting and segmentation via scikit-learn |
-| `spectral-model` | Fixed/knee spectral parameterization via the pinned specparam release |
+| `spectral-model` | Fixed/knee spectral parameterization via specparam 2.0 |
 | `irasa` | Aperiodic/oscillatory separation via NeuroDSP |
-| `cycles` | Cycle waveform and burst features via ByCycle |
+| `cycles` | Cycle waveform and burst features via ByCycle; keeps pandas below 3.0, which ByCycle 1.2.0 does not support |
 | `complexity` | Permutation entropy, Lempel–Ziv complexity, and DFA via AntroPy |
 | `pac` | PAC surrogate inference via Tensorpac |
 | `riemann` | Covariance and tangent-space modeling via pyRiemann |
@@ -64,34 +64,24 @@ import eegtable as ef
 from eegtable.io import write_table
 
 epochs = mne.read_epochs("sub-01_epo.fif", preload=True)
-epochs.pick("eeg", exclude="bads")
 
 alpha = ef.Band("alpha", 8.0, 13.0)
 rois = {"central": ["C3", "Cz", "C4"]}
-segment_samples = round(epochs.info["sfreq"])
-welch_parameters = {
-    "fmin": 1.0,
-    "fmax": 45.0,
-    "n_fft": segment_samples,
-    "n_per_seg": segment_samples,
-    "n_overlap": segment_samples // 2,
-    "window": "hamming",
-    "average": "mean",
-    "remove_dc": True,
-}
-spectrum = epochs.compute_psd(method="welch", **welch_parameters)
-spectra = ef.Spectra.from_spectrum(
-    spectrum,
-    recording="sub-01",
-    estimator_parameters={"method": "welch", **welch_parameters},
+spectra = ef.Spectra.welch(
+    epochs, recording="sub-01", fmin=1.0, fmax=45.0, n_fft=round(epochs.info["sfreq"])
 )
 features = ef.integrated_band_power(spectra, bands=[alpha], groups=rois)
 
-frame = features.to_dataframe()
+frame = features.to_dataframe()  # indexed by recording, epoch and event
+if epochs.metadata is not None:
+    frame = frame.join(epochs.metadata, on="epoch")
+long = features.to_long()
 paths = write_table(features, "sub-01_features.tsv", rows=epochs.metadata)
 ```
 
-Raw integrated PSD power has units of V². `normalize="log10"` is available for log-scaled power. The Welch settings are declared once and retained in the feature identity: MNE does not retain all estimator arguments on its `Spectrum` object. For multitaper PSD, compute and declare `normalization="full"`.
+Raw integrated PSD power has units of V². `normalize="log10"` is available for log-scaled power. `Spectra.welch` keeps good EEG channels, computes the spectra and records the settings that produced them in every column's identity; it is the estimator `eegtable run` uses, so the same settings name the same columns. `to_dataframe` indexes rows by recording, epoch and event, so joining `epochs.metadata` on `epoch` keeps each row with its own trial; `to_long` gives one row per value, the layout mixed models read.
+
+The same in one call, from a recipe: `ef.extract(epochs, {"features": [{"measure": "integrated_band_power", "bands": ["alpha"]}]}, recording="sub-01")`.
 
 The [Quick start](https://joshuaduq.github.io/EEGTable/quickstart.html) adds Morlet power, bursts, and ERD/ERS. [Tables and files](https://joshuaduq.github.io/EEGTable/guides/tables.html) explains selection, serialization, and stacking.
 
@@ -134,7 +124,7 @@ eegtable preprocess check preprocessing.yaml
 eegtable preprocess run preprocessing.yaml
 ```
 
-See [Preprocessing](https://joshuaduq.github.io/EEGTable/guides/preprocessing.html) for review decisions, checkpoint verification, and event/fixed-length workflows, and [Native BIDS input](https://joshuaduq.github.io/EEGTable/guides/bids.html) for BIDS recordings. The optional [`tui/`](tui) preprocessing interface requires Go 1.24 or newer.
+See [Preprocessing](https://joshuaduq.github.io/EEGTable/guides/preprocessing.html) for review decisions, checkpoint verification, and event/fixed-length workflows, and [Native BIDS input](https://joshuaduq.github.io/EEGTable/guides/bids.html) for BIDS recordings. The optional [`tui/`](https://github.com/JoshuaDuq/EEGTable/tree/main/tui) preprocessing interface requires Go 1.24 or newer.
 
 ## Modeling
 
@@ -170,7 +160,7 @@ Model recipes support participant-level targets and explicit within-participant 
 
 For publications, record the EEGTable version and source revision, dependency versions, preprocessing, reference, estimator settings, bands/windows/ROIs, exclusions, split units, tuning, null scheme, and random seeds. Retain recipes, sidecars, and validation snapshots with the analysis. Cite the underlying methods and packages used; references appear in the method guides.
 
-The [`examples/`](examples) directory contains reproducible simulated outputs. [`paradigm_specific/`](paradigm_specific) contains study-specific raw-to-BIDS scripts outside the public package API.
+The [`examples/`](https://github.com/JoshuaDuq/EEGTable/tree/main/examples) directory contains reproducible simulated outputs. [`paradigm_specific/`](https://github.com/JoshuaDuq/EEGTable/tree/main/paradigm_specific) contains study-specific raw-to-BIDS scripts outside the public package API.
 
 ## Development and documentation
 
@@ -191,6 +181,12 @@ EEGTABLE_DATASETS=1 python -m pytest tests/validation -ra
 
 Each dataset run writes its own evidence snapshot and updates the documentation's generated validation tables. See the [Validation guide](https://joshuaduq.github.io/EEGTable/guides/validation.html) for dependencies and execution details.
 
+## Contributing and citing
+
+Bug reports, fixes and new measures are welcome. [CONTRIBUTING](https://github.com/JoshuaDuq/EEGTable/blob/main/CONTRIBUTING.md) covers setup, the checks a pull request must pass, and how to add a measure. Changes are listed in the [changelog](https://github.com/JoshuaDuq/EEGTable/blob/main/CHANGELOG.md).
+
+To cite EEGTable, use [CITATION.cff](https://github.com/JoshuaDuq/EEGTable/blob/main/CITATION.cff) (GitHub's "Cite this repository"), alongside the methods and packages your analysis relied on.
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](https://github.com/JoshuaDuq/EEGTable/blob/main/LICENSE).

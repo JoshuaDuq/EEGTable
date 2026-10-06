@@ -22,6 +22,25 @@ def intraclass_reliability(
     explicitly before calling this function. The two-way ANOVA formulas follow
     Shrout and Fleiss, as implemented by Pingouin's ``intraclass_corr``. Missing
     values, duplicate samples, unbalanced designs and constant features raise.
+
+    Parameters
+    ----------
+    table : FeatureTable
+        One row per subject and session; every value must be finite.
+    descriptors : DataFrame
+        Aligned one-to-one with the table rows.
+    subject : str, default "subject_id"
+        Descriptor column of subject labels; nonmissing and nonempty.
+    session : str, default "session"
+        Descriptor column of session labels. Every subject needs every session
+        exactly once, with at least three subjects and two sessions.
+
+    Returns
+    -------
+    DataFrame
+        One row per feature: ``feature``, ``n_subjects``, ``n_sessions``,
+        ``icc_absolute`` (ICC(2,1)) and ``icc_consistency`` (ICC(3,1)). Estimates
+        can be negative; report them unclipped.
     """
     if len(descriptors) != table.n_rows:
         raise ValueError("Descriptors must align one-to-one with feature rows.")

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
+import math
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -11,6 +13,7 @@ import numpy.typing as npt
 
 from eegtable._validation import (
     validate_fraction_array,
+    validate_multitaper_bandwidth,
     validate_names,
     validate_nonempty_shape,
 )
@@ -294,6 +297,7 @@ class Spectra:
                 'Multitaper PSD requires normalization="full" when computing the '
                 "spectrum and in estimator_parameters to establish density units."
             )
+        _check_declaration(method, params, np.asarray(spectrum.freqs, dtype=float), spectrum)
         return cls(
             data=data,
             freqs=np.asarray(spectrum.freqs, dtype=float),
@@ -435,6 +439,327 @@ class Spectra:
             passband=_passband(tfr),
         )
 
+    @classmethod
+    def welch(
+        cls,
+        epochs: Any,
+        windows: Sequence[Window] | None = None,
+        *,
+        recording: str,
+        fmin: float = 1.0,
+        fmax: float = 45.0,
+        n_fft: int | None = None,
+        n_overlap: int | None = None,
+        statistic: WindowStatistic = "mean",
+        picks: str | Sequence[str] = "eeg",
+        exclude: str | Sequence[str] = "bads",
+        n_jobs: int = 1,
+    ) -> Spectra:
+        """Compute Welch power spectra of epochs, one per window, recording the settings.
+
+        The estimator the batch runner uses, so the same settings name the same
+        columns either way. Unlike :meth:`from_spectrum`, nothing has to be declared a
+        second time: the settings that produce the spectra are the ones recorded.
+
+        Parameters
+        ----------
+        epochs : mne.Epochs
+            Epoched data. Channels are picked from a copy.
+        windows : sequence of Window, optional
+            Time windows, each estimated from its own samples. An infinite window
+            spans the epochs and is recorded with their actual bounds. The default is
+            the whole epoch.
+        recording : str
+            The identity every row carries.
+        fmin, fmax : float
+            Frequency range kept, in Hz.
+        n_fft : int, optional
+            Segment length in samples, shared by every window so their grids align.
+            By default two seconds, capped by the shortest window's sample count.
+        n_overlap : int, optional
+            Segment overlap in samples; half of ``n_fft`` by default.
+        statistic : {"mean", "median"}, default "mean"
+            How segments are averaged. MNE corrects the median for its bias, so both
+            estimate the same density for Gaussian data. A median needs at least
+            three segments.
+        picks, exclude : str or sequence of str
+            MNE channel selection; good EEG channels by default.
+        n_jobs : int, default 1
+            Passed to MNE. It never changes a value or a column name.
+
+        Returns
+        -------
+        Spectra
+            One PSD per window, in V²/Hz for EEG in volts.
+        """
+        selected = epochs.copy().pick(picks, exclude=exclude)
+        times, sfreq = np.asarray(selected.times, dtype=float), float(selected.info["sfreq"])
+        resolved = tuple(_resolved(times, window) for window in (windows or (_WHOLE,)))
+        data = np.asarray(selected.get_data(), dtype=float)
+        masks = [_within(times, window) for window in resolved]
+        shortest = min(int(mask.sum()) for mask in masks)
+        segment = n_fft if n_fft is not None else default_n_fft(sfreq, shortest)
+        estimates = [
+            welch_psd(
+                data[:, :, mask],
+                sfreq,
+                window=window,
+                fmin=float(fmin),
+                fmax=float(fmax),
+                n_fft=segment,
+                n_overlap=n_overlap,
+                statistic=statistic,
+                n_jobs=n_jobs,
+            )
+            for window, mask in zip(resolved, masks, strict=True)
+        ]
+        # Exactly the settings a recipe records, so the same estimate has the same name.
+        settings: dict[str, object] = {"method": "welch", "fmin": float(fmin), "fmax": float(fmax)}
+        if n_fft is not None:
+            settings["n_fft"] = int(n_fft)
+        if n_overlap is not None:
+            settings["n_overlap"] = int(n_overlap)
+        if statistic != "mean":
+            settings["window_statistic"] = statistic
+        return psd_spectra(
+            estimates,
+            resolved,
+            ch_names=tuple(selected.ch_names),
+            method="welch",
+            settings=settings,
+            row_ids=epoch_row_ids(selected, recording, data.shape[0]),
+            passband=_passband(selected),
+        )
+
+    @classmethod
+    def multitaper(
+        cls,
+        epochs: Any,
+        windows: Sequence[Window] | None = None,
+        *,
+        recording: str,
+        fmin: float = 1.0,
+        fmax: float = 45.0,
+        bandwidth: float = 2.0,
+        picks: str | Sequence[str] = "eeg",
+        exclude: str | Sequence[str] = "bads",
+        n_jobs: int = 1,
+    ) -> Spectra:
+        """Compute multitaper power spectra of epochs, one per window, recording the settings.
+
+        The batch runner's estimator, with density normalization (``"full"``). The
+        grid follows the window length, so windows estimated together must be equally
+        long.
+
+        Parameters
+        ----------
+        epochs : mne.Epochs
+            Epoched data. Channels are picked from a copy.
+        windows : sequence of Window, optional
+            As for :meth:`welch`; the whole epoch by default.
+        recording : str
+            The identity every row carries.
+        fmin, fmax : float
+            Frequency range kept, in Hz.
+        bandwidth : float, default 2.0
+            Full frequency smoothing in Hz. Fixed rather than MNE's
+            ``8 / window_length``, which smooths a 1 s window over ±4 Hz, wider than
+            the delta or theta band. Refused when it leaves fewer than one taper.
+        picks, exclude : str or sequence of str
+            MNE channel selection; good EEG channels by default.
+        n_jobs : int, default 1
+            Passed to MNE. It never changes a value or a column name.
+
+        Returns
+        -------
+        Spectra
+            One PSD per window, in V²/Hz for EEG in volts.
+        """
+        selected = epochs.copy().pick(picks, exclude=exclude)
+        times, sfreq = np.asarray(selected.times, dtype=float), float(selected.info["sfreq"])
+        resolved = tuple(_resolved(times, window) for window in (windows or (_WHOLE,)))
+        data = np.asarray(selected.get_data(), dtype=float)
+        estimates = [
+            multitaper_psd(
+                data[:, :, _within(times, window)],
+                sfreq,
+                window=window,
+                fmin=float(fmin),
+                fmax=float(fmax),
+                bandwidth=float(bandwidth),
+                n_jobs=n_jobs,
+            )
+            for window in resolved
+        ]
+        settings: dict[str, object] = {
+            "method": "multitaper",
+            "fmin": float(fmin),
+            "fmax": float(fmax),
+            "bandwidth": float(bandwidth),
+        }
+        return psd_spectra(
+            estimates,
+            resolved,
+            ch_names=tuple(selected.ch_names),
+            method="multitaper",
+            settings=settings,
+            row_ids=epoch_row_ids(selected, recording, data.shape[0]),
+            passband=_passband(selected),
+        )
+
+    @classmethod
+    def morlet(
+        cls,
+        epochs: Any,
+        windows: Sequence[Window],
+        *,
+        recording: str,
+        freqs: npt.ArrayLike,
+        n_cycles: float | npt.ArrayLike,
+        decim: int = 1,
+        statistic: WindowStatistic = "mean",
+        picks: str | Sequence[str] = "eeg",
+        exclude: str | Sequence[str] = "bads",
+        n_jobs: int = 1,
+    ) -> Spectra:
+        """Compute Morlet time-frequency power of epochs and reduce it to windows.
+
+        :meth:`from_tfr` on a TFR computed here, so ``n_cycles`` and the original
+        sampling rate, which MNE keeps on neither object, are passed for you. Only
+        coefficients whose whole wavelet fits a window are averaged; the fraction of
+        the window that leaves is :attr:`support`.
+
+        Parameters
+        ----------
+        epochs : mne.Epochs
+            Epoched data, not baseline-corrected. Channels are picked from a copy.
+        windows : sequence of Window
+            Time windows; an infinite one spans the epochs.
+        recording : str
+            The identity every row carries.
+        freqs : array-like
+            Wavelet frequencies in Hz.
+        n_cycles : float or array-like
+            Cycles per wavelet, one value or one per frequency.
+        decim : int, default 1
+            Keep every ``decim``-th time point of the TFR.
+        statistic : {"mean", "median"}, default "mean"
+            Temporal reduction; see :meth:`from_tfr`.
+        picks, exclude : str or sequence of str
+            MNE channel selection; good EEG channels by default.
+        n_jobs : int, default 1
+            Passed to MNE. It never changes a value or a column name.
+
+        Returns
+        -------
+        Spectra
+            One wavelet-smoothed density per window, in V²/Hz for EEG in volts.
+        """
+        selected = epochs.copy().pick(picks, exclude=exclude)
+        times = np.asarray(selected.times, dtype=float)
+        cycles = np.asarray(n_cycles, dtype=float)
+        tfr = selected.compute_tfr(
+            "morlet",
+            freqs=np.asarray(freqs, dtype=float),
+            n_cycles=n_cycles,
+            picks="all",
+            decim=decim,
+            output="power",
+            average=False,
+            return_itc=False,
+            n_jobs=n_jobs,
+            verbose=False,
+        )
+        return cls.from_tfr(
+            tfr,
+            tuple(_resolved(times, window) for window in windows),
+            recording=recording,
+            n_cycles=cycles if cycles.ndim else float(cycles),
+            sfreq=float(selected.info["sfreq"]),
+            statistic=statistic,
+        )
+
+
+# Settings of the run rather than of the estimate. Declared, they would enter the identity
+# and split one feature into a column per setting, as n_jobs once did for band signals.
+_EXECUTION_KEYS = frozenset({"n_jobs", "verbose"})
+
+
+def _estimator_keys(method: str) -> frozenset[str] | None:
+    import mne  # type: ignore[import-untyped]
+    from mne.time_frequency import (  # type: ignore[import-untyped]
+        psd_array_multitaper,
+        psd_array_welch,
+    )
+
+    estimators = {"welch": psd_array_welch, "multitaper": psd_array_multitaper}
+    if method not in estimators:
+        return None
+    functions = (estimators[method], mne.BaseEpochs.compute_psd, mne.io.BaseRaw.compute_psd)
+    names = {name for function in functions for name in inspect.signature(function).parameters}
+    return frozenset(names - {"self", "x", "sfreq", "method", "method_kw"} - _EXECUTION_KEYS)
+
+
+def _check_declaration(
+    method: str, declared: Mapping[str, object], freqs: npt.NDArray[np.float64], spectrum: Any
+) -> None:
+    # MNE keeps none of these on the Spectrum, so the declaration is the only record of them.
+    # It is hashed into every column, so it has to be checked against what the object shows.
+    execution = sorted(_EXECUTION_KEYS & set(declared))
+    if execution:
+        raise ValueError(
+            f"estimator_parameters declare {execution}, which change how the spectrum is "
+            "computed but not its values; leave them out, or one feature splits into a column "
+            "per setting."
+        )
+    known = _estimator_keys(method)
+    unknown = sorted(set(declared) - known) if known is not None else []
+    if unknown:
+        raise ValueError(
+            f"estimator_parameters declare {unknown}, which MNE's {method} estimator does not "
+            f"take. Its parameters: {sorted(known or ())}."
+        )
+    if freqs.size < 2:
+        return
+    step = float(np.median(np.diff(freqs)))
+    slack = 1e-6 * step
+    sfreq = getattr(spectrum, "sfreq", None)
+    rate = float(sfreq) if sfreq is not None else None
+    n_fft = declared.get("n_fft")
+    expected = (
+        rate / int(n_fft)
+        if method == "welch" and isinstance(n_fft, int | np.integer) and rate is not None
+        else None
+    )
+    if expected is not None and not np.isclose(step, expected, rtol=1e-6):
+        raise ValueError(
+            f"estimator_parameters declare n_fft = {n_fft}, which gives {expected:g} Hz bins "
+            f"at {rate} Hz, but this spectrum's bins are {step:g} Hz apart."
+        )
+    # MNE keeps the grid's bins inside [fmin, fmax], so the first and last kept bins lie within
+    # one step of the declared bounds; a bound at or past Nyquist keeps the grid's own end.
+    fmin, fmax = declared.get("fmin"), declared.get("fmax")
+    nyquist = rate / 2.0 if rate is not None else np.inf
+    if (
+        isinstance(fmin, int | float)
+        and np.isfinite(fmin)
+        and not fmin - slack <= freqs[0] < fmin + step + slack
+    ):
+        raise ValueError(
+            f"estimator_parameters declare fmin = {fmin} Hz, but this spectrum starts at "
+            f"{freqs[0]:g} Hz."
+        )
+    if (
+        isinstance(fmax, int | float)
+        and np.isfinite(fmax)
+        and fmax < nyquist
+        and not fmax - step - slack < freqs[-1] <= fmax + slack
+    ):
+        raise ValueError(
+            f"estimator_parameters declare fmax = {fmax} Hz, but this spectrum ends at "
+            f"{freqs[-1]:g} Hz."
+        )
+
 
 def _axis_identity(freqs: npt.NDArray[np.float64], spectrum: Any) -> dict[str, object]:
     """Exact identity of a frequency axis, in four fields rather than the whole grid.
@@ -504,6 +829,190 @@ def support_restricted_mask(
     return (t >= lower[:, np.newaxis]) & (t <= upper[:, np.newaxis])
 
 
+def require_within_axis(
+    times: npt.NDArray[np.float64], window: Window, *, tolerance: float
+) -> None:
+    # Clipped, the column would keep naming the requested span while measuring a shorter
+    # one. An infinite bound says "to the edge" on purpose, so it is never refused.
+    first, last = float(times[0]), float(times[-1])
+    if (np.isfinite(window.tmin) and window.tmin < first - tolerance) or (
+        np.isfinite(window.tmax) and window.tmax > last + tolerance
+    ):
+        raise ValueError(
+            f"window {window.name!r} ({window.tmin}, {window.tmax}) reaches outside the data, "
+            f"which spans ({first:.3f}, {last:.3f}) s. Its column would name a span it never "
+            "measured; narrow the window, or use an infinite bound to run to the edge."
+        )
+
+
+def _step(times: npt.NDArray[np.float64]) -> float:
+    return float(np.median(np.diff(times))) if times.size > 1 else 0.0
+
+
+def sample_period(times: npt.NDArray[np.float64]) -> float:
+    """How far a window may reach past the data: one sample, and float slack."""
+    # A sample stands for the interval up to the next one, so epochs whose last sample is at
+    # 29.99 s hold data to 30 s, and the window a user writes for them, 0 to 30 s, is whole.
+    return _step(times) * (1.0 + 1e-6)
+
+
+_WHOLE = Window("all", -math.inf, math.inf)
+_WELCH_SEGMENT_SEC = 2.0
+_WELCH_TAPER = "hann"
+_WELCH_BLOCK_BYTES = 9e6
+
+
+def _resolved(times: npt.NDArray[np.float64], window: Window) -> Window:
+    # As the runner measures it: an infinite window spans these epochs and records their
+    # bounds, and a finite one must lie within them.
+    if math.isinf(window.tmin) and math.isinf(window.tmax):
+        return Window(window.name, float(times[0]), float(times[-1]))
+    require_within_axis(times, window, tolerance=sample_period(times))
+    return window
+
+
+def _within(times: npt.NDArray[np.float64], window: Window) -> npt.NDArray[np.bool_]:
+    mask: npt.NDArray[np.bool_] = (times >= window.tmin) & (times <= window.tmax)
+    return mask
+
+
+def default_n_fft(sfreq: float, shortest: int) -> int:
+    """Default Welch segment: two seconds, capped by the shortest window it must fit."""
+    return min(int(round(_WELCH_SEGMENT_SEC * sfreq)), int(shortest))
+
+
+def welch_psd(
+    data: npt.NDArray[np.float64],
+    sfreq: float,
+    *,
+    window: Window,
+    fmin: float,
+    fmax: float,
+    n_fft: int,
+    n_overlap: int | None,
+    statistic: WindowStatistic,
+    n_jobs: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Welch PSD of one window's samples, shaped (epochs, channels, freqs)."""
+    from mne.time_frequency import psd_array_welch
+
+    if n_fft > data.shape[-1]:
+        raise ValueError(
+            f"n_fft = {n_fft} is longer than window {window.name!r}, which holds "
+            f"{data.shape[-1]} samples; lower n_fft or widen the window."
+        )
+    overlap = n_fft // 2 if n_overlap is None else n_overlap
+    # An overlap of n_fft or more is left for MNE to refuse.
+    if statistic == "median" and overlap < n_fft:
+        segments = 1 + (data.shape[-1] - n_fft) // (n_fft - overlap)
+        if segments < 3:
+            raise ValueError(
+                f"window {window.name!r} holds {segments} Welch segment(s) of n_fft = "
+                f"{n_fft}, and a median of fewer than 3 segments is their mean; lower "
+                "n_fft or widen the window."
+            )
+    resolution = sfreq / n_fft
+    # MNE estimates an input above 10 MB one row at a time in a Python loop, and one below
+    # it in a single vectorized call, so blocks of epochs under that size give the same
+    # numbers far faster. Input with NaN goes in whole: MNE reads NaN at the same samples in
+    # every row as rejected spans and NaN in some rows as broken channels, and a block
+    # boundary could change which of the two it sees.
+    rows = max(1, int(_WELCH_BLOCK_BYTES // max(1, data[:1].nbytes)))
+    blocks = (
+        [data]
+        if np.isnan(data).any()
+        else [data[start : start + rows] for start in range(0, data.shape[0], rows)]
+    )
+    estimates = [
+        psd_array_welch(
+            block,
+            sfreq,
+            fmin=max(0.0, fmin - resolution),
+            fmax=min(sfreq / 2.0, fmax + resolution),
+            n_fft=n_fft,
+            n_overlap=overlap,
+            window=_WELCH_TAPER,
+            # MNE divides the median by its bias for the segment count, so for
+            # Gaussian data both statistics estimate the same density.
+            average=statistic,
+            n_jobs=n_jobs,
+            verbose=False,
+        )
+        for block in blocks
+    ]
+    psd = np.concatenate([np.asarray(block_psd, dtype=float) for block_psd, _ in estimates])
+    return psd, np.asarray(estimates[0][1], dtype=float)
+
+
+def multitaper_psd(
+    data: npt.NDArray[np.float64],
+    sfreq: float,
+    *,
+    window: Window,
+    fmin: float,
+    fmax: float,
+    bandwidth: float,
+    n_jobs: int,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Multitaper PSD of one window's samples, density-normalized."""
+    from mne.time_frequency import psd_array_multitaper
+
+    resolution = sfreq / data.shape[-1]
+    validate_multitaper_bandwidth(
+        bandwidth, sfreq, data.shape[-1], window.name, "spectra.bandwidth"
+    )
+    psd, freqs = psd_array_multitaper(
+        data,
+        sfreq,
+        fmin=max(0.0, fmin - resolution),
+        fmax=min(sfreq / 2.0, fmax + resolution),
+        bandwidth=bandwidth,
+        normalization="full",
+        n_jobs=n_jobs,
+        verbose=False,
+    )
+    return np.asarray(psd, dtype=float), np.asarray(freqs, dtype=float)
+
+
+def psd_spectra(
+    estimates: Sequence[tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]],
+    windows: Sequence[Window],
+    *,
+    ch_names: tuple[str, ...],
+    method: str,
+    settings: Mapping[str, object],
+    row_ids: tuple[RowId, ...],
+    passband: tuple[float | None, float | None] | None,
+) -> Spectra:
+    """Assemble per-window PSD estimates, which must share one frequency grid."""
+    freqs = estimates[0][1]
+    for (_, other), window in zip(estimates[1:], windows[1:], strict=True):
+        if not np.array_equal(other, freqs):
+            raise ValueError(
+                f"window {window.name!r} yields a different frequency grid from "
+                f"{windows[0].name!r}. Multitaper grids follow the window length, so windows "
+                "measured together must be equally long; or use welch or morlet."
+            )
+    data = np.stack([psd for psd, _ in estimates], axis=2)
+    return Spectra(
+        data=data,
+        freqs=freqs,
+        ch_names=ch_names,
+        windows=tuple(windows),
+        coverage=np.isfinite(data).astype(float),
+        source=method,
+        representation="psd",
+        support=np.ones(data.shape, dtype=float),
+        row_ids=row_ids,
+        computation=ComputationSpec.create(
+            method,
+            normalization="full" if method == "multitaper" else "density",
+            settings=dict(settings),
+        ),
+        passband=passband,
+    )
+
+
 def _reduce_window(
     data: npt.NDArray[np.float64],
     times: npt.NDArray[np.float64],
@@ -522,6 +1031,9 @@ def _reduce_window(
             f"window {window.name!r} ({window.tmin}, {window.tmax}) selects no samples "
             f"from a time axis spanning ({times[0]}, {times[-1]})."
         )
+    # One step of this axis: decimated, the TFR keeps every n-th sample, so its last point can
+    # fall up to one step before the end of the epochs it came from.
+    require_within_axis(times, window, tolerance=sample_period(times))
     mask_2d = support_restricted_mask(times, freqs, window, n_cycles)
     if not mask_2d.any():
         raise ValueError(

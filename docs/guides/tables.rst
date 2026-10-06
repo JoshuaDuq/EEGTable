@@ -16,10 +16,9 @@ Querying a table
 
 .. code-block:: python
 
-   # An empty table when nothing matches.
-   alpha_channels = spectral_features.select(
-       band=ef.Band("alpha", 8.0, 13.0), space_kind="channel"
-   )
+   # A band matches by its name or by the Band itself. A value no column has at all
+   # warns, since it is usually a misspelled label.
+   alpha_rois = spectral_features.select(band="alpha", space_kind="roi")
 
    # Coverage measures finite input, not artifact quality.
    valid_fractions = spectral_features.coverage
@@ -28,9 +27,10 @@ Querying a table
        absent_peaks = spectral_features.flags["no_peak"]
 
    df = spectral_features.to_dataframe()
-   print(df.head())
-   # eeg_band-power_alpha_cz_all_raw_p<hash>
-   # eeg_peak-freq-adjusted_alpha_cz_all_raw_p<hash>
+   print(list(df.columns))
+   # ['eeg_band-power_alpha_central_all_raw_p<hash>',
+   #  'eeg_band-power_alpha_global_all_raw_p<hash>',
+   #  'eeg_peak-freq-adjusted_alpha_central_all_raw_p<hash>', ...]
 
 Three methods narrow a table further:
 
@@ -45,6 +45,45 @@ Three methods narrow a table further:
    first_ten = spectral_features.take(range(10))
    mostly_measured = spectral_features.drop_missing(0.2)
 
+Data frames, long format and R
+------------------------------
+
+:meth:`~eegtable.FeatureTable.to_dataframe` returns the values under their
+canonical names, indexed by ``(recording, epoch, event)``. Join epoch metadata on
+``epoch``: MNE keeps each epoch's original number in ``epochs.metadata`` after
+dropping epochs, and the index carries the same number, so every row stays with
+its own trial.
+
+.. code-block:: python
+
+   wide = spectral_features.to_dataframe()
+   if epochs.metadata is not None:
+       wide = wide.join(epochs.metadata, on="epoch")
+
+   long = spectral_features.to_long()
+   alpha = long[(long["band"] == "alpha") & (long["space_kind"] == "roi")]
+   long.to_csv("sub-01_features_long.tsv", sep="\t", index=False, na_rep="n/a")
+
+:meth:`~eegtable.FeatureTable.to_long` has one row per value. Each row holds:
+
+- the row's identity, ``recording``, ``epoch`` and ``event`` (``group`` for
+  trial-group rows);
+- the column's ``feature`` name, ``measure``, ``band``, ``band_fmin``,
+  ``band_fmax``, ``space``, ``space_kind``, ``window``, ``window_tmin``,
+  ``window_tmax``, ``normalization``, ``unit`` and ``source``;
+- the ``value``, ``coverage`` and ``support``;
+- one boolean column per flag.
+
+Filtering and modeling then use these fields directly, without parsing names.
+
+In R, read a bundle with ``n/a`` as the missing value, and keep the column
+names as written:
+
+.. code-block:: r
+
+   wide <- read.delim("sub-01_features.tsv", na.strings = "n/a", check.names = FALSE)
+   long <- read.delim("sub-01_features_long.tsv", na.strings = "n/a")
+
 Writing and reading
 -------------------
 
@@ -57,6 +96,7 @@ per-epoch tables into a dataset.
 
    paths = write_table(spectral_features, "sub-01_features.tsv", rows=epochs.metadata)
    restored = read_table("sub-01_features.tsv")
+   # Bundles written for three recordings, for example by `eegtable run`.
    dataset = read_dataset(
        ["sub-01_features.tsv", "sub-02_features.tsv", "sub-03_features.tsv"]
    )
@@ -113,6 +153,7 @@ Building a cohort
 
 .. code-block:: python
 
+   # One per-epoch table per recording, each with its own row identities.
    cohort_features = ef.stack_rows(
        [sub_01_features, sub_02_features, sub_03_features], columns="union"
    )

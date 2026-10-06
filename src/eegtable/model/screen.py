@@ -43,10 +43,36 @@ def univariate_screen(
     subject's own nuisance design, as in :func:`residualize_within_subjects`, so a
     feature's shared response to a stimulus does not read as tracking.
 
-    Returns one row per feature: ``r`` (the mean z back in r units), ``t``,
-    ``n_subjects``, ``p``, ``q`` and ``p_fwer``. A feature measured in fewer than 3
-    subjects is not tested. Zero mean and zero between-subject variance leave
-    ``t``, ``p``, ``q`` and ``p_fwer`` undefined (NaN).
+    Parameters
+    ----------
+    X : ndarray, shape (n_trials, n_features)
+        Feature values; NaN is missing. A subject's correlation for a feature uses
+        the trials where it is finite and needs at least three of them, with both
+        the feature and the target varying.
+    y : ndarray, shape (n_trials,)
+        Finite target.
+    groups : ndarray, shape (n_trials,)
+        Subject label of each trial; every trial needs one.
+    feature_names : sequence of str, optional
+        One name per column, the index of the result; defaults to ``feature_0``,
+        ``feature_1``, ...
+    covariates : DataFrame or ndarray, optional
+        Nuisance values with one row per trial, required by ``residualize_on``.
+    residualize_on : sequence of str
+        Nuisance columns removed from the features and the target within each
+        subject.
+    n_flips : int, default 10000
+        Random sign-flip draws for ``p_fwer``.
+    seed : int, default 42
+        Seed of the sign flips.
+
+    Returns
+    -------
+    DataFrame
+        One row per feature: ``r`` (the mean z back in r units), ``t``,
+        ``n_subjects``, ``p``, ``q`` and ``p_fwer``. A feature measured in fewer
+        than 3 subjects is not tested. Zero mean and zero between-subject variance
+        leave ``t``, ``p``, ``q`` and ``p_fwer`` undefined (NaN).
     """
     values = np.asarray(X, dtype=np.float64)
     target = np.asarray(y, dtype=np.float64)

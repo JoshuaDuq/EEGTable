@@ -47,6 +47,24 @@ Scheme = Literal[
 
 @dataclass(frozen=True)
 class NullConfig:
+    """Rearrangement scheme and number of draws for :func:`permutation_test`.
+
+    Parameters
+    ----------
+    scheme : str, default "within_subject"
+        ``"within_subject"`` shuffles targets among each subject's trials.
+        ``"within_subject_within_run"`` shuffles within each run of each subject;
+        ``"run_wise"`` is an alias of it. No scheme exchanges whole runs.
+        ``"circular_shift_within_run"`` rotates each run's trials, ordered by trial
+        index, by a random shift. A scheme states a rearrangement; whether the
+        targets are exchangeable under it follows from the study design, not from
+        the choice.
+    n_permutations : int, default 1000
+        Number of draws.
+    min_retained_trials : int, default 8
+        Fewest trials a run may have under circular shifts.
+    """
+
     scheme: Scheme = "within_subject"
     n_permutations: int = 1000
     min_retained_trials: int = 8
@@ -71,6 +89,23 @@ class NullConfig:
 
 @dataclass(frozen=True)
 class NullResult:
+    """Outcome of :func:`permutation_test`.
+
+    Parameters
+    ----------
+    p_value : float
+        ``(b + 1) / (B + 1)`` for ``b`` of ``B`` null statistics at least as
+        extreme as ``observed``, in the direction ``greater_is_better`` names.
+    observed : float
+        The supplied observed statistic, confirmed by recomputation.
+    null : ndarray, shape (n_permutations,)
+        Statistic of each refitted draw.
+    changed_fractions : ndarray, shape (n_permutations,)
+        Fraction of trials whose target value each draw's rearrangement changes.
+    n_incomplete : int
+        Draws that did not complete; always 0, because a failed draw raises.
+    """
+
     p_value: float
     observed: float
     null: npt.NDArray[np.float64]
@@ -82,6 +117,7 @@ _DEFAULT_AGGREGATION = AggregationConfig()
 
 
 def is_permutation_valid_run(retained: npt.NDArray[np.intp], min_retained: int = 8) -> bool:
+    """Whether a run retains at least ``min_retained`` trials, all with finite indices."""
     # Cast to float, not int: an int cast turns NaN into a large negative integer, which then
     # passes any finiteness test and reports a run of missing counts as usable.
     arr = np.asarray(retained, dtype=np.float64)
@@ -89,6 +125,11 @@ def is_permutation_valid_run(retained: npt.NDArray[np.intp], min_retained: int =
 
 
 def circular_shift_group(n_retained: int) -> tuple[int, ...]:
+    """Shifts a circular draw chooses from for a run of ``n_retained`` trials.
+
+    ``0`` to ``n_retained - 1``, so the identity shift is included; empty for no
+    trials.
+    """
     if n_retained <= 0:
         return ()
     return tuple(range(n_retained))
@@ -98,6 +139,11 @@ def changed_fraction(
     y_original: npt.NDArray[np.float64],
     y_permuted: npt.NDArray[np.float64],
 ) -> float:
+    """Fraction of positions whose value differs between two aligned arrays.
+
+    Positions where either value is non-finite are ignored; 0.0 when none remain.
+    Arrays of different shapes raise.
+    """
     orig = np.asarray(y_original, dtype=np.float64)
     perm = np.asarray(y_permuted, dtype=np.float64)
     if orig.shape != perm.shape:
@@ -120,6 +166,32 @@ def permute(
     config: NullConfig,
     rng: np.random.Generator,
 ) -> npt.NDArray[np.float64]:
+    """Draw one rearrangement of ``y`` under a null scheme.
+
+    Parameters
+    ----------
+    y : ndarray, shape (n_trials,)
+        Values to rearrange.
+    groups : ndarray, shape (n_trials,)
+        Subject label of each trial. Every trial needs one, and every subject at
+        least two trials: a lone trial would keep its value in every draw.
+    runs : ndarray, optional
+        Run label of each trial, required by the run-wise and circular schemes;
+        every trial needs one.
+    trial_indices : ndarray of int, optional
+        Order of the trials within their run, required by circular shifts; finite
+        integers, unique within each run.
+    config : NullConfig
+        Scheme and, for circular shifts, the shortest run allowed.
+    rng : numpy.random.Generator
+        Source of the draw.
+
+    Returns
+    -------
+    ndarray
+        ``y`` rearranged within the scheme's blocks. A run of one trial stays in
+        place, and a circular shift can draw the identity.
+    """
     values = np.asarray(y, dtype=np.float64)
     groups_arr = np.asarray(groups, dtype=object)
     if len(values) != len(groups_arr):
@@ -356,6 +428,46 @@ def permutation_test(
     that fit's prediction and permutes only its residuals, so a draw breaks the
     feature-target link and leaves the nuisance-target link in place. Permuting the raw
     target instead would break both, and the null would describe the wrong hypothesis.
+
+    A draw that fails raises ``RuntimeError`` rather than being dropped from the null,
+    and a scheme whose draws never change a target raises ``ValueError``.
+
+    Parameters
+    ----------
+    folds, X, y, groups, pipeline, grid
+        As for :func:`cross_fit_regression`, and the same as in the call that
+        produced ``observed``.
+    runs : ndarray or None
+        Run label of each row; required by the run-wise and circular schemes and
+        by within-subject folds.
+    observed : float
+        Finite statistic of the unpermuted fit; it is recomputed and must match.
+    config : NullConfig
+        Scheme and number of draws.
+    inner : InnerSplit
+        As for :func:`cross_fit_regression`.
+    seed : int
+        As for :func:`cross_fit_regression`; it also seeds the draws.
+    outer_n_jobs, harmonization, covariates, residualize_within, scoring, refit
+        As for :func:`cross_fit_regression`.
+    residualize_on : sequence of str
+        As for :func:`cross_fit_regression`. Every draw must then keep each
+        fold's rows within that fold.
+    metric_fn : callable, optional
+        ``metric_fn(y_true, y_pred)`` over the held-out predictions of all folds,
+        pooled. None uses subject-level ``r`` with targets and predictions centred
+        within each fold, a subject whose correlation is undefined scoring 0.
+    greater_is_better : bool, default True
+        Tail of the test; see above.
+    trial_indices : ndarray of int, optional
+        Order of the trials within their run, required by
+        ``"circular_shift_within_run"``.
+    aggregation : AggregationConfig, optional
+        Subject weighting of the default statistic; its interval is not computed.
+
+    Returns
+    -------
+    NullResult
     """
     rng = np.random.default_rng(seed)
     groups_arr = np.asarray(groups, dtype=object)

@@ -294,3 +294,19 @@ def test_harmonize_fold_rejects_unknown_mode() -> None:
     groups = np.array(["s1", "s1", "s2", "s2"], dtype=object)
     with pytest.raises(ValueError, match="Unknown harmonization mode"):
         harmonize_fold(X_tr, X_te, groups, mode="intersecton")
+
+
+def test_a_target_of_text_labels_is_named_as_such(alpha_beta_table: FeatureTable) -> None:
+    # Text labels coerced to NaN used to be reported as non-finite values, which sent the
+    # reader looking for missing data instead of an encoding.
+    targets = pd.DataFrame(
+        {
+            "recording": ["sub-01", "sub-02"],
+            "epoch": [0, 0],
+            "event": ["stim", "stim"],
+            "hand": ["left", "right"],
+            "subject_id": ["sub-01", "sub-02"],
+        }
+    )
+    with pytest.raises(ValueError, match="text labels.*'left'"):
+        build_design(alpha_beta_table, targets, target="hand")

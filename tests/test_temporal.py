@@ -15,7 +15,8 @@ from eegtable.temporal import (
 )
 
 SFREQ = 100.0
-WINDOW = Window("all", 0.0, 2.0)
+# Each toy series is shorter than any finite window would fit; run to its end.
+WINDOW = Window("all", 0.0, np.inf)
 
 
 def _signal(data: np.ndarray) -> Signal:
@@ -101,7 +102,7 @@ def test_peak_latency_reports_the_time_not_the_index() -> None:
 def test_polarity_is_not_inferred_from_the_window_name() -> None:
     # Polarity is explicit; verify window names (e.g. "noxious") do not influence polarity.
     values = np.array([0.0, -5.0, 0.0, 3.0, 0.0]).reshape(1, 1, 5)
-    noxious = Window("noxious", 0.0, 2.0)
+    noxious = Window("noxious", 0.0, np.inf)
     table = peak_amplitude(
         [_signal(values)], windows=[noxious], polarity="positive", include_global=False
     )

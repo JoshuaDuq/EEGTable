@@ -3,7 +3,8 @@
 The BrainVision derivatives (BIDS and every decomb stage) share one marker file per run,
 byte for byte, so each is rewritten from a freshly converted BIDS tree whose positions must
 match. eegtable bundles get the event name renamed in the recipe, the events ledger, the
-epochs' event_id and the manifest's provenance, with the manifest hashes recomputed.
+epochs' event_id and the manifest's provenance, with the epochs' provenance identity and the
+manifest hashes recomputed.
 
     python paradigm_specific/thermal_pain/repair_markers.py --fixed-bids FIXED \\
         --derivatives BIDS_EEG DECOMB_STAGE... --bundles EEGTABLE --archive ARCHIVE
@@ -24,9 +25,10 @@ import pandas as pd
 import yaml
 
 from eegtable.preprocessing.config import read_yaml
-from eegtable.preprocessing.provenance import canonical_json, file_hash
+from eegtable.preprocessing.provenance import canonical_json, file_hash, identity
 
 GENERIC = {"Stimulus/S  1": "Trig_therm/T  1", "Stimulus/S  2": "Volume/V  1"}
+STAMP = re.compile(r"(preprocessing=[^;]+; identity=)[0-9a-f]{64}")
 RUN = re.compile(r"(sub-[A-Za-z0-9]+)_task-thermalactive_run-(\d+)")
 
 
@@ -100,6 +102,10 @@ def repair_bundle(manifest_path: Path) -> None:
     epochs_file = folder / f"{stem}_epo.fif"
     epochs = mne.read_epochs(epochs_file, preload=True, proj=False, verbose=False)
     epochs.event_id = rename_labels(epochs.event_id)
+    # The FIF carries the provenance identity; leaving the old one makes eegtable run refuse it.
+    epochs.info["description"] = STAMP.sub(
+        rf"\g<1>{identity(manifest['provenance'])}", epochs.info["description"] or ""
+    )
     ledger = folder / f"{stem}_events.tsv"
     frame = pd.read_csv(ledger, sep="\t")
     frame["label"] = frame["label"].map(rename)

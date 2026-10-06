@@ -66,6 +66,27 @@ def validate_geometry(raw: Any) -> None:
 
 
 def prepare_channels(raw: Any, settings: ChannelSettings) -> Any:
+    """Rename, type, derive, drop and locate channels on a copy of a recording.
+
+    In order: renames, channel types, bipolar derivations (the sources are kept),
+    drops, the montage, bad labels added to those already marked, and the policy
+    for inactive projectors. Every named channel must exist. The result needs at
+    least one good EEG channel and finite physiology samples; with
+    ``interpolate_bads``, also finite nonzero positions for every EEG channel and
+    at least four good ones.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording; loaded into memory on the copy.
+    settings : ChannelSettings
+        Channel preparation settings.
+
+    Returns
+    -------
+    mne.io.Raw
+        The prepared copy.
+    """
     if not isinstance(raw, mne.io.BaseRaw):
         raise TypeError("raw: expected MNE BaseRaw")
     working = raw.copy().load_data()
@@ -150,6 +171,11 @@ def restore_reference_channels(
 
 
 def crop_raw(raw: Any, settings: CropSettings) -> Any:
+    """Copy of a recording kept between ``settings.tmin`` and ``settings.tmax``.
+
+    Times are seconds from the recording's first sample; a ``tmax`` beyond its
+    last sample raises.
+    """
     validate_raw(raw)
     if settings.tmax > raw.times[-1]:
         raise ValueError(f"crop.tmax: {settings.tmax} exceeds recording endpoint {raw.times[-1]}")
@@ -163,6 +189,27 @@ def annotate_raw(
     acquisition_first_samp: int | None = None,
     acquisition_n_times: int | None = None,
 ) -> Any:
+    """Copy of a recording with the configured manual BAD spans added.
+
+    Only ``settings.bad_spans`` are applied here; the amplitude, break and muscle
+    detectors run in :func:`~eegtable.preprocessing.quality.detect_annotations`.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording, possibly already cropped.
+    settings : AnnotationSettings
+        Annotation settings; span onsets are seconds from the first acquired
+        sample. A span past the end of the acquisition raises; the part of a span
+        outside a cropped recording is dropped.
+    acquisition_first_samp, acquisition_n_times : int, optional
+        First sample and length of the original acquisition, when ``raw`` has
+        been cropped since; None uses ``raw`` itself.
+
+    Returns
+    -------
+    mne.io.Raw
+    """
     # Spans are acquisition-relative; after a crop only the retained part is kept.
     validate_raw(raw)
     working = raw.copy()
@@ -264,6 +311,25 @@ def _validate_jobs(n_jobs: int) -> None:
 
 
 def filter_raw(raw: Any, settings: FilterSettings, *, n_jobs: int = 1) -> Any:
+    """Zero-phase FIR band-, high- or low-pass filter of a copy's EEG, EOG and ECG.
+
+    A Hamming-window ``firwin`` design, skipping BAD and edge annotations. A clean
+    segment between them shorter than the filter raises.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording.
+    settings : FilterSettings
+        ``l_freq`` and ``h_freq`` in Hz, below Nyquist; both None returns an
+        unfiltered copy.
+    n_jobs : int, default 1
+        Nonzero MNE filtering jobs.
+
+    Returns
+    -------
+    mne.io.Raw
+    """
     validate_raw(raw)
     _validate_jobs(n_jobs)
     working = raw.copy().load_data()
@@ -312,6 +378,26 @@ def notch_coefficients(sfreq: float, centers: tuple[float, ...]) -> NDArray[np.f
 
 
 def notch_raw(raw: Any, settings: FilterSettings, *, n_jobs: int = 1) -> Any:
+    """Zero-phase FIR notch of a copy's EEG, EOG and ECG at ``settings.notch_freqs``.
+
+    MNE's notch design, skipping BAD and edge annotations. Each notch's transition
+    band must lie between 0 Hz and Nyquist, and a clean segment shorter than the
+    filter raises. No notch frequencies returns an unfiltered copy. The notch is
+    not recorded in the stored highpass or lowpass.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording.
+    settings : FilterSettings
+        Its ``notch_freqs``, in Hz, are used.
+    n_jobs : int, default 1
+        Nonzero MNE filtering jobs.
+
+    Returns
+    -------
+    mne.io.Raw
+    """
     validate_raw(raw)
     _validate_jobs(n_jobs)
     working = raw.copy().load_data()

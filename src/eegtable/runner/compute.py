@@ -17,30 +17,27 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from mne.time_frequency import (  # type: ignore[import-untyped]
-    psd_array_multitaper,
-    psd_array_welch,
-)
 
 from eegtable._expand import window_mask
-from eegtable._validation import validate_multitaper_bandwidth
 from eegtable.bands import Band
 from eegtable.derived import asymmetry, band_ratio
 from eegtable.identity import epoch_row_ids
 from eegtable.microstates import MicrostateSegmentation, segment
-from eegtable.runner.measures import GRAPH, MEASURES, Measure
+from eegtable.runner.measures import GRAPH, Measure, get
 from eegtable.runner.recipe import WHOLE_EPOCH, FeatureSpec, Recipe, RoiPattern
 from eegtable.signal import BandSignal, Signal, _passband
-from eegtable.spectra import Spectra, Window
-from eegtable.table import ComputationSpec, FeatureTable, concat
+from eegtable.spectra import (
+    Spectra,
+    Window,
+    default_n_fft,
+    multitaper_psd,
+    psd_spectra,
+    welch_psd,
+)
+from eegtable.table import FeatureTable, concat
 
 OnStep = Callable[[str, int, int], None]
 """Called before each entry with its measure, its position and the entry count."""
-
-_WELCH_SEGMENT_SEC = 2.0
-"""Default Welch segment length, capped by the shortest window it must fit."""
-
-_WELCH_TAPER = "hann"
 
 
 @dataclass(frozen=True)
@@ -189,7 +186,8 @@ class RecordingInputs:
         first, last = float(self.times[0]), float(self.times[-1])
         if math.isinf(window.tmin) and math.isinf(window.tmax):
             return Window(window.name, first, last)
-        tolerance = 0.5 / self.sfreq
+        # One sample: the last one stands for the interval up to where the epochs end.
+        tolerance = (1.0 + 1e-6) / self.sfreq
         if window.tmin < first - tolerance or window.tmax > last + tolerance:
             raise ValueError(
                 f"window {window.name!r} ({window.tmin}, {window.tmax}) s reaches outside this "
@@ -240,37 +238,13 @@ class RecordingInputs:
                 statistic=self.recipe.spectra.window_statistic,
             )
 
-        estimates = [self._window_psd(window) for window in finite]
-        freqs = estimates[0][1]
-        for (_, other), window in zip(estimates[1:], finite[1:], strict=True):
-            if not np.array_equal(other, freqs):
-                raise ValueError(
-                    f"window {window.name!r} yields a different frequency grid from "
-                    f"{finite[0].name!r}. Multitaper grids follow the window length, so windows "
-                    "measured together must be equally long; or use welch or morlet."
-                )
-        data = np.stack([psd for psd, _ in estimates], axis=2)
-        return Spectra(
-            data=data,
-            freqs=freqs,
+        return psd_spectra(
+            [self._window_psd(window) for window in finite],
+            finite,
             ch_names=tuple(self.epochs.ch_names),
-            windows=finite,
-            coverage=np.isfinite(data).astype(float),
-            source=self.recipe.spectra.method,
-            representation="psd",
-            support=np.ones(data.shape, dtype=float),
-            row_ids=epoch_row_ids(self.epochs, self.recording, data.shape[0]),
-            computation=ComputationSpec.create(
-                self.recipe.spectra.method,
-                normalization="full" if self.recipe.spectra.method == "multitaper" else "density",
-                # The statistic is left out at the mean, so columns computed before the
-                # option existed keep their names.
-                settings={
-                    key: value
-                    for key, value in self.recipe.spectra.__dict__.items()
-                    if value is not None and (key, value) != ("window_statistic", "mean")
-                },
-            ),
+            method=self.recipe.spectra.method,
+            settings=self.recipe.spectra.used(),
+            row_ids=epoch_row_ids(self.epochs, self.recording, len(self.epochs)),
             passband=_passband(self.epochs),
         )
 
@@ -298,71 +272,62 @@ class RecordingInputs:
         settings = self.recipe.spectra
         data = self._array()[:, :, window_mask(self.times, window)]
         if settings.method == "welch":
-            n_fft = self._n_fft()
-            if n_fft > data.shape[-1]:
-                raise ValueError(
-                    f"n_fft = {n_fft} is longer than window {window.name!r}, which holds "
-                    f"{data.shape[-1]} samples; lower n_fft or widen the window."
-                )
-            n_overlap = n_fft // 2 if settings.n_overlap is None else settings.n_overlap
-            # An overlap of n_fft or more is left for MNE to refuse.
-            if settings.window_statistic == "median" and n_overlap < n_fft:
-                segments = 1 + (data.shape[-1] - n_fft) // (n_fft - n_overlap)
-                if segments < 3:
-                    raise ValueError(
-                        f"window {window.name!r} holds {segments} Welch segment(s) of n_fft = "
-                        f"{n_fft}, and a median of fewer than 3 segments is their mean; lower "
-                        "n_fft or widen the window."
-                    )
-            resolution = self.sfreq / n_fft
-            psd, freqs = psd_array_welch(
+            estimate = welch_psd(
                 data,
                 self.sfreq,
-                fmin=max(0.0, settings.fmin - resolution),
-                fmax=min(self.sfreq / 2.0, settings.fmax + resolution),
-                n_fft=n_fft,
-                n_overlap=n_overlap,
-                window=_WELCH_TAPER,
-                # MNE divides the median by its bias for the segment count, so for
-                # Gaussian data both statistics estimate the same density.
-                average=settings.window_statistic,
+                window=window,
+                fmin=settings.fmin,
+                fmax=settings.fmax,
+                n_fft=self._n_fft(),
+                n_overlap=settings.n_overlap,
+                statistic=settings.window_statistic,
                 n_jobs=self.n_jobs,
-                verbose=False,
             )
         else:
-            resolution = self.sfreq / data.shape[-1]
-            validate_multitaper_bandwidth(
-                settings.bandwidth, self.sfreq, data.shape[-1], window.name, "spectra.bandwidth"
-            )
-            psd, freqs = psd_array_multitaper(
+            estimate = multitaper_psd(
                 data,
                 self.sfreq,
-                fmin=max(0.0, settings.fmin - resolution),
-                fmax=min(self.sfreq / 2.0, settings.fmax + resolution),
+                window=window,
+                fmin=settings.fmin,
+                fmax=settings.fmax,
                 bandwidth=settings.bandwidth,
-                normalization="full",
                 n_jobs=self.n_jobs,
-                verbose=False,
             )
-        estimate = (np.asarray(psd, dtype=float), np.asarray(freqs, dtype=float))
         self._psd[window] = estimate
         return estimate
+
+    def welch_segments(self) -> dict[str, tuple[int, int]]:
+        """Segments each spectral window's Welch estimate averages, and n_fft, by window."""
+        settings = self.recipe.spectra
+        windows = self._spectral_windows()
+        if settings.method != "welch" or not windows:
+            return {}
+        n_fft = self._n_fft()
+        step = n_fft - (n_fft // 2 if settings.n_overlap is None else settings.n_overlap)
+        segments = {}
+        for window in windows:
+            samples = int(window_mask(self.times, self.window(window)).sum())
+            count = 1 + (samples - n_fft) // step if samples >= n_fft and step > 0 else 0
+            segments[window.name] = (count, n_fft)
+        return segments
+
+    def _spectral_windows(self) -> set[Window]:
+        return {
+            window
+            for spec in self.recipe.features
+            if get(spec.measure).kind == "spectra"
+            for window in (*spec.windows, *((spec.baseline,) if spec.baseline else ()))
+        }
 
     def _n_fft(self) -> int:
         """Segment length shared by every Welch window, so their grids align."""
         if self.recipe.spectra.n_fft is not None:
             return self.recipe.spectra.n_fft
-        spectral = {
-            window
-            for spec in self.recipe.features
-            if MEASURES[spec.measure].kind == "spectra"
-            for window in (*spec.windows, *((spec.baseline,) if spec.baseline else ()))
-        }
         shortest = min(
             int(window_mask(self.times, self.window(window)).sum())
-            for window in (spectral or {WHOLE_EPOCH})
+            for window in (self._spectral_windows() or {WHOLE_EPOCH})
         )
-        return min(int(round(_WELCH_SEGMENT_SEC * self.sfreq)), shortest)
+        return default_n_fft(self.sfreq, shortest)
 
     def _morlet(self) -> tuple[Any, npt.NDArray[np.float64]]:
         if self._tfr is None:
@@ -408,7 +373,7 @@ def _log_grid(fmin: float, fmax: float, n: int) -> npt.NDArray[np.float64]:
 
 
 def _compute(spec: FeatureSpec, inputs: RecordingInputs) -> FeatureTable:
-    measure = MEASURES[spec.measure]
+    measure = get(spec.measure)
     function = measure.function
     params: dict[str, Any] = dict(spec.params)
     windows = inputs.windows(spec.windows)

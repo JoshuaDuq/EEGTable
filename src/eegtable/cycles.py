@@ -170,6 +170,41 @@ def cycle_features(
     summaries average the burst-labelled cycles; the burst fraction counts
     burst cycles divided by all complete cycles, rather than sample occupancy.
     No cycles or no bursts give explicit flags and undefined summaries.
+    Requires ``eegtable[cycles]``.
+
+    Parameters
+    ----------
+    series : sequence of Signal
+        Broadband epochs, finite and nonconstant, longer than three cycles at each
+        band's lower edge.
+    windows : sequence of Window
+        Analysis windows. A cycle counts when both of its troughs lie inside the
+        window.
+    bands : sequence of Band
+        Bands of ByCycle's narrowband locator, with unique names. Each must lie
+        strictly between 0 Hz and the Nyquist frequency and, when the recording's
+        passband is known, entirely inside it.
+    burst_thresholds : mapping of str to float, optional
+        Overrides of ByCycle's cycle-consistency thresholds:
+        ``amp_fraction_threshold`` (default 0.0), ``amp_consistency_threshold``
+        (0.5), ``period_consistency_threshold`` (0.5) and
+        ``monotonicity_threshold`` (0.8), each in ``[0, 1]``, and ``min_n_cycles``
+        (3), a positive integer.
+    groups : mapping of str to sequence of str, optional
+        ROI name to member channels. None gives one column per channel.
+    include_global : bool, default True
+        Also emit the mean across all channels.
+
+    Returns
+    -------
+    FeatureTable
+        For each band, spatial unit and window: mean ``cycle_period``,
+        ``cycle_rise_time`` and ``cycle_decay_time`` in seconds,
+        ``cycle_rise_decay_symmetry``, ``cycle_peak_trough_symmetry`` and
+        ``cycle_amplitude`` of the burst cycles (NaN without a burst), plus
+        ``cycle_burst_fraction`` (NaN without a complete cycle), ``cycle_count``
+        and ``cycle_burst_count``. Flags ``cycle_no_complete_cycles`` and
+        ``cycle_no_burst`` mark those cases.
     """
     check_signals(series, windows)
     if not bands or len({band.name for band in bands}) != len(bands):

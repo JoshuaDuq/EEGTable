@@ -30,6 +30,7 @@ dependency versions with each analysis.
    - :doc:`Quick start <quickstart>`
    - :doc:`API reference <api/index>`
    - :doc:`Validation evidence <guides/validation>`
+   - :doc:`How it relates to other tools <comparison>`
 
 Start here
 ----------
@@ -137,6 +138,12 @@ Build an analysis workflow
 
 .. toctree::
    :hidden:
+   :caption: Tutorials
+
+   Single-trial ERD <auto_tutorials/plot_motor_erds>
+
+.. toctree::
+   :hidden:
    :caption: Guides
 
    guides/preprocessing
@@ -147,6 +154,7 @@ Build an analysis workflow
    Predictive modeling <guides/modeling>
    Learned features <guides/learned_features>
    Modeling recipes <guides/model_recipes>
+   Your own measures <guides/extending>
 
 .. toctree::
    :hidden:
@@ -168,3 +176,12 @@ Build an analysis workflow
 
    Validation <guides/validation>
    Example outputs <examples>
+
+.. toctree::
+   :hidden:
+   :caption: Project
+
+   Related tools <comparison>
+   Versions and stability <stability>
+   Changelog <changelog>
+   Contributing <contributing>

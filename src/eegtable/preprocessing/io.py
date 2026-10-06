@@ -43,6 +43,28 @@ def check_destinations(output: OutputSettings, *, overwrite: bool = False) -> No
 def write_result(
     result: PreprocessingResult, output: OutputSettings, *, overwrite: bool = False
 ) -> Path:
+    """Write a preprocessing result as a verified bundle, publishing its manifest last.
+
+    Writes ``<name>_epo.fif`` (double precision), ``<name>_events.tsv``,
+    ``<name>_repairs.tsv`` when autoreject ran, ``<name>_report.html`` and the
+    manifest ``<name>_preprocessing.json`` with provenance and file hashes. Files
+    are staged and read back first. A directory without the manifest holds no
+    finished export.
+
+    Parameters
+    ----------
+    result : PreprocessingResult
+        Epochs, ledgers and provenance to write.
+    output : OutputSettings
+        Output directory and file name stem.
+    overwrite : bool, default False
+        Replace an existing bundle; otherwise an existing bundle raises.
+
+    Returns
+    -------
+    pathlib.Path
+        The manifest.
+    """
     check_destinations(output, overwrite=overwrite)
     output.directory.mkdir(parents=True, exist_ok=True)
     manifest_name = f"{output.name}_preprocessing.json"

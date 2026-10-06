@@ -17,6 +17,20 @@ _SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 
 @dataclass(frozen=True)
 class FilterSettings:
+    """Continuous filtering of the EEG, EOG and ECG channels.
+
+    Parameters
+    ----------
+    l_freq : float, optional
+        High-pass edge in Hz, below ``h_freq``. With ``h_freq`` also None, the filter
+        stage is skipped.
+    h_freq : float, optional
+        Low-pass edge in Hz. Decimation requires it.
+    notch_freqs : tuple of float
+        Line frequencies to notch, in Hz, unique and ascending. Empty skips the notch
+        stage.
+    """
+
     l_freq: float | None = None
     h_freq: float | None = None
     notch_freqs: tuple[float, ...] = ()
@@ -38,6 +52,19 @@ class FilterSettings:
 
 @dataclass(frozen=True)
 class BipolarSettings:
+    """A bipolar EOG or ECG channel derived from two recorded channels.
+
+    Parameters
+    ----------
+    name : str
+        Name of the new channel, which must not exist yet.
+    anode, cathode : str
+        EEG, EOG or ECG channels; the new channel is ``anode - cathode`` and both
+        sources are kept.
+    type : {"eog", "ecg"}
+        Channel type of the new channel.
+    """
+
     name: str
     anode: str
     cathode: str
@@ -50,6 +77,32 @@ class BipolarSettings:
 
 @dataclass(frozen=True)
 class ChannelSettings:
+    """Channel preparation: names, types, derivations, drops, montage and bad labels.
+
+    Parameters
+    ----------
+    rename : mapping of str to str
+        Old to new channel names, applied first; the new names must not collide.
+    types : mapping of str to str
+        Channel name, after renaming, to MNE channel type.
+    drop : tuple of str
+        Channels removed after the bipolar derivations.
+    bads : tuple of str
+        Channels added to the recording's bad labels.
+    montage : str or pathlib.Path, optional
+        A standard MNE montage name, or a digitized FIF or any electrode file
+        ``mne.channels.read_custom_montage`` reads, positions taken as written.
+        Every EEG channel must have a position in it.
+    interpolate_bads : bool, default False
+        Spline-interpolate the bad EEG channels of the epochs after rejection and
+        review; requires finite positions for every EEG channel.
+    bipolar : tuple of BipolarSettings
+        Bipolar channels to derive.
+    projections : {"error", "apply", "discard-inactive"}, default "error"
+        What to do with inactive projectors in the recording: refuse it, apply them,
+        or delete them.
+    """
+
     rename: Mapping[str, str] = field(default_factory=dict)
     types: Mapping[str, str] = field(default_factory=dict)
     drop: tuple[str, ...] = ()
@@ -84,6 +137,18 @@ class ChannelSettings:
 
 @dataclass(frozen=True)
 class BadSpan:
+    """A manual BAD interval.
+
+    Parameters
+    ----------
+    onset : float
+        Nonnegative seconds from the first acquired sample, unchanged by cropping.
+    duration : float
+        Positive length in seconds.
+    description : str
+        Annotation label, starting with ``BAD`` in any case.
+    """
+
     onset: float
     duration: float
     description: str
@@ -97,6 +162,22 @@ class BadSpan:
 
 @dataclass(frozen=True)
 class AmplitudeSettings:
+    """MNE's amplitude detector, run on the good EEG channels.
+
+    Parameters
+    ----------
+    peak : mapping of str to float, optional
+        ``{"eeg": volts}``: peak-to-peak amplitude above which spans are marked.
+    flat : mapping of str to float, optional
+        ``{"eeg": volts}``: peak-to-peak amplitude below which spans are marked. At
+        least one of ``peak`` and ``flat`` is required.
+    bad_percent : float, default 5.0
+        Percentage of the recording, in ``[0, 100]``, beyond which a channel breaking
+        a threshold is suggested bad instead of having its spans marked.
+    min_duration : float, default 0.005
+        Seconds a threshold must be broken for in a row to count.
+    """
+
     peak: Mapping[str, float] | None = None
     flat: Mapping[str, float] | None = None
     bad_percent: float = 5.0
@@ -118,6 +199,19 @@ class AmplitudeSettings:
 
 @dataclass(frozen=True)
 class BreakSettings:
+    """MNE's detector of breaks between task events; requires event epochs.
+
+    Parameters
+    ----------
+    min_break_duration : float
+        Shortest gap between events, in seconds, treated as a break.
+    t_start_after_previous : float
+        Seconds after the previous event before a break span starts.
+    t_stop_before_next : float
+        Seconds before the next event at which a break span stops. The two margins
+        must sum to less than ``min_break_duration``.
+    """
+
     min_break_duration: float
     t_start_after_previous: float
     t_stop_before_next: float
@@ -132,6 +226,19 @@ class BreakSettings:
 
 @dataclass(frozen=True)
 class MuscleSettings:
+    """MNE's muscle z-score detector, run on the EEG channels.
+
+    Parameters
+    ----------
+    filter_freq : tuple of float
+        Ascending band in Hz whose envelope is z-scored. It must lie below Nyquist
+        and inside the recording's stored passband.
+    threshold : float
+        Z-score above which spans are marked.
+    min_length_good : float
+        Shortest good stretch, in seconds, kept between marked spans.
+    """
+
     filter_freq: tuple[float, float]
     threshold: float
     min_length_good: float
@@ -149,6 +256,23 @@ class MuscleSettings:
 
 @dataclass(frozen=True)
 class AnnotationSettings:
+    """Manual BAD spans and the annotation detectors.
+
+    Manual spans are applied directly. Detector spans are candidates that take
+    effect only through the raw review; a detector set to None does not run.
+
+    Parameters
+    ----------
+    bad_spans : tuple of BadSpan
+        Manual BAD intervals.
+    amplitude : AmplitudeSettings, optional
+        Amplitude detector.
+    breaks : BreakSettings, optional
+        Break detector; requires event epochs.
+    muscle : MuscleSettings, optional
+        Muscle detector.
+    """
+
     bad_spans: tuple[BadSpan, ...] = ()
     amplitude: AmplitudeSettings | None = None
     breaks: BreakSettings | None = None
@@ -171,6 +295,15 @@ class AnnotationSettings:
 
 @dataclass(frozen=True)
 class CropSettings:
+    """Span of the continuous recording to keep.
+
+    Parameters
+    ----------
+    tmin, tmax : float
+        Nonnegative bounds in seconds from the start of the recording, with ``tmin``
+        below ``tmax``.
+    """
+
     tmin: float
     tmax: float
 
@@ -183,6 +316,28 @@ class CropSettings:
 
 @dataclass(frozen=True)
 class EventSettings:
+    """Where event-related epochs get their events.
+
+    Parameters
+    ----------
+    source : {"annotations", "stim", "file"}
+        Read events from the annotations, a stim channel, or an MNE event file.
+    event_id : mapping of str to int
+        Event names and their unique positive codes; every code must occur.
+    stim_channel : str, optional
+        Stim channel; required for ``source="stim"`` and allowed only there.
+    path : pathlib.Path, optional
+        MNE event file read by ``mne.read_events``; required for ``source="file"``
+        and allowed only there.
+    shortest_event : int, default 2
+        Shortest stim-channel event, in samples; ``source="stim"`` only.
+    min_duration : float, default 0.0
+        Shortest stim-channel event, in seconds; ``source="stim"`` only.
+    delay : float, default 0.0
+        Seconds subtracted from every event, rounded to samples, so a positive delay
+        moves events earlier.
+    """
+
     source: str
     event_id: Mapping[str, int]
     stim_channel: str | None = None
@@ -226,6 +381,26 @@ def _validate_epoch_common(baseline: object, padding: float, detrend: str | None
 
 @dataclass(frozen=True)
 class EventEpochSettings:
+    """Epochs around events.
+
+    Parameters
+    ----------
+    events : EventSettings
+        Event source.
+    tmin, tmax : float
+        Analysis window around each event, in seconds, with ``tmin`` below ``tmax``.
+    baseline : tuple of (float or None, float or None), optional
+        Baseline interval applied to the final epochs; None applies none.
+    padding : float, default 0.0
+        Seconds cut on both sides for filtering and resampling, then removed. An
+        epoch whose padding overlaps a BAD span or leaves the recording is dropped.
+    detrend : {"constant", "linear"}, optional
+        Detrending of the final EEG.
+    metadata : pathlib.Path, optional
+        TSV with one row per resolved event, in event order before any rejection,
+        attached as epoch metadata.
+    """
+
     events: EventSettings
     tmin: float
     tmax: float
@@ -249,6 +424,29 @@ class EventEpochSettings:
 
 @dataclass(frozen=True)
 class FixedEpochSettings:
+    """Consecutive fixed-length epochs.
+
+    Parameters
+    ----------
+    duration : float
+        Epoch length in seconds; it must align with acquisition samples and hold at
+        least two.
+    overlap : float, default 0.0
+        Overlap of consecutive epochs in seconds, below ``duration``. The stride
+        ``duration - overlap`` must align with acquisition samples.
+    start : float, default 0.0
+        First epoch onset, in seconds from the start of the recording.
+    stop : float, optional
+        End of the epoched span, in seconds; no epoch extends past it. None runs to
+        the end of the recording.
+    baseline : tuple of (float or None, float or None), optional
+        Baseline interval applied to the final epochs; None applies none.
+    padding : float, default 0.0
+        Seconds cut on both sides for filtering and resampling, then removed.
+    detrend : {"constant", "linear"}, optional
+        Detrending of the final EEG.
+    """
+
     duration: float
     overlap: float = 0.0
     start: float = 0.0
@@ -273,6 +471,19 @@ class FixedEpochSettings:
 
 @dataclass(frozen=True)
 class ReferenceSettings:
+    """Final EEG reference of the epochs.
+
+    Parameters
+    ----------
+    channels : "average" or tuple of str, optional
+        ``"average"`` of the good EEG channels, or names of good EEG channels. None
+        leaves the reference unchanged.
+    add_channels : tuple of str
+        Missing acquisition-reference electrodes, restored as zero channels before
+        the first re-reference, including an artifact reference, and placed with the
+        configured montage. Requires ``channels``.
+    """
+
     channels: str | tuple[str, ...] | None = None
     add_channels: tuple[str, ...] = ()
 
@@ -290,6 +501,20 @@ class ReferenceSettings:
 
 @dataclass(frozen=True)
 class ThresholdSettings:
+    """Peak-to-peak epoch rejection.
+
+    Parameters
+    ----------
+    reject : mapping of str to float, optional
+        Largest peak-to-peak amplitude, in volts, by channel type (``eeg``, ``eog``
+        or ``ecg``).
+    flat : mapping of str to float, optional
+        Smallest peak-to-peak amplitude, in volts, by channel type; below ``reject``
+        for the same type. At least one of ``reject`` and ``flat`` is required.
+    tmin, tmax : float, optional
+        Window judged, in seconds, inside the analysis window; None uses its bound.
+    """
+
     reject: Mapping[str, float] | None = None
     flat: Mapping[str, float] | None = None
     tmin: float | None = None
@@ -314,6 +539,22 @@ class ThresholdSettings:
 
 @dataclass(frozen=True)
 class AutoRejectSettings:
+    """Autoreject, fitted on the analysis window of the epochs.
+
+    Parameters
+    ----------
+    n_interpolate : tuple of int
+        Candidate numbers of channels to interpolate per epoch, each below the
+        number of good EEG channels.
+    consensus : tuple of float
+        Candidate fractions of bad channels, in ``[0, 1]``, at which an epoch is
+        dropped.
+    cv : int
+        Cross-validation folds, at least 2 and at most the number of epochs.
+    random_state : int, default 42
+        Seed.
+    """
+
     n_interpolate: tuple[int, ...]
     consensus: tuple[float, ...]
     cv: int
@@ -335,6 +576,16 @@ class AutoRejectSettings:
 
 @dataclass(frozen=True)
 class DecimationSettings:
+    """Integer decimation of the epochs.
+
+    Parameters
+    ----------
+    factor : int
+        Keep every ``factor``-th sample; at least 2. The low-pass ``filter.h_freq``
+        must be at most a third of the new rate, with its transition ending below the
+        new Nyquist.
+    """
+
     factor: int
     method: str = field(default="decimate", init=False)
 
@@ -344,6 +595,18 @@ class DecimationSettings:
 
 @dataclass(frozen=True)
 class ResamplingSettings:
+    """Polyphase downsampling of the padded epochs.
+
+    Parameters
+    ----------
+    sfreq : float
+        Target rate in Hz, below the current one. The padded epoch must map to a
+        whole number of samples and the epoch origin must lie on the new grid.
+    padding : float
+        Must equal ``epochs.padding`` and cover the anti-aliasing filter's
+        half-support.
+    """
+
     sfreq: float
     padding: float
     method: str = field(default="resample", init=False)
@@ -366,6 +629,18 @@ ICLABEL_CLASSES = (
 
 @dataclass(frozen=True)
 class ICLabelSettings:
+    """ICLabel classification of ICA components, as review evidence.
+
+    Parameters
+    ----------
+    threshold : float, default 0.8
+        Probability, in ``[0, 1]``, at or above which a component whose winning class
+        is outside ``keep`` is suggested for exclusion.
+    keep : tuple of str
+        ICLabel classes never suggested for exclusion. Default
+        ``("brain", "other")``.
+    """
+
     threshold: float = 0.8
     keep: tuple[str, ...] = ("brain", "other")
 
@@ -380,6 +655,34 @@ class ICLabelSettings:
 
 @dataclass(frozen=True)
 class ICASettings:
+    """ICA, fitted on a high-passed training copy of the continuous data.
+
+    Parameters
+    ----------
+    l_freq : float, default 1.0
+        High-pass of the training copy, in Hz, applied only when the data's own is
+        lower.
+    n_components : int, optional
+        Components to fit, at least 2 and at most the EEG rank; None uses the rank.
+    random_state : int, default 42
+        Seed.
+    max_iter : int, default 1000
+        Iteration limit; not converging within it raises.
+    reject, flat : mapping of str to float, optional
+        Peak-to-peak limits in volts, by channel type, for the training segments.
+    tstep : float, default 2.0
+        Training segment length, in seconds.
+    eog_channels : tuple of str
+        Channels for MNE's EOG component detector.
+    ecg_channel : str, optional
+        Channel for MNE's ECG component detector.
+    method : {"fastica", "infomax", "picard"}, default "fastica"
+        ``"infomax"`` uses the extended update; ``"picard"`` runs with
+        ``ortho=False`` and ``extended=True``.
+    iclabel : ICLabelSettings, optional
+        Requires ``"infomax"`` or ``"picard"`` and an average artifact reference.
+    """
+
     l_freq: float = 1.0
     n_components: int | None = None
     random_state: int = 42
@@ -414,6 +717,29 @@ class ICASettings:
 
 @dataclass(frozen=True)
 class SSPSettings:
+    """EEG projectors computed around EOG and ECG events.
+
+    Parameters
+    ----------
+    n_eeg : int
+        Projectors per artifact channel, at least 1.
+    eog_channels : tuple of str
+        EOG channels whose events train projectors.
+    ecg_channel : str, optional
+        ECG channel whose events train projectors. At least one artifact channel is
+        required.
+    l_freq : float, default 1.0
+        Lower edge of the training band, in Hz.
+    h_freq : float, default 35.0
+        Upper edge of the training band, in Hz, below Nyquist.
+    tmin : float, default -0.2
+        Start of the window around each event, in seconds.
+    tmax : float, default 0.5
+        End of that window, in seconds.
+    reject : mapping of str to float, optional
+        Peak-to-peak limits in volts, by channel type, for the training epochs.
+    """
+
     n_eeg: int
     eog_channels: tuple[str, ...] = ()
     ecg_channel: str | None = None
@@ -441,6 +767,18 @@ class SSPSettings:
 
 @dataclass(frozen=True)
 class RegressionSettings:
+    """EOG regression of the EEG.
+
+    Parameters
+    ----------
+    eog_channels : tuple of str
+        EOG channels regressed out; at least one.
+    tstep : float, default 2.0
+        Training segment length, in seconds.
+    reject, flat : mapping of str to float, optional
+        Peak-to-peak limits in volts, by channel type, for the training segments.
+    """
+
     eog_channels: tuple[str, ...]
     tstep: float = 2.0
     reject: Mapping[str, float] | None = None
@@ -457,6 +795,20 @@ class RegressionSettings:
 
 @dataclass(frozen=True)
 class ArtifactSettings:
+    """Artifact correction, fitted on the continuous data and applied to the epochs.
+
+    Parameters
+    ----------
+    method : {"ica", "ssp", "regression"}
+        Kind of operator.
+    settings : ICASettings, SSPSettings or RegressionSettings
+        Settings matching ``method``.
+    reference : "average" or tuple of str, optional
+        EEG reference applied to the continuous data before fitting; the epochs are
+        cut from this re-referenced data. Required for regression, and ``"average"``
+        for ICLabel. None fits on the data as referenced.
+    """
+
     method: str
     settings: ICASettings | SSPSettings | RegressionSettings
     reference: str | tuple[str, ...] | None = None
@@ -479,6 +831,28 @@ class ArtifactSettings:
 
 @dataclass(frozen=True)
 class BadChannelSettings:
+    """PyPREP bad-channel detection, whose candidates go to the raw review.
+
+    Parameters
+    ----------
+    methods : tuple of str
+        Tests among ``"flat"``, ``"deviation"``, ``"correlation"``,
+        ``"high_frequency"`` and ``"snr"``. ``"snr"`` requires ``"correlation"`` and
+        ``"high_frequency"``. Default ``("flat", "deviation", "correlation")``.
+    random_state : int, default 42
+        Detector seed; draw ``k`` of the repeats uses ``random_state + k``.
+    ransac : bool, default False
+        Also run RANSAC, which needs electrode positions and at least 16 good EEG
+        channels.
+    repeats : int, default 1
+        RANSAC draws that vote; a channel is a candidate when a strict majority flags
+        it. More than one requires ``ransac``.
+    notch_freqs : tuple of float
+        Line frequencies, in Hz, notched on the diagnostic copy only.
+    method : {"pyprep"}, default "pyprep"
+        Detector.
+    """
+
     methods: tuple[str, ...] = ("flat", "deviation", "correlation")
     random_state: int = 42
     ransac: bool = False
@@ -513,6 +887,24 @@ class BadChannelSettings:
 
 @dataclass(frozen=True)
 class StimulationSettings:
+    """Stimulation-artifact repair with MNE's ``fix_stim_artifact``.
+
+    Parameters
+    ----------
+    event_ids : tuple of int
+        Unique positive codes of the stimulation events; each must occur.
+    channels : tuple of str
+        EEG, EOG or ECG channels to repair.
+    tmin, tmax : float
+        Repair window around each event, in seconds, with ``tmin`` below ``tmax``.
+    mode : {"linear", "window", "constant"}
+        How the window is replaced: linear interpolation, a tapering window, or a
+        constant from ``baseline``.
+    baseline : tuple of float, optional
+        Interval around each event, in seconds, whose mean ``"constant"`` uses;
+        required by that mode.
+    """
+
     event_ids: tuple[int, ...]
     channels: tuple[str, ...]
     tmin: float
@@ -546,6 +938,39 @@ class StimulationSettings:
 
 @dataclass(frozen=True)
 class ProcessingSettings:
+    """Numerical settings of every preprocessing stage.
+
+    An optional stage set to None, or left empty, does not run.
+
+    Parameters
+    ----------
+    epochs : EventEpochSettings or FixedEpochSettings
+        Epoch construction.
+    channels : ChannelSettings
+        Channel preparation.
+    annotations : AnnotationSettings
+        Manual BAD spans and annotation detectors; breaks require event epochs.
+    filter : FilterSettings
+        Continuous notch and pass-band filtering.
+    reference : ReferenceSettings
+        Final EEG reference.
+    crop : CropSettings, optional
+        Span of the continuous recording to keep.
+    artifact : ArtifactSettings, optional
+        Artifact correction.
+    rejection : ThresholdSettings or AutoRejectSettings, optional
+        Epoch rejection.
+    sampling : DecimationSettings or ResamplingSettings, optional
+        Final sampling rate. Decimation requires ``filter.h_freq``; resampling
+        padding must equal ``epochs.padding``.
+    bad_channels : BadChannelSettings, optional
+        PyPREP channel detection.
+    bridges : bool, default False
+        Detect bridged electrodes as raw-review evidence.
+    stimulation : StimulationSettings, optional
+        Stimulation-artifact repair.
+    """
+
     epochs: EventEpochSettings | FixedEpochSettings
     channels: ChannelSettings = field(default_factory=ChannelSettings)
     annotations: AnnotationSettings = field(default_factory=AnnotationSettings)
@@ -591,6 +1016,17 @@ class ProcessingSettings:
 
 @dataclass(frozen=True)
 class BIDSInputSettings:
+    """How a recording is read through MNE-BIDS.
+
+    Parameters
+    ----------
+    root : pathlib.Path
+        BIDS dataset root.
+    canonical_channels : tuple of str, optional
+        Channel order to impose, a permutation of exactly the BIDS channel names;
+        None keeps the order of ``channels.tsv``.
+    """
+
     root: Path
     canonical_channels: tuple[str, ...] | None = None
 
@@ -605,6 +1041,17 @@ class BIDSInputSettings:
 
 @dataclass(frozen=True)
 class InputSettings:
+    """The recording a configuration reads.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Recording file ending in ``.fif``, ``.fif.gz``, ``.edf``, ``.bdf``, ``.vhdr``
+        or ``.set``.
+    bids : BIDSInputSettings, optional
+        Read the file through MNE-BIDS with its sidecars instead of directly.
+    """
+
     path: Path
     bids: BIDSInputSettings | None = None
 
@@ -619,6 +1066,18 @@ class InputSettings:
 
 @dataclass(frozen=True)
 class OutputSettings:
+    """Where a recording's export and checkpoints are written.
+
+    Parameters
+    ----------
+    directory : pathlib.Path
+        Export directory; checkpoints go in its ``.preprocessing/<name>``
+        subdirectory.
+    name : str
+        File name stem of the export: a letter or digit, then letters, digits,
+        ``_``, ``.`` or ``-``.
+    """
+
     directory: Path
     name: str
 
@@ -631,6 +1090,20 @@ class OutputSettings:
 
 @dataclass(frozen=True)
 class WorkflowSettings:
+    """Policies of the review gates in the checkpointed workflow.
+
+    Parameters
+    ----------
+    raw_review : {"required", "suggested", "disabled"}, default "required"
+        ``"required"`` stops at ``review-raw`` until a decision is saved,
+        ``"suggested"`` saves the detectors' verdict as the decision and continues,
+        and ``"disabled"`` skips the gate, leaving detector candidates unapplied.
+    artifact_review : {"required", "suggested"}, default "required"
+        The same for ``review-artifact``, when artifact correction is configured.
+    epoch_review : {"required", "optional", "disabled"}, default "optional"
+        Only ``"required"`` stops at ``review-epochs``; the other two skip it.
+    """
+
     raw_review: str = "required"
     artifact_review: str = "required"
     epoch_review: str = "optional"
@@ -643,6 +1116,20 @@ class WorkflowSettings:
 
 @dataclass(frozen=True)
 class PreprocessingConfig:
+    """One recording's preprocessing configuration, as :func:`load_recipe` returns them.
+
+    Parameters
+    ----------
+    input : InputSettings
+        The recording to read.
+    output : OutputSettings
+        Export location and name.
+    processing : ProcessingSettings
+        Numerical settings of every stage.
+    workflow : WorkflowSettings
+        Review-gate policies.
+    """
+
     input: InputSettings
     output: OutputSettings
     processing: ProcessingSettings
@@ -833,7 +1320,21 @@ def _parse_artifact(value: object) -> ArtifactSettings:
 
 
 def load_recipe(path: str | Path) -> dict[str, PreprocessingConfig]:
-    """One configuration per recording the recipe selects, keyed by label."""
+    """One configuration per recording the recipe selects, keyed by label.
+
+    Parameters
+    ----------
+    path : path-like
+        YAML recipe. Relative paths in it resolve against its directory; unknown
+        and duplicate keys raise, as do two recordings that would write the same
+        bundle.
+
+    Returns
+    -------
+    dict of str to PreprocessingConfig
+        Keyed by export name when the names are unique, otherwise by bundle path
+        relative to ``output.directory``.
+    """
     path = Path(path).resolve()
     base = path.parent
     data = _section(
@@ -880,6 +1381,18 @@ def load_recipe(path: str | Path) -> dict[str, PreprocessingConfig]:
 
 
 def load_config(path: str | Path) -> PreprocessingConfig:
+    """The configuration of a recipe that selects exactly one recording.
+
+    Parameters
+    ----------
+    path : path-like
+        YAML recipe, read as by :func:`load_recipe`.
+
+    Returns
+    -------
+    PreprocessingConfig
+        Raises unless the recipe selects exactly one recording.
+    """
     recordings = load_recipe(path)
     if len(recordings) != 1:
         raise ValueError(f"{path}: selects {len(recordings)} recordings; use load_recipe")

@@ -85,6 +85,22 @@ Signal containers
    :members:
    :show-inheritance:
 
+Recipes in memory
+-----------------
+
+.. autofunction:: eegtable.extract
+
+Your own measures
+-----------------
+
+A kernel of your own, computed with the library's bands, windows, ROIs, coverage,
+support and provenance. See :doc:`/guides/extending`, which also shows how a package
+registers measures for recipes.
+
+.. autofunction:: eegtable.spectral_measure
+
+.. autofunction:: eegtable.signal_measure
+
 Quality policies and summaries
 ------------------------------
 

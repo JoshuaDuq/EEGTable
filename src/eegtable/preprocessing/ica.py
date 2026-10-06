@@ -30,6 +30,32 @@ def validate_iclabel_passband(highpass: float, lowpass: float) -> None:
 
 
 def fit_ica(raw: Any, settings: ICASettings) -> ArtifactModel:
+    """Fit seeded ICA on a high-passed training copy and score its components.
+
+    The copy is high-passed at ``settings.l_freq`` only when the recording's
+    stored highpass is lower. ICA is fitted on the good EEG channels, skipping BAD
+    annotations and segments beyond the thresholds, and must converge within
+    ``max_iter``. MNE's EOG and ECG detectors and, when configured, ICLabel score
+    the components; nothing is excluded.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording with finite nonzero EEG positions and at least four
+        good EEG channels. ICLabel also requires the training copy to be filtered
+        to exactly 1-100 Hz.
+    settings : ICASettings
+        Algorithm, components (at most the EEG rank; None uses the rank), seed,
+        iteration limit, thresholds, segment length, artifact channels and
+        ICLabel settings.
+
+    Returns
+    -------
+    ArtifactModel
+        Method ``"ica"``. Its evidence holds the rank, detector scores, ICLabel
+        classes, each detector's suggestions and their union
+        ``suggested_exclude``.
+    """
     require("sklearn", "preprocessing")
     if settings.method == "picard":
         require("picard", "preprocessing-auto")

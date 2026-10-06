@@ -8,6 +8,8 @@ import pytest
 
 from eegtable.bands import BANDS_STANDARD, Band
 from eegtable.signal import BandSignal, Signal, TimeSeries, _required_filter_length
+from eegtable.spectra import Window
+from eegtable.temporal import variance
 
 BETA = Band("beta", 13.0, 30.0)
 
@@ -188,6 +190,22 @@ def test_coverage_reflects_the_filtered_output_not_the_raw_input() -> None:
     assert not np.isfinite(signal.envelope[0, 0]).any()
     assert signal.coverage[0, 0].max() == 0.0
     assert signal.coverage[1, 0].min() == 1.0
+
+
+def test_parallel_filtering_leaves_feature_identity_unchanged() -> None:
+    # n_jobs only spreads MNE's filtering over workers. Were it part of the identity, a
+    # recording run with --n-jobs 2 would stack beside one run serially as disjoint
+    # columns holding identical values.
+    epochs = _epochs(10.0)
+    serial, parallel = (
+        variance(
+            [BandSignal.from_epochs(epochs, ALPHA, recording="test", n_jobs=n_jobs)],
+            windows=[Window("task", 0.0, 2.0)],
+        )
+        for n_jobs in (1, 2)
+    )
+    np.testing.assert_array_equal(serial.values, parallel.values)
+    assert serial.names == parallel.names
 
 
 # --- the raw Signal container ---------------------------------------------------------

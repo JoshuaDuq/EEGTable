@@ -29,7 +29,8 @@ def burst_features(signals, **kwargs):
 
 BETA = Band("beta", 13.0, 30.0)
 SFREQ = 100.0
-WINDOW = Window("stim", 0.0, 1.0)
+# The toy envelopes differ in length; the window runs to the end of each.
+WINDOW = Window("stim", 0.0, np.inf)
 
 
 def _signal(envelope: np.ndarray) -> BandSignal:

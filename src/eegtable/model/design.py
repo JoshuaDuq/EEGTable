@@ -24,6 +24,32 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Selection:
+    """Filter on feature metadata that chooses design columns.
+
+    Each field lists accepted values of the :class:`~eegtable.FeatureMeta` field of
+    the same name; an empty tuple places no restriction. A column is kept when it
+    matches every restricted field, so values within a field are alternatives.
+
+    Parameters
+    ----------
+    measure : tuple of str
+        ``FeatureMeta.measure`` labels, such as ``"band_power"``. A label is not
+        always the name of the function that produced the column.
+    band : tuple of str
+        Band names. A column without a band never matches a restricted band.
+    space_kind : tuple of str
+        Any of ``"channel"``, ``"roi"``, ``"global"``, ``"pair"`` and ``"state"``.
+    window : tuple of str
+        Window names. A column without a window never matches a restricted window.
+    normalization : tuple of str
+        Normalization labels, such as ``"log10"`` or ``"db"``.
+    space : tuple of str
+        Channel, ROI, pair or state names.
+    exclude : Selection, optional
+        Columns it matches are dropped from those the other fields keep. It must
+        restrict at least one field.
+    """
+
     measure: tuple[str, ...] = ()
     band: tuple[str, ...] = ()
     space_kind: tuple[str, ...] = ()
@@ -36,6 +62,41 @@ class Selection:
 
 @dataclass(frozen=True)
 class Design:
+    """Epoch features aligned with their targets, from :func:`build_design`.
+
+    Rows follow the feature table's row order.
+
+    Parameters
+    ----------
+    X : ndarray, shape (n_rows, n_columns)
+        Feature columns followed by covariate columns. Missing feature values stay
+        NaN for the training-fitted pipeline to handle; covariates are finite.
+    y : ndarray, shape (n_rows,)
+        Finite target.
+    groups : ndarray of object, shape (n_rows,)
+        Grouping label of each row, usually the subject.
+    runs : ndarray of object or None
+        Run label of each row, or None when no run column was named.
+    row_ids : tuple of (str, int, str)
+        ``(recording, epoch, event)`` identity of each row.
+    column_names : tuple of str
+        One name per column of ``X``: feature names, then covariate names.
+    feature_columns : ndarray of int
+        Positions of the feature columns in ``X``.
+    covariate_columns : ndarray of int
+        Positions of the covariate columns, which follow the features.
+    coverage : ndarray, shape (n_rows, n_features)
+        Coverage of the feature columns only.
+    flags : dict of str to ndarray of bool
+        Per-cell flags of the feature columns, including ``quality_rejected`` when
+        a quality policy was applied.
+    meta : tuple of FeatureMeta
+        Metadata of the feature columns; covariates have none.
+    quality_ledger : DataFrame
+        One row per cell the quality policy masked, with ``row``, ``feature``,
+        ``reason`` and ``coverage``; empty without a policy.
+    """
+
     X: npt.NDArray[np.float64]
     y: npt.NDArray[np.float64]
     groups: npt.NDArray[np.object_]
@@ -51,6 +112,7 @@ class Design:
 
     @property
     def n_covariates(self) -> int:
+        """Number of covariate columns, the ``n_covariates`` the pipeline factories take."""
         return int(self.covariate_columns.size)
 
 
@@ -70,6 +132,22 @@ def _matches(meta: FeatureMeta, selection: Selection) -> bool:
 
 
 def select(table: FeatureTable, selection: Selection) -> FeatureTable:
+    """Keep the columns of a table that a :class:`Selection` matches.
+
+    Parameters
+    ----------
+    table : FeatureTable
+        Epoch-row or trial-group-row table.
+    selection : Selection
+        Metadata filter. Raises when it matches no column, or when an ``exclude``
+        at any depth restricts no field.
+
+    Returns
+    -------
+    FeatureTable
+        The matching columns with their coverage, flags and metadata. The input
+        table itself is returned when every column matches.
+    """
     exclusion = selection.exclude
     while exclusion is not None:
         # An exclusion that restricts nothing matches every column and would drop them all.
@@ -121,6 +199,49 @@ def build_design(
     strict_covariates: bool = True,
     quality: QualityPolicy | None = None,
 ) -> Design:
+    """Align an epoch feature table with a target frame.
+
+    Rows are matched on ``(recording, epoch, event)``. Every table row needs exactly
+    one target row and every target row one table row; the error names how many are
+    left over on each side. To model a subset of epochs, cut the table to them
+    with :meth:`~eegtable.FeatureTable.take` first.
+
+    Parameters
+    ----------
+    table : FeatureTable
+        Per-epoch features with ``row_ids``. Trial-group tables are refused (see
+        :func:`eegtable.group.build_group_design`), as are precomputed CSP
+        features, which must be fitted inside each training fold.
+    targets : DataFrame
+        One row per epoch with ``recording``, ``epoch`` and ``event`` columns, the
+        target, the grouping column and any run or covariate columns.
+    target : str
+        Target column. Values are coerced to numbers and must all be finite.
+    groups : str, default "subject_id"
+        Column whose labels the outer folds keep disjoint. Labels must be
+        nonmissing and nonempty.
+    runs : str, optional
+        Run label column, needed by within-subject folds and run-wise nulls.
+        Labels must be nonmissing and nonempty.
+    covariates : sequence of str
+        Numeric columns appended to ``X`` after the features. Values must be
+        finite; encode categorical covariates before calling. A name matching
+        the target, ``"outcome"`` or ``"target"``, ignoring case, is refused as
+        label leakage.
+    selection : Selection, optional
+        Feature columns to keep, applied before the quality policy. The default
+        keeps every column.
+    strict_covariates : bool, default True
+        Raise when a requested covariate is absent from ``targets``. False drops
+        absent covariates without notice.
+    quality : QualityPolicy, optional
+        Applied to the selected features; rejected cells become NaN and are
+        listed in ``Design.quality_ledger``. Choose it before evaluating outcomes.
+
+    Returns
+    -------
+    Design
+    """
     if table.row_ids is None:
         msg = (
             "Modeling is per-epoch only; cross-trial/group-row FeatureTables "
@@ -195,7 +316,17 @@ def build_design(
     target_row_indices = [target_key_map[k] for k in table_keys]
     aligned_targets = targets.iloc[target_row_indices]
 
-    y = pd.to_numeric(aligned_targets[target], errors="coerce").to_numpy(dtype=np.float64)
+    raw = aligned_targets[target]
+    coerced = pd.to_numeric(raw, errors="coerce")
+    labels = raw[coerced.isna() & raw.notna()]
+    if len(labels):
+        # Coerced to NaN they would read as missing data, which they are not.
+        examples = sorted({str(label) for label in labels})[:3]
+        raise ValueError(
+            f"Target column '{target}' holds text labels such as {examples}. Encode them as "
+            "numbers first, for example 0 and 1 for a binary classification."
+        )
+    y = coerced.to_numpy(dtype=np.float64)
     if not np.all(np.isfinite(y)):
         msg = f"Target column '{target}' contains non-finite values."
         raise ValueError(msg)
@@ -269,6 +400,20 @@ def compute_train_group_intersection_mask(
     X_train: npt.NDArray[np.float64],
     groups_train: npt.NDArray[np.object_] | Sequence[object],
 ) -> npt.NDArray[np.bool_]:
+    """Columns with at least one finite value in every training group.
+
+    Parameters
+    ----------
+    X_train : ndarray, shape (n_rows, n_features)
+        Training rows only, so held-out rows do not decide which columns stay.
+    groups_train : array-like, shape (n_rows,)
+        Group label of each training row.
+
+    Returns
+    -------
+    ndarray of bool, shape (n_features,)
+        True for the columns to keep. Raises when no column qualifies.
+    """
     X_arr = np.asarray(X_train, dtype=np.float64)
     groups_arr = np.asarray(groups_train)
     if X_arr.ndim != 2:
@@ -304,6 +449,29 @@ def harmonize_fold(
     mode: str | None,
     n_covariates: int = 0,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.bool_]]:
+    """Apply one fold's column harmonization, decided on its training rows.
+
+    Parameters
+    ----------
+    X_train, X_test : ndarray
+        Training and held-out rows with the same columns.
+    groups_train : array-like
+        Group label of each training row.
+    mode : {"intersection", "union_impute"} or None
+        ``"intersection"`` keeps the feature columns that have at least one finite
+        value in every training group (:func:`compute_train_group_intersection_mask`).
+        ``"union_impute"``, also used for None, keeps every column and leaves
+        missing values to the pipeline's imputer.
+    n_covariates : int, default 0
+        Trailing covariate columns, which are always kept.
+
+    Returns
+    -------
+    X_train, X_test : ndarray
+        The kept columns.
+    keep : ndarray of bool
+        Mask of the kept input columns. Raises when it would keep none.
+    """
     mode_str = (mode or "union_impute").strip().lower()
     if mode_str not in ("intersection", "union_impute"):
         msg = f"Unknown harmonization mode: {mode!r}. Expected 'intersection' or 'union_impute'."

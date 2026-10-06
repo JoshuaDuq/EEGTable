@@ -37,6 +37,24 @@ __all__ = [
 
 @dataclass(frozen=True)
 class FoldPrediction:
+    """Held-out regression predictions of one outer fold.
+
+    Parameters
+    ----------
+    fold : int
+        The ``Fold.index`` of the fold.
+    subject : str or None
+        The subject of a within-subject fold; None for a group-disjoint fold.
+    rows : ndarray of int
+        Design rows predicted, in the order of ``y_true`` and ``y_pred``.
+    y_true : ndarray
+        Targets of those rows; residualized targets when the fit residualized them.
+    y_pred : ndarray
+        Predictions of the model fitted on the fold's training rows.
+    best_params : dict
+        Grid values chosen by inner tuning; empty when no grid was searched.
+    """
+
     fold: int
     subject: str | None
     rows: npt.NDArray[np.intp]
@@ -47,6 +65,31 @@ class FoldPrediction:
 
 @dataclass(frozen=True)
 class FoldClassification:
+    """Held-out binary classifications of one outer fold.
+
+    Parameters
+    ----------
+    fold : int
+        The ``Fold.index`` of the fold.
+    subject : str or None
+        The subject of a within-subject fold; None for a group-disjoint fold.
+    rows : ndarray of int
+        Design rows predicted.
+    y_true, y_pred : ndarray of int
+        Labels and predicted labels, coded 0 and 1.
+    y_prob : ndarray or None
+        ``predict_proba`` output, columns in ``classes`` order, or None when the
+        fitted pipeline has no ``predict_proba``, as for the supplied SVM and
+        hard-voting ensemble. Probabilities are not calibrated by this workflow.
+    classes : tuple of int
+        Class order of the probability columns, ``(0, 1)`` for binary labels.
+    best_params : dict
+        Grid values chosen by inner tuning; empty when no grid was searched.
+    y_score : ndarray or None
+        ``decision_function`` output, larger for class 1, or None when the
+        pipeline has none.
+    """
+
     fold: int
     subject: str | None
     rows: npt.NDArray[np.intp]
@@ -639,6 +682,79 @@ def cross_fit_regression(
     scoring: object = None,
     refit: str | bool | None = None,
 ) -> tuple[FoldPrediction, ...]:
+    """Nested, group-disjoint cross-fitted regression predictions.
+
+    For each outer fold, everything fitted to data is fitted on that fold's
+    training rows: column harmonization, target residualization, preprocessing,
+    and the search over ``grid`` across ``inner`` splits of those rows. The chosen
+    candidate is refitted on all training rows and predicts the held-out rows.
+
+    Folds are checked first: indices in range and unique, train and test disjoint,
+    no row tested twice, no group on both sides of a group-disjoint fold, and one
+    subject with disjoint runs in a within-subject fold. A fold or inner fit that
+    fails raises :class:`FoldFitError` instead of being dropped. When every fold
+    chooses the same end of a numeric grid of at least three values, a
+    ``UserWarning`` says the best value may lie beyond it.
+
+    Parameters
+    ----------
+    folds : sequence of Fold
+        Outer folds, e.g. from :func:`loso_folds` or :func:`within_subject_folds`.
+        Not every row has to be tested; inspect the returned rows.
+    X : ndarray, shape (n_rows, n_columns)
+        Design matrix; NaN marks missing values.
+    y : ndarray, shape (n_rows,)
+        Continuous target.
+    groups : ndarray, shape (n_rows,)
+        Subject label of each row. It checks the folds, groups subject-wise inner
+        splits, drives harmonization and the subject missingness limit, and feeds
+        the default tuning score.
+    pipeline : Pipeline
+        Unfitted pipeline, cloned for every fit. Pipelines that would split rows
+        internally without the groups, such as histogram boosting with early
+        stopping, are refused.
+    grid : mapping of str to sequence
+        Parameter grid. An empty mapping fits ``pipeline`` as given, without
+        inner tuning.
+    inner : InnerSplit
+        Inner tuning split: ``grouping="subject"`` for group-disjoint outer folds,
+        ``grouping="run"`` with ``runs`` for within-subject folds. Its split count
+        is capped at the number of training groups.
+    seed : int
+        Assigned to every ``random_state`` in the pipeline. With the fold index it
+        also seeds stratified inner splits and the global NumPy and ``random``
+        generators during each fit; the caller's generator state is restored.
+    runs : ndarray, optional
+        Run label of each row; required by within-subject folds and run-grouped
+        inner splits.
+    outer_n_jobs : int, default 1
+        joblib processes fitting outer folds; 1 fits them in this process.
+    harmonization : {"intersection", "union_impute"}, optional
+        Fold-local column harmonization; see :func:`harmonize_fold`. None skips it.
+    covariates : ndarray, optional
+        Nuisance values with one row per design row, used by ``residualize_on``:
+        one column per name in ``residualize_on``, in order.
+    residualize_on : sequence of str
+        Nuisance columns regressed out of the target in every outer and inner
+        split; the pooled model's coefficients come from that split's training
+        rows. The returned ``y_true`` are then residuals.
+    residualize_within : {"subject"}, optional
+        Fit each subject's own nuisance model and apply it to the features as well
+        as the target; see :func:`residualize_within_subjects` for the estimand this
+        defines. Requires ``residualize_on``.
+    scoring : str, callable or mapping, optional
+        Inner-tuning score. None selects on subject-level ``r``
+        (:func:`subject_r_scorer`), which needs at least three validation trials
+        per subject.
+    refit : str or bool, optional
+        With multi-metric ``scoring``, the metric that chooses the candidate.
+        False is refused because each fold needs a fitted model.
+
+    Returns
+    -------
+    tuple of FoldPrediction
+        One per fold, in the order of ``folds``.
+    """
     results = _cross_fit_engine(
         "regression",
         folds,
@@ -677,6 +793,51 @@ def cross_fit_classification(
     scoring: object = None,
     refit: str | bool | None = None,
 ) -> tuple[FoldClassification, ...]:
+    """Nested, group-disjoint cross-fitted binary classification.
+
+    Fits and checks folds as :func:`cross_fit_regression` does, without target
+    residualization. Every training fold must contain both classes.
+
+    Parameters
+    ----------
+    folds : sequence of Fold
+        Outer folds.
+    X : ndarray, shape (n_rows, n_columns)
+        Design matrix; NaN marks missing values.
+    y : ndarray of int, shape (n_rows,)
+        Labels coded 0 and 1; any other label raises.
+    groups : ndarray, shape (n_rows,)
+        Subject label of each row.
+    pipeline : Pipeline
+        Unfitted classification pipeline, cloned for every fit. Internal
+        calibration that ignores the groups is refused: ``CalibratedClassifierCV``,
+        SVMs with ``probability=True`` and soft voting over SVMs, as is histogram
+        boosting with early stopping.
+    grid : mapping of str to sequence
+        Parameter grid. An empty mapping fits ``pipeline`` as given.
+    inner : InnerSplit
+        Inner tuning split; ``stratified=True`` balances the classes across it.
+    seed : int
+        As for :func:`cross_fit_regression`.
+    runs : ndarray, optional
+        Run label of each row; required by within-subject folds and run-grouped
+        inner splits.
+    outer_n_jobs : int, default 1
+        joblib processes fitting outer folds; 1 fits them in this process.
+    harmonization : {"intersection", "union_impute"}, optional
+        Fold-local column harmonization; see :func:`harmonize_fold`.
+    scoring : str, callable or mapping, optional
+        Inner-tuning score. None uses the estimator's ``score``, accuracy for the
+        supplied classifiers.
+    refit : str or bool, optional
+        With multi-metric ``scoring``, the metric that chooses the candidate.
+        False is refused.
+
+    Returns
+    -------
+    tuple of FoldClassification
+        One per fold, in the order of ``folds``.
+    """
     _validate_binary_labels(y)
     results = _cross_fit_engine(
         "classification",

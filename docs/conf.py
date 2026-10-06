@@ -11,7 +11,12 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 # ---------------------------------------------------------------------------
 project = "EEGTable"
 author = "Joshua Duquette"
-release = "0.1.0.dev0"
+# The package's own version, so the docs cannot name another one.
+release = next(
+    line.split('"')[1]
+    for line in (PROJECT_ROOT / "src" / "eegtable" / "__init__.py").read_text().splitlines()
+    if line.startswith("__version__")
+)
 copyright = "2026, Joshua Duquette"
 
 # ---------------------------------------------------------------------------
@@ -26,7 +31,21 @@ extensions = [
     "sphinx_design",
     "sphinx_copybutton",
     "notfound.extension",
+    "sphinx_gallery.gen_gallery",
 ]
+
+# ---------------------------------------------------------------------------
+# Tutorials: run on every build, so their numbers and figures follow the code.
+# ---------------------------------------------------------------------------
+sphinx_gallery_conf = {
+    "examples_dirs": "../tutorials",
+    "gallery_dirs": "auto_tutorials",
+    "filename_pattern": r"/plot_",
+    "download_all_examples": False,
+    "remove_config_comments": True,
+    "show_signature": False,
+    "write_computation_times": False,
+}
 
 # ---------------------------------------------------------------------------
 # Source / build

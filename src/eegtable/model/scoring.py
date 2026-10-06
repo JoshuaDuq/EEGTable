@@ -21,6 +21,26 @@ def safe_pearsonr(
     *,
     min_variance: float = 0.0,
 ) -> tuple[float, float]:
+    """Pearson correlation that returns NaN for degenerate input instead of failing.
+
+    Pairs with a non-finite value in either array are dropped. The result is
+    ``(nan, nan)`` for arrays of different lengths, fewer than two finite pairs, or
+    a constant array; otherwise ``r`` and the two-sided ``p`` of
+    :func:`scipy.stats.pearsonr`, with ``r`` clipped to ``[-1, 1]``.
+
+    Parameters
+    ----------
+    x, y : ndarray
+        Paired values.
+    min_variance : float, default 0.0
+        Sample variance below which either array also counts as constant. The
+        default applies no floor, so whether ``r`` is defined does not depend on
+        the units of the data.
+
+    Returns
+    -------
+    r, p : float
+    """
     x_arr = np.asarray(x, dtype=float)
     y_arr = np.asarray(y, dtype=float)
 
@@ -65,9 +85,29 @@ def _selection_pearsonr(y_true: npt.NDArray[np.float64], y_pred: npt.NDArray[np.
 
 
 def pearsonr_scorer() -> Callable[..., float]:
+    """Scikit-learn scorer of the Pearson ``r`` between targets and predictions.
+
+    The correlation is pooled over all validation rows, so subject offsets enter
+    it; :func:`subject_r_scorer` correlates within subjects instead. Constant
+    predictions score 0, so such a candidate loses a search instead of aborting it;
+    a constant target stays NaN. Non-finite targets or predictions raise.
+
+    Returns
+    -------
+    callable
+        Scorer for a ``scoring`` argument; greater is better.
+    """
     scorer = make_scorer(_selection_pearsonr, greater_is_better=True)
     return cast(Callable[..., float], scorer)
 
 
 def scoring_dict() -> dict[str, object]:
+    """Multi-metric scoring of pooled Pearson ``r`` and negative mean squared error.
+
+    Returns
+    -------
+    dict
+        ``{"r": pearsonr_scorer(), "neg_mse": "neg_mean_squared_error"}``. Pass
+        ``refit`` naming the metric that chooses the candidate.
+    """
     return {"r": pearsonr_scorer(), "neg_mse": "neg_mean_squared_error"}

@@ -79,7 +79,22 @@ def _make_signal(data: npt.ArrayLike, ch_names: tuple[str, ...], sfreq: float = 
 
 
 class CSPTransformer(TransformerMixin, BaseEstimator):  # type: ignore[misc]
-    """Adapt the package's binary CSP to a fold-fitted scikit-learn pipeline."""
+    """Adapt the package's binary CSP to a fold-fitted scikit-learn pipeline.
+
+    ``fit`` learns filters from the training epochs and their two class labels;
+    ``transform`` returns each component's log relative power, as
+    :meth:`~eegtable.CommonSpatialPattern.transform` does. Input is an epoch array
+    of shape ``(n_epochs, n_channels, n_times)``, finite and varying in every epoch.
+
+    Parameters
+    ----------
+    ch_names : tuple of str
+        Channel order of the epoch arrays.
+    n_components : int, default 4
+        Number of filters; even, and at most the rank of the training data.
+    regularization : float, default 0.0
+        Shrinkage toward a sphere, in ``[0, 1)``.
+    """
 
     def __init__(
         self,
@@ -125,6 +140,28 @@ class MicrostateTransformer(TransformerMixin, BaseEstimator):  # type: ignore[mi
     ``reference`` identifies state correspondence across fits and must come from
     independent data. Coverage and occurrence are finite even for absent states;
     duration and transitions retain their scientifically undefined NaNs.
+
+    Parameters
+    ----------
+    ch_names : tuple of str
+        Channel order of the epoch arrays.
+    sfreq : float
+        Sampling rate of the epochs, in Hz.
+    n_states : int, default 4
+        Number of templates fitted on the training epochs, from 2 to 12.
+    measures : tuple of str
+        Any of ``"coverage"``, ``"occurrence"``, ``"duration"`` and
+        ``"transitions"``, unique; their columns are concatenated in this order,
+        each summarizing the whole epoch. Default ``("coverage", "occurrence")``.
+    min_duration_ms : float, default 20.0
+        Assigned segments shorter than this, in milliseconds, are absorbed into
+        their neighbors.
+    reference : MicrostateModel, optional
+        Identified templates from independent data, as from
+        :meth:`~eegtable.MicrostateModel.from_templates`. Each fit is matched to
+        them so that columns name the same state in every fold.
+    random_state : int, default 42
+        Seed of the template clustering.
     """
 
     def __init__(
@@ -203,6 +240,18 @@ class CovarianceTransformer(TransformerMixin, BaseEstimator):  # type: ignore[mi
     Rank and projection are estimated from training epochs only. Removed sensor
     dimensions are projected out before explicit shrinkage (default OAS). New
     recordings must retain the same sensor subspace and channel order.
+
+    ``transform`` returns one covariance matrix per epoch, shape
+    ``(n_epochs, rank, rank)``, rather than a feature row; follow it with an
+    estimator that takes matrices, or use :class:`TangentSpaceTransformer`.
+    Requires ``eegtable[riemann]``.
+
+    Parameters
+    ----------
+    ch_names : tuple of str
+        Channel order of the epoch arrays.
+    estimator : str, default "oas"
+        pyRiemann covariance estimator.
     """
 
     def __init__(self, *, ch_names: tuple[str, ...], estimator: str = "oas") -> None:
@@ -244,7 +293,17 @@ class TangentSpaceTransformer(TransformerMixin, BaseEstimator):  # type: ignore[
     """Epoch covariance vectors relative to a training-only Riemannian mean.
 
     Test-batch reference updates are disabled: a prediction does not depend on
-    which other held-out epochs are transformed alongside it.
+    which other held-out epochs are transformed alongside it. Covariances are
+    estimated as by :class:`CovarianceTransformer`. Requires ``eegtable[riemann]``.
+
+    Parameters
+    ----------
+    ch_names : tuple of str
+        Channel order of the epoch arrays.
+    estimator : str, default "oas"
+        pyRiemann covariance estimator.
+    metric : str, default "riemann"
+        pyRiemann metric of the reference mean and the tangent mapping.
     """
 
     def __init__(
@@ -272,7 +331,23 @@ class TangentSpaceTransformer(TransformerMixin, BaseEstimator):  # type: ignore[
 
 
 def learned_pipeline(features: BaseEstimator, estimator: BaseEstimator) -> Pipeline:
-    """Compose train-fitted spatial features, scaling, and a supplied estimator."""
+    """Compose train-fitted spatial features, scaling, and a supplied estimator.
+
+    Parameters
+    ----------
+    features : estimator
+        Learned epoch transformer producing one feature row per epoch, such as
+        :class:`CSPTransformer`, :class:`MicrostateTransformer` or
+        :class:`TangentSpaceTransformer`.
+    estimator : estimator
+        Final classifier or regressor.
+
+    Returns
+    -------
+    Pipeline
+        Steps ``"features"``, ``"scale"`` (standard scaling) and ``"model"``, tuned
+        through ``features__*`` and ``model__*`` parameters.
+    """
     return Pipeline([("features", features), ("scale", StandardScaler()), ("model", estimator)])
 
 
@@ -430,6 +505,45 @@ def cross_fit_signal_classification(
     The chosen pipeline is refitted on the outer training rows and predicts only
     held-out rows. ``groups`` are subjects; within-subject folds also need ``runs``.
     Returned fold containers work with the existing classification metrics.
+
+    Parameters
+    ----------
+    folds : sequence of Fold
+        Outer folds over the signal's epochs, checked as in
+        :func:`cross_fit_classification`.
+    signal : Signal
+        Epochs, finite and varying in every epoch, with at least two channels and
+        two samples.
+    y : ndarray of int, shape (n_epochs,)
+        Labels coded 0 and 1; every training fold needs both.
+    groups : ndarray, shape (n_epochs,)
+        Subject label of each epoch; every epoch needs one.
+    pipeline : Pipeline
+        Starts with a :class:`CSPTransformer`, :class:`MicrostateTransformer`,
+        :class:`CovarianceTransformer` or :class:`TangentSpaceTransformer` whose
+        ``ch_names`` (and ``sfreq``) match the signal, e.g. from
+        :func:`learned_pipeline`. Every grid candidate is checked the same way.
+    grid : mapping of str to sequence
+        Parameter grid; empty fits ``pipeline`` as given.
+    inner : InnerSplit
+        Inner tuning split, as for :func:`cross_fit_classification`.
+    seed : int
+        As for :func:`cross_fit_classification`.
+    runs : ndarray, optional
+        Run label of each epoch; required by within-subject folds and run-grouped
+        inner splits.
+    scoring : str, callable or mapping, default "balanced_accuracy"
+        Inner-tuning score.
+    refit : str or bool, optional
+        With multi-metric ``scoring``, the metric that chooses the candidate.
+        False is refused.
+    outer_n_jobs : int, default 1
+        joblib processes fitting outer folds; 1 fits them in this process.
+
+    Returns
+    -------
+    tuple of FoldClassification
+        One per fold, in the order of ``folds``.
     """
     labels = np.asarray(y)
     if not np.issubdtype(labels.dtype, np.integer):
@@ -472,6 +586,44 @@ def cross_fit_signal_regression(
     Tuning defaults to negative mean squared error; a standard scikit-learn
     scorer may be supplied. CSP is supervised by binary labels and cannot model
     continuous regression targets. Returns existing held-out fold containers.
+
+    Parameters
+    ----------
+    folds : sequence of Fold
+        Outer folds over the signal's epochs, checked as in
+        :func:`cross_fit_regression`.
+    signal : Signal
+        Epochs, finite and varying in every epoch, with at least two channels and
+        two samples.
+    y : ndarray, shape (n_epochs,)
+        Finite continuous target.
+    groups : ndarray, shape (n_epochs,)
+        Subject label of each epoch; every epoch needs one.
+    pipeline : Pipeline
+        Starts with a :class:`MicrostateTransformer`, :class:`CovarianceTransformer`
+        or :class:`TangentSpaceTransformer` whose ``ch_names`` (and ``sfreq``)
+        match the signal. A :class:`CSPTransformer` is refused.
+    grid : mapping of str to sequence
+        Parameter grid; empty fits ``pipeline`` as given.
+    inner : InnerSplit
+        Inner tuning split, as for :func:`cross_fit_regression`.
+    seed : int
+        As for :func:`cross_fit_regression`.
+    runs : ndarray, optional
+        Run label of each epoch; required by within-subject folds and run-grouped
+        inner splits.
+    scoring : str, callable or mapping, default "neg_mean_squared_error"
+        Inner-tuning score. :func:`subject_r_scorer` is not available here.
+    refit : str or bool, optional
+        With multi-metric ``scoring``, the metric that chooses the candidate.
+        False is refused.
+    outer_n_jobs : int, default 1
+        joblib processes fitting outer folds; 1 fits them in this process.
+
+    Returns
+    -------
+    tuple of FoldPrediction
+        One per fold, in the order of ``folds``.
     """
     if isinstance(pipeline.steps[0][1], CSPTransformer):
         raise ValueError("CSP requires binary classification labels; use unsupervised features.")

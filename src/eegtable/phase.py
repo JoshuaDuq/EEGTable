@@ -124,6 +124,30 @@ def ppc(
     be negative, and trial count still affects uncertainty. Latencies with fewer
     than ``min_valid_trials`` defined phases are omitted. The result has one row
     per trial group and is not numerically interchangeable with ITPC.
+
+    Parameters
+    ----------
+    signals : sequence of BandSignal
+        One per band. The bands axis of the output comes from this sequence.
+    windows : sequence of Window
+        Analysis windows.
+    trials : sequence of str, optional
+        A label per epoch, giving the group each trial belongs to. One row is
+        returned per distinct label, in sorted order. None estimates from all
+        trials together and returns a single row labelled ``"all"``.
+    groups : mapping of str to sequence of str, optional
+        ROI name to member channels. None gives one column per channel.
+    include_global : bool, default True
+        Also emit the mean across all channels.
+    min_valid_trials : int, default 2
+        Minimum number of defined trial phases at each latency; at least two.
+        Windows without a qualifying latency return NaN and are flagged
+        ``insufficient_trials``.
+
+    Returns
+    -------
+    FeatureTable
+        Consistency with one row per trial group, carrying ``row_labels``.
     """
     if min_valid_trials < 2:
         raise ValueError(f"min_valid_trials must be at least 2, got {min_valid_trials}.")
@@ -204,6 +228,11 @@ def pac(
         ROI name to member channels. None gives one column per channel.
     include_global : bool, default True
         Also emit the mean across all channels.
+    allow_overlap : bool, default False
+        Accept a phase band whose upper edge lies above the amplitude band's lower
+        edge, which is otherwise refused. Pass True only for a prespecified
+        estimator designed for overlapping bands. The phase band must start below
+        the amplitude band either way.
 
     Returns
     -------
@@ -456,6 +485,45 @@ def pac_surrogates(
     ``fdr`` is Benjamini-Hochberg, ``bonferroni`` multiplies by family size,
     and ``maxstat`` compares each observed estimate to each permutation's
     family maximum. Requires finite samples and the ``pac`` extra.
+
+    Parameters
+    ----------
+    phase_signal : BandSignal
+        The slower band, whose phase modulates.
+    amplitude_signal : BandSignal
+        The faster band, whose envelope is modulated; the envelope may not be all
+        zero in any epoch, channel and window.
+    windows : sequence of Window
+        Analysis windows, each long enough for two segments of
+        ``min_shift_seconds``.
+    n_surrogates : int, default 200
+        Surrogates per epoch, channel and window; at least 2. The smallest
+        attainable p value is ``1 / (n_surrogates + 1)``.
+    surrogate : {"blocks", "circular"}, default "blocks"
+        Tensorpac surrogate: swap amplitude blocks, or circularly shift phase.
+    random_state : int, default 0
+        Non-negative seed of the surrogate shifts.
+    min_shift_seconds : float, default 0.1
+        Minimum length, in seconds and at least one sample, of both segments a
+        surrogate shift creates.
+    correction : {"none", "fdr", "bonferroni", "maxstat"}, default "fdr"
+        Adjustment of ``pac_pvalue_adjusted`` over the spatial units and windows
+        of each epoch.
+    normalize : bool, default True
+        As for :func:`pac`.
+    groups : mapping of str to sequence of str, optional
+        ROI name to member channels. None gives one column per channel.
+    include_global : bool, default True
+        Also emit the mean across all channels.
+    allow_overlap : bool, default False
+        As for :func:`pac`.
+
+    Returns
+    -------
+    FeatureTable
+        One row per epoch and, for each of the seven measures, one column per
+        spatial unit and window. ``pac_zscore`` cells with a degenerate null are
+        NaN and flagged ``degenerate_null``.
     """
     _validate_pac_inference(n_surrogates, surrogate, random_state, min_shift_seconds, correction)
     observed = pac(

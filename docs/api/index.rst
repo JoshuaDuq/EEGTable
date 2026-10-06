@@ -8,10 +8,11 @@ API Reference
    </p>
 
 Core containers, feature extractors, microstate functions, quality policies,
-and reliability are exported from ``eegtable``. Modeling, preprocessing, native
-BIDS input, file I/O, and group-sample design interfaces are documented under
-``eegtable.model``, ``eegtable.preprocessing``, ``eegtable.bids``,
-``eegtable.io``, and ``eegtable.group``. Each entry shows its import path.
+and reliability are exported from ``eegtable``. Modeling, preprocessing, the
+batch runner, native BIDS input, file I/O, and group-sample design interfaces
+are documented under ``eegtable.model``, ``eegtable.preprocessing``,
+``eegtable.runner``, ``eegtable.bids``, ``eegtable.io``, and ``eegtable.group``.
+Each entry shows its import path.
 Method definitions and assumptions are in :doc:`/methods/index`.
 
 Browse the complete :ref:`symbol index <genindex>` to find a function or class by name.
@@ -81,6 +82,12 @@ Analysis workflows
 
       Raw-to-epochs workflow, checkpoints, review, and the numerical operations.
 
+   .. grid-item-card:: Feature Runner
+      :link: runner
+      :link-type: doc
+
+      Recipe loading, discovery, checks, batch runs, and result status.
+
 .. toctree::
    :hidden:
    :maxdepth: 2
@@ -92,3 +99,4 @@ Analysis workflows
    Complexity & microstates <complexity>
    Predictive modeling <model>
    preprocessing
+   Feature runner <runner>

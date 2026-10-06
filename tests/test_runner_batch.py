@@ -361,6 +361,59 @@ def test_check_trials_the_first_recording_without_writing(tmp_path) -> None:
     assert not (tmp_path / "out").exists()
 
 
+def test_check_warns_that_global_means_split_when_recordings_keep_different_channels(
+    tmp_path,
+) -> None:
+    # The global mean is identified by its members: without Pz, sub-02 measures a different
+    # feature, and the cohort table would hold two half-empty "global" columns.
+    save_epochs(tmp_path / "data/sub-01/eeg/sub-01_task-rest_epo.fif")
+    save_epochs(tmp_path / "data/sub-02/eeg/sub-02_task-rest_epo.fif", bads=["Pz"])
+
+    report = check(_recipe(tmp_path, POWER))
+
+    assert any("sub-02_task-rest" in w and "Pz" in w for w in report.warnings)
+
+
+def test_check_does_not_warn_about_channels_every_recording_keeps(tmp_path) -> None:
+    _two_recordings(tmp_path)
+    report = check(_recipe(tmp_path, POWER))
+    assert not any("channels" in w for w in report.warnings)
+
+
+def test_check_warns_when_a_welch_window_holds_a_single_segment(tmp_path) -> None:
+    # The 1 s window caps n_fft at its own 251 samples, so "Welch" averages nothing.
+    _two_recordings(tmp_path)
+    report = check(_recipe(tmp_path, "[windows]\nstim = [0.0, 1.0]\n\n" + POWER))
+    assert any("stim" in w and "one Welch segment" in w for w in report.warnings)
+
+
+def test_check_does_not_warn_when_welch_segments_overlap(tmp_path) -> None:
+    _two_recordings(tmp_path)
+    body = "[spectra]\nn_fft = 125\n\n[windows]\nstim = [0.0, 1.0]\n\n" + POWER
+    report = check(_recipe(tmp_path, body))
+    assert not any("Welch" in w for w in report.warnings)
+
+
+MORLET = (
+    '[spectra]\nmethod = "morlet"\nfmin = 4.0\nn_freqs = 10\n\n[windows]\nstim = [0.0, 1.0]\n\n'
+    '[[features]]\nmeasure = "mean_tfr_power"\nbands = ["alpha"]\nspatial = ["global"]\n'
+)
+
+
+def test_a_morlet_run_publishes_its_support_beside_the_values(tmp_path) -> None:
+    # Morlet power rests on the part of each window its wavelets fit, so the bundle carries
+    # that fraction, and status still reads the recording as done.
+    _two_recordings(tmp_path)
+    recipe = _recipe(tmp_path, MORLET)
+
+    assert run(recipe).ok
+
+    path = _features_path(tmp_path, "sub-01")
+    assert path.with_name(path.stem + "_support.tsv").is_file()
+    assert read_table(path).support is not None
+    assert {entry.state for entry in status(recipe)} == {"done"}
+
+
 def test_check_lists_results_already_on_disk(tmp_path) -> None:
     _two_recordings(tmp_path)
     run(_recipe(tmp_path, POWER))

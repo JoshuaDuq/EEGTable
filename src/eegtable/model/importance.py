@@ -40,6 +40,20 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Importance:
+    """Feature importance, with per-fold values from the fold helpers.
+
+    Parameters
+    ----------
+    feature_names : tuple of str
+        One name per input feature.
+    values : ndarray, shape (n_features,)
+        Importance of each feature. From the fold helpers, the mean over the folds
+        that kept the feature; NaN when none did.
+    per_fold : ndarray, shape (n_folds, n_features)
+        One row per fold that scored any feature, NaN where a fold's harmonization
+        dropped the feature. Empty for the single-model functions.
+    """
+
     feature_names: tuple[str, ...]
     values: npt.NDArray[np.float64]
     per_fold: npt.NDArray[np.float64]
@@ -50,6 +64,24 @@ def aggregate_by(
     meta: Sequence[FeatureMeta],
     field: str,
 ) -> dict[str, float]:
+    """Sum importance values over the categories of a metadata field.
+
+    Parameters
+    ----------
+    importance : Importance
+        Values for exactly the features in ``meta``, matched by name. Covariates
+        have no ``FeatureMeta`` and must be left out first. A NaN value raises.
+    meta : sequence of FeatureMeta
+        Metadata of the same features.
+    field : str
+        A :class:`~eegtable.FeatureMeta` field, such as ``"band"`` or ``"space"``.
+        Bands are keyed by name, and a missing value by ``"unknown"``.
+
+    Returns
+    -------
+    dict of str to float
+        Total importance of each category.
+    """
     valid_fields = {f.name for f in fields(FeatureMeta)}
     if field not in valid_fields:
         raise ValueError(f"Unknown FeatureMeta field: {field!r}")
@@ -97,6 +129,32 @@ def permutation_importance(
     seed: int = 42,
     scoring: object = None,
 ) -> Importance:
+    """Permutation importance of one fitted model on rows it was not fitted on.
+
+    Wraps :func:`sklearn.inspection.permutation_importance`: the mean decrease in
+    score over ``n_repeats`` shuffles of each input column. Correlated features
+    can mask each other's importance.
+
+    Parameters
+    ----------
+    model : Pipeline
+        Fitted model.
+    X, y : ndarray
+        Held-out rows and their targets.
+    feature_names : sequence of str, optional
+        One name per column; defaults to ``feature_0``, ``feature_1``, ...
+    n_repeats : int, default 10
+        Shuffles of each column.
+    seed : int, default 42
+        Shuffle seed.
+    scoring : str or callable, optional
+        Score whose decrease is reported; None uses the model's ``score``.
+
+    Returns
+    -------
+    Importance
+        With an empty ``per_fold``.
+    """
     X_arr = np.asarray(X, dtype=np.float64)
     y_arr = np.asarray(y)
     res = sklearn_perm_importance(
@@ -118,6 +176,32 @@ def shap_importance(
     *,
     seed: int = 42,
 ) -> Importance:
+    """Mean absolute SHAP value of each input feature for one fitted pipeline.
+
+    The final estimator is explained on the columns its preprocessing passes it,
+    with a tree explainer when it has ``feature_importances_``, a linear explainer
+    when it has ``coef_``, and otherwise a kernel explainer over at most 100
+    background rows. Requires ``eegtable[importance]``.
+
+    Parameters
+    ----------
+    model : Pipeline
+        Fitted pipeline whose steps report their output feature names. Steps that
+        mix features, such as PCA, raise: their outputs belong to no single input
+        feature.
+    X : ndarray
+        Rows to explain.
+    feature_names : sequence of str
+        Unique name of each column of ``X``.
+    seed : int, default 42
+        Seed for drawing the kernel explainer's background rows.
+
+    Returns
+    -------
+    Importance
+        Features the pipeline dropped score 0. For a binary classifier with
+        per-class SHAP values, class 1's are used. ``per_fold`` is empty.
+    """
     require_shap()
     import shap
 
@@ -312,6 +396,35 @@ def shap_importance_over_folds(
     refit: str | bool | None = None,
     min_complete_fraction: float = 0.5,
 ) -> Importance:
+    """SHAP importance on each outer fold's held-out rows, averaged over folds.
+
+    Every fold is fitted exactly as cross-fitting fits it, with the same fold
+    checks, tuning, harmonization and residualization, and its held-out rows are
+    explained with :func:`shap_importance`. Pass the settings used for evaluation
+    so the explained models are the evaluated ones. A classifier ``pipeline`` is
+    fitted as a classification task.
+
+    Parameters
+    ----------
+    folds, X, y, groups, pipeline, grid
+        As for :func:`cross_fit_regression` or :func:`cross_fit_classification`.
+    feature_names : sequence of str
+        Unique name of each column of ``X``.
+    inner, runs, outer_n_jobs, harmonization, scoring, refit
+        As for the cross-fitting functions.
+    seed : int, default 42
+        As for the cross-fitting functions; fold ``k`` is explained with seed
+        ``seed + k``.
+    covariates, residualize_on, residualize_within
+        As for :func:`cross_fit_regression`.
+    min_complete_fraction : float, default 0.5
+        Fraction of folds that must give a finite value for at least one feature;
+        fewer raises. A fold that fails to fit raises regardless.
+
+    Returns
+    -------
+    Importance
+    """
     require_shap()
     fit = _fold_fitter(
         folds,
@@ -365,6 +478,45 @@ def permutation_importance_over_folds(
     refit: str | bool | None = None,
     min_complete_fraction: float = 0.5,
 ) -> Importance:
+    """Held-out permutation importance of each outer fold's model, averaged over folds.
+
+    Every fold is fitted exactly as cross-fitting fits it, with the same fold
+    checks, tuning, harmonization and residualization; the input columns of its
+    held-out rows are then shuffled with :func:`permutation_importance`. The value
+    is the mean decrease in the score the model was selected on: subject-level
+    ``r`` for regressors by default, the estimator's ``score`` (accuracy) for
+    classifiers. Pass the settings used for evaluation so the explained models are
+    the evaluated ones.
+
+    Parameters
+    ----------
+    folds, X, y, groups, pipeline, grid
+        As for :func:`cross_fit_regression` or :func:`cross_fit_classification`.
+    inner : InnerSplit
+        As for the cross-fitting functions.
+    feature_names : sequence of str, optional
+        One name per column of ``X``, so a score can be matched after fold-local
+        column drops; defaults to ``feature_0``, ``feature_1``, ...
+    n_repeats : int, default 10
+        Shuffles of each column.
+    seed : int, default 42
+        As for the cross-fitting functions; fold ``k`` shuffles with seed
+        ``seed + k``.
+    runs, outer_n_jobs, harmonization
+        As for the cross-fitting functions.
+    covariates, residualize_on, residualize_within
+        As for :func:`cross_fit_regression`.
+    scoring, refit
+        As for the cross-fitting functions; with multi-metric ``scoring``,
+        ``refit`` also names the metric the importance is measured on.
+    min_complete_fraction : float, default 0.5
+        Fraction of folds that must give a finite value for at least one feature;
+        fewer raises. A fold that fails to fit raises regardless.
+
+    Returns
+    -------
+    Importance
+    """
     importance_scoring = _importance_scoring(_default_scoring(_task(pipeline), scoring), refit)
     fit = _fold_fitter(
         folds,

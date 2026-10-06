@@ -24,6 +24,23 @@ from .rejection import RejectionModel
 
 @dataclass(frozen=True)
 class Checkpoint:
+    """An immutable stage checkpoint, verified against its manifest when loaded.
+
+    Parameters
+    ----------
+    artifact_id : str
+        Identity of the stage result, derived from its settings, its parents'
+        identities, its review decision, its reset token and package versions.
+    path : pathlib.Path
+        Checkpoint directory.
+    state : StageData
+        Data at this stage: the continuous recording before ``epoch`` and the
+        epochs from then on, with events, fitted models, provenance and detector
+        candidates.
+    manifest : dict
+        Stage, parents, settings and payload file hashes.
+    """
+
     artifact_id: str
     path: Path
     state: StageData

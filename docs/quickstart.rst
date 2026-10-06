@@ -34,29 +34,19 @@ model and :doc:`guides/preprocessing` for raw-to-epochs preparation.
 PSD band power
 --------------
 
-Declare the Welch parameters once and pass them to both MNE and the wrapper.
-One-second segments give approximately 1 Hz frequency spacing without zero
-padding. Shorter segments or a different estimator change the estimate and
-should be chosen explicitly for the study.
+:meth:`~eegtable.Spectra.welch` computes the spectra and records the settings
+that produced them. One-second segments give 1 Hz frequency spacing; the
+default overlap is half a segment. Shorter segments or a different estimator
+change the estimate and should be chosen explicitly for the study.
 
 .. code-block:: python
 
-   segment_samples = round(epochs.info["sfreq"])
-   welch_parameters = {
-       "fmin": 1.0,
-       "fmax": 45.0,
-       "n_fft": segment_samples,
-       "n_per_seg": segment_samples,
-       "n_overlap": segment_samples // 2,
-       "window": "hamming",
-       "average": "mean",
-       "remove_dc": True,
-   }
-   spectrum = epochs.compute_psd(method="welch", **welch_parameters)
-   spectra = ef.Spectra.from_spectrum(
-       spectrum,
+   spectra = ef.Spectra.welch(
+       epochs,
        recording=recording,
-       estimator_parameters={"method": "welch", **welch_parameters},
+       fmin=1.0,
+       fmax=45.0,
+       n_fft=round(epochs.info["sfreq"]),
    )
    power_table = ef.integrated_band_power(spectra, bands=[alpha], groups=rois)
    peak_table = ef.peak_frequency(spectra, band=alpha, groups=rois)
@@ -66,43 +56,32 @@ Raw integrated PSD power is in V²; PSD density is in V²/Hz. Setting
 ``normalize="log10"`` produces log-scaled power. Peak frequency is in Hz and
 returns ``NaN`` with a ``no_peak`` flag when no qualifying peak is found.
 
-MNE does not retain every estimator argument on ``Spectrum``. The declaration
-above preserves those settings in the column specification. For multitaper,
-compute with ``normalization="full"`` and declare it in
-``estimator_parameters``; the default length normalization is rejected.
+It is the estimator the batch runner uses, so the same settings name the same
+columns in a notebook and in ``eegtable run``.
+:meth:`~eegtable.Spectra.multitaper` is its multitaper counterpart. To wrap a
+spectrum MNE has already computed, use :meth:`~eegtable.Spectra.from_spectrum`
+and declare the settings MNE does not keep on ``Spectrum``, such as ``n_fft``. The
+declaration is checked against the spectrum's frequency axis.
 
 Morlet time-frequency power
 ---------------------------
 
-Use unaveraged, real-valued, uncorrected Morlet power. EEGTable divides MNE's
-power by the original sampling frequency and retains only coefficients whose
-complete wavelet support lies inside each analysis window.
+:meth:`~eegtable.Spectra.morlet` computes unaveraged Morlet power and reduces
+it to each window. EEGTable divides MNE's power by the original sampling
+frequency and retains only coefficients whose complete wavelet support lies
+inside each analysis window.
 
 .. code-block:: python
 
    import numpy as np
 
    freqs = np.linspace(8.0, 30.0, num=23)
-   n_cycles = 4.0
    windows = [
        ef.Window("baseline", -1.8, -0.2),
        ef.Window("stimulus", 0.2, 1.8),
    ]
-   tfr = epochs.compute_tfr(
-       method="morlet",
-       freqs=freqs,
-       n_cycles=n_cycles,
-       output="power",
-       average=False,
-       return_itc=False,
-       zero_mean=True,
-   )
-   spectra_tfr = ef.Spectra.from_tfr(
-       tfr,
-       windows=windows,
-       recording=recording,
-       n_cycles=n_cycles,
-       sfreq=epochs.info["sfreq"],
+   spectra_tfr = ef.Spectra.morlet(
+       epochs, windows, recording=recording, freqs=freqs, n_cycles=4.0
    )
    tfr_power = ef.mean_tfr_power(
        spectra_tfr,
@@ -115,12 +94,13 @@ complete wavelet support lies inside each analysis window.
 These windows are long enough to retain alpha coefficients with four cycles.
 The half-support is ``5 * n_cycles / (2 * pi * frequency)`` seconds: at 8 Hz,
 about 0.40 seconds are excluded at each edge. Short windows may retain no
-coefficients and raise an error. Inspect ``spectra_tfr.support`` separately
-from numerical ``coverage``.
+coefficients and raise an error. The fraction of each window a value rests on
+is the table's ``support``, separate from numerical ``coverage``.
 
-``sfreq`` is the sampling rate before any TFR decimation. The baseline is a
-window in the wrapped representation; do not call MNE's ``apply_baseline``
-first. These estimator conventions follow MNE's
+For a TFR computed in MNE, :meth:`~eegtable.Spectra.from_tfr` takes it with the
+cycle count and the sampling rate before decimation, which MNE keeps on neither
+object. The baseline is a window in the wrapped representation; do not call
+MNE's ``apply_baseline`` first. These estimator conventions follow MNE's
 `time-frequency tutorial
 <https://mne.tools/stable/auto_tutorials/time-freq/20_sensors_time_frequency.html>`_.
 See :doc:`methods/spectral` for scaling and temporal attribution.
@@ -153,7 +133,7 @@ epoch. The baseline and analysis windows below are interior to the recording.
    erds_table = ef.erds_mean(
        [beta_signal], baseline=baseline, windows=[stimulus], groups=rois
    )
-   features = ef.concat([spectral_features, burst_table, erds_table])
+   features = ef.concat([spectral_features, tfr_power, burst_table, erds_table])
 
 ``threshold=0.75`` is the baseline envelope quantile, not an absolute voltage
 threshold. Burst rate is in bursts per second. ``erds_mean`` defaults to
@@ -169,16 +149,42 @@ Inspect and save
    from eegtable.io import read_table, write_table
 
    frame = features.to_dataframe()
-   coverage = features.coverage
-   flags = features.flags
+   if epochs.metadata is not None:
+       frame = frame.join(epochs.metadata, on="epoch")
+   long = features.to_long()
    paths = write_table(features, "sub-01_features.tsv", rows=epochs.metadata)
    restored = read_table("sub-01_features.tsv")
 
+``to_dataframe`` indexes rows by recording, epoch and event. The epoch is the
+epoch's original number, which ``epochs.metadata`` keeps too, so the join pairs
+each row with its own trial even after MNE dropped epochs. ``to_long`` gives one
+row per value with the column's measure, band, space, window, unit, coverage
+and support beside it, the layout mixed models and plotting libraries read.
+
 The writer creates values and coverage TSVs and a JSON sidecar with feature
 metadata, row identities, flags, descriptor types, and payload checksums.
-``to_dataframe`` contains values; retain the table or saved bundle to keep the
-associated evidence. Coverage is finite-input availability, not an artifact
-score.
+Coverage is finite-input availability, not an artifact score.
+
+The same with a recipe
+----------------------
+
+A recipe states the bands, windows and measures once, and
+:func:`~eegtable.extract` applies it to epochs in memory, computing exactly
+what ``eegtable run`` would write for that recording:
+
+.. code-block:: python
+
+   recipe = {
+       "windows": {"baseline": [-1.5, -0.2], "stimulus": [0.2, 1.5]},
+       "features": [
+           {"measure": "integrated_band_power", "bands": ["alpha"]},
+           {"measure": "erds_mean", "bands": ["beta"], "baseline": "baseline"},
+       ],
+   }
+   result = ef.extract(epochs, recipe, recording=recording)
+   recipe_features = result.epochs
+
+The keys are those of a TOML recipe, described in :doc:`guides/runner`.
 
 Next steps
 ----------

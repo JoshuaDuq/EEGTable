@@ -55,6 +55,30 @@ def resample_epochs(
     *,
     n_jobs: int = 1,
 ) -> Any:
+    """Decimate or polyphase-resample a copy of padded epochs to a lower rate.
+
+    Decimation keeps every ``factor``-th sample without filtering, so the
+    configured low-pass must already sit at most a third of the new rate, with
+    its transition ending below the new Nyquist. Polyphase resampling only
+    downsamples; the padded epoch must map to a whole number of output samples,
+    the epoch origin must lie on the new grid, and the padding must cover the
+    anti-aliasing filter's half-support.
+
+    Parameters
+    ----------
+    epochs : mne.Epochs
+        Padded epochs.
+    settings : DecimationSettings or ResamplingSettings
+        Decimation factor, or target rate and padding.
+    filters : FilterSettings
+        The filtering already applied; decimation checks its ``h_freq``.
+    n_jobs : int, default 1
+        Passed to MNE resampling.
+
+    Returns
+    -------
+    mne.Epochs
+    """
     validate_sampling(
         epochs.info["sfreq"], settings, filters, float(epochs.times[0]), len(epochs.times)
     )
@@ -71,6 +95,23 @@ def resample_epochs(
 
 
 def crop_epochs(epochs: Any, tmin: float, tmax: float) -> Any:
+    """Crop the padding from a copy of epochs, without extrapolating.
+
+    The available samples nearest the requested bounds are kept; the endpoints may
+    differ from ``tmin`` and ``tmax`` by up to one output sample, and a larger gap
+    raises.
+
+    Parameters
+    ----------
+    epochs : mne.Epochs
+        Padded epochs on their final grid.
+    tmin, tmax : float
+        Analysis window, in seconds.
+
+    Returns
+    -------
+    mne.Epochs
+    """
     # Bounds were rounded to the acquisition grid at construction and decimation keeps
     # every n-th sample from t=0, so the available endpoints can sit up to one output
     # sample inside the request. Crop to what exists; never extrapolate.

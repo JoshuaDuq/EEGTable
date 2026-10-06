@@ -38,15 +38,20 @@ class QualityPolicy:
 
     min_coverage: float = 0.0
     rejected_flags: tuple[str, ...] = ()
+    # Last, so policies built positionally keep their meaning. Only Morlet values rest on part
+    # of their window; every other value has full support and always passes.
+    min_support: float = 0.0
 
     def __post_init__(self) -> None:
-        if (
-            isinstance(self.min_coverage, bool)
-            or not isinstance(self.min_coverage, Real)
-            or not isfinite(self.min_coverage)
-            or not 0 <= self.min_coverage <= 1
-        ):
-            raise ValueError("min_coverage must be a finite fraction in [0, 1].")
+        for name in ("min_coverage", "min_support"):
+            threshold: float = getattr(self, name)
+            if (
+                isinstance(threshold, bool)
+                or not isinstance(threshold, Real)
+                or not isfinite(threshold)
+                or not 0 <= threshold <= 1
+            ):
+                raise ValueError(f"{name} must be a finite fraction in [0, 1].")
         if not isinstance(self.rejected_flags, tuple) or any(
             not isinstance(name, str) or not name for name in self.rejected_flags
         ):
@@ -67,6 +72,8 @@ def apply_quality(table: FeatureTable, policy: QualityPolicy) -> QualityResult:
     if unknown:
         raise ValueError(f"Quality policy names unknown flags: {sorted(unknown)}.")
     reasons = {"low_coverage": table.coverage < policy.min_coverage}
+    if table.support is not None:
+        reasons["low_support"] = table.support < policy.min_support
     for name in policy.rejected_flags:
         existing = reasons.get(name)
         reasons[name] = table.flags[name] if existing is None else existing | table.flags[name]

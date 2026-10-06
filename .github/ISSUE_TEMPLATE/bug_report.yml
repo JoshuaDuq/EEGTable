@@ -1,0 +1,29 @@
+name: Bug report
+description: A result, error or behaviour that looks wrong.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: >-
+        The shortest code or recipe that shows the problem, ideally on simulated data
+        or a public MNE dataset, with the full error message.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: >-
+        Output of `python -c "import mne, eegtable; print(eegtable.__version__); mne.sys_info()"`.
+      render: text
+    validations:
+      required: true

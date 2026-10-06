@@ -648,7 +648,7 @@ def _erds_measure(
         trace_of=trace_of,
         kernel=kernel,
         flags_of=flags_of,
-        units={measure: _UNITS[normalize][measure]},
+        units={measure: _unit(normalize, measure)},
         windows=windows,
         groups=groups,
         include_global=include_global,
@@ -669,6 +669,12 @@ def _erds_measure(
             ),
         },
     )
+
+
+def _unit(normalize: str, measure: str) -> str:
+    if normalize not in _UNITS:
+        raise ValueError(f"normalize must be one of {sorted(_UNITS)}, got {normalize!r}.")
+    return _UNITS[normalize][measure]
 
 
 def _power(signal: BandSignal) -> npt.NDArray[np.float64]:

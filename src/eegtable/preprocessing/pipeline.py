@@ -86,6 +86,26 @@ class StageData:
 
 @dataclass(frozen=True)
 class PreprocessingResult:
+    """Feature-ready epochs and their records, from :func:`preprocess` or an export.
+
+    Parameters
+    ----------
+    epochs : mne.Epochs
+        Final epochs.
+    events : DataFrame
+        One row per input event: ``original_row``, ``original_sample``,
+        ``event_sample``, ``event_code``, ``label``, ``event_sample_sfreq``,
+        ``retained``, ``epoch_row`` and ``drop_reason``, plus BIDS event metadata
+        for BIDS input.
+    provenance : dict
+        Settings, stages run, review decisions, and the final sampling rate, bad
+        channels, time bounds and epoch counts.
+    repairs : DataFrame or None
+        When autoreject ran, one row per repaired epoch and channel:
+        ``original_row``, ``channel`` and ``label`` (``"bad"`` or
+        ``"interpolated"``).
+    """
+
     epochs: Any
     events: pd.DataFrame
     provenance: dict[str, Any]
@@ -515,6 +535,37 @@ def preprocess(
     n_jobs: int = 1,
     provenance: Mapping[str, Any] | None = None,
 ) -> PreprocessingResult:
+    """Run every enabled stage on an in-memory recording and return the epochs.
+
+    The stages and numerical operations are those of the checkpointed workflow,
+    but nothing is written and the input is not modified. There is no unattended
+    review policy: raw and epoch review run only when ``decisions`` holds
+    ``"review-raw"`` or ``"review-epochs"``, so without them detector candidates
+    are not applied. An enabled artifact correction requires a
+    ``"review-artifact"`` decision naming the fitted model's ``fit_id``; fit and
+    review with the separate numerical functions when that decision depends on
+    inspecting the fit.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording with finite EEG, EOG and ECG samples.
+    settings : ProcessingSettings
+        Channel, filter, epoch, artifact, rejection and sampling settings.
+    decisions : dict of str to dict, optional
+        Review decisions by stage: ``"review-raw"`` with ``bads`` and ``spans``,
+        ``"review-artifact"`` with ``fit_id`` and ``exclude``, ``include`` or
+        ``apply``, and ``"review-epochs"`` with ``exclude``, as in a saved
+        decision file.
+    n_jobs : int, default 1
+        Passed to filtering and resampling.
+    provenance : mapping, optional
+        Entries added to the result's provenance.
+
+    Returns
+    -------
+    PreprocessingResult
+    """
     # Same catalog as the checkpointed path; a review stage runs only with its decision.
     reviews = {} if decisions is None else decisions
     workflow = WorkflowSettings(

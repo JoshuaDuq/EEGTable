@@ -8,6 +8,7 @@ a measure therefore makes it settable from a recipe with no change here.
 from __future__ import annotations
 
 import collections.abc
+import importlib.metadata
 import inspect
 import types
 import typing
@@ -187,6 +188,43 @@ MEASURES.update(
     }
 )
 """Every measure a recipe entry can name."""
+
+_PLUGINS = "eegtable.measures"
+
+
+def lookup(name: str) -> Measure | None:
+    """The measure a recipe names: built in, or registered by an installed package.
+
+    A package registers a measure under the ``eegtable.measures`` entry-point group,
+    naming a function that follows the built-in measures' signatures: its first
+    parameter names its input (``spectra``, ``series``, ``signals``, ``signal``,
+    ``phase_signal`` or ``segmentation``) and its other parameters are keyword-only.
+    """
+    measure = MEASURES.get(name)
+    if measure is not None:
+        return measure
+    # Read from installed packages on first use, not at import: a broken plugin then
+    # affects only the recipes that name it. Every worker process repeats this lookup.
+    for entry in importlib.metadata.entry_points(group=_PLUGINS, name=name):
+        found = Measure(name, entry.load())
+        first = next(iter(found.parameters), None)
+        if first not in _KINDS:
+            raise ValueError(
+                f"measure {name!r}, registered by an installed package, must take its input "
+                f"first, named one of {sorted(_KINDS)}; it takes {first!r}."
+            )
+        MEASURES[name] = found
+        return found
+    return None
+
+
+def get(name: str) -> Measure:
+    """:func:`lookup`, for a name a validated recipe has already resolved."""
+    measure = lookup(name)
+    if measure is None:
+        raise KeyError(f"unknown measure {name!r}")
+    return measure
+
 
 SEGMENTATION = Measure("segment", ef.segment)
 """Microstate segmentation, configured once per recipe and shared by its measures."""

@@ -44,8 +44,13 @@ from eegtable.provenance import (
     serializable,
     software_versions,
 )
-from eegtable.runner.compute import RecordingFeatures, compute_features, event_names
-from eegtable.runner.measures import MEASURES, SUPPLIED
+from eegtable.runner.compute import (
+    RecordingFeatures,
+    RecordingInputs,
+    compute_features,
+    event_names,
+)
+from eegtable.runner.measures import SUPPLIED, get
 from eegtable.runner.progress import NullReporter, Reporter
 from eegtable.runner.recipe import Inputs, Recipe, RoiPattern
 
@@ -121,7 +126,9 @@ class Recording:
 
     def files(self) -> tuple[Path, ...]:
         """Every file a run could write for this recording."""
-        return tuple(path for name in _TABLES for path in self._bundle(name))
+        return tuple(
+            path for name in _TABLES for path in (*self._bundle(name), self._support(name))
+        )
 
     @property
     def failure_path(self) -> Path:
@@ -138,6 +145,10 @@ class Recording:
 
     def _table(self, name: str) -> Path:
         return self.base.with_name(f"{self.base.name}_{name}.tsv")
+
+    def _support(self, name: str) -> Path:
+        # Written only for a table resting on part of its windows; its sidecar lists it.
+        return self.base.with_name(f"{self.base.name}_{name}_support.tsv")
 
 
 @dataclass(frozen=True)
@@ -227,13 +238,15 @@ class CheckReport:
     ``missing_channels`` maps the label of each recording a run would fail to the
     channels the recipe names that it will not have once picked. ``trial`` is None
     when the first recording is one of them: it would fail for a reason already
-    reported, from inside whichever measure named the channel first.
+    reported, from inside whichever measure named the channel first. ``warnings``
+    are problems a run would not stop for but its results would carry.
     """
 
     recordings: tuple[Recording, ...]
     existing: tuple[Path, ...]
     trial: Trial | None
     missing_channels: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    warnings: tuple[str, ...] = ()
 
 
 def discover(recipe: Recipe) -> tuple[Recording, ...]:
@@ -569,7 +582,7 @@ def resolved_settings(recipe: Recipe) -> dict[str, Any]:
     del data["output"]["root"]
     for entry in data["features"]:
         del entry["entry"]
-        parameters = inspect.signature(MEASURES[entry["measure"]].function).parameters
+        parameters = inspect.signature(get(entry["measure"]).function).parameters
         defaults = {
             name: parameter.default
             for name, parameter in parameters.items()
@@ -717,12 +730,14 @@ def check(recipe: Recipe, *, n_jobs: int = 1, quick: bool = False) -> CheckRepor
         When computing the first recording fails.
     """
     recordings = discover(recipe)
-    missing = _missing_channels(recipe, recordings)
+    headers = _headers(recipe, recordings) if _reads_headers(recipe) else {}
+    missing = _missing_channels(recipe, headers)
     report = CheckReport(
         recordings=recordings,
         existing=_existing(recordings),
         trial=None,
         missing_channels=missing,
+        warnings=_membership_warnings(recipe, headers),
     )
     first = recordings[0]
     if first.label in missing:
@@ -755,12 +770,33 @@ def check(recipe: Recipe, *, n_jobs: int = 1, quick: bool = False) -> CheckRepor
             epochs_total=total,
             read_seconds=read_seconds,
         ),
+        warnings=(*report.warnings, *_segment_warnings(epochs, recipe)),
     )
 
 
-def _missing_channels(
-    recipe: Recipe, recordings: tuple[Recording, ...]
-) -> dict[str, tuple[str, ...]]:
+@dataclass(frozen=True)
+class _Header:
+    info: Any
+    kept: tuple[str, ...]
+
+
+def _headers(recipe: Recipe, recordings: tuple[Recording, ...]) -> dict[str, _Header]:
+    headers = {}
+    for recording in recordings:
+        # Picking needs loaded data, so pick on a one-sample stand-in with the
+        # recording's own info: the same selection load_epochs makes, without reading data.
+        info = mne.io.read_info(recording.source, verbose="error")
+        stand_in = mne.EpochsArray(np.zeros((1, info["nchan"], 1)), info, verbose="error")
+        headers[recording.label] = _Header(info, tuple(_pick(stand_in, recipe.inputs).ch_names))
+    return headers
+
+
+def _reads_headers(recipe: Recipe) -> bool:
+    named, patterns = _named_channels(recipe)
+    return bool(named or patterns or _membership_spaces(recipe))
+
+
+def _named_channels(recipe: Recipe) -> tuple[dict[str, list[str]], dict[str, RoiPattern]]:
     uses: dict[str, list[str]] = {}
     patterns: dict[str, RoiPattern] = {}
     if any("rois" in spec.spatial for spec in recipe.features):
@@ -774,16 +810,62 @@ def _missing_channels(
         for left, right in spec.asymmetry:
             for channel in (left, right):
                 uses.setdefault(channel, []).append(f"asymmetry pair {left}/{right}")
+    return uses, patterns
+
+
+def _membership_spaces(recipe: Recipe) -> list[str]:
+    # Spaces named by the channels they average rather than by a fixed list: a recording
+    # that kept other channels measures a different feature in them.
+    spaces = []
+    if any("global" in spec.spatial for spec in recipe.features):
+        spaces.append("global means")
+    if any("rois" in spec.spatial for spec in recipe.features) and any(
+        isinstance(members, RoiPattern) for members in recipe.rois.values()
+    ):
+        spaces.append("pattern ROIs")
+    return spaces
+
+
+def _membership_warnings(recipe: Recipe, headers: Mapping[str, _Header]) -> tuple[str, ...]:
+    spaces = _membership_spaces(recipe)
+    if not spaces or len({header.kept for header in headers.values()}) < 2:
+        return ()
+    every = list(dict.fromkeys(channel for header in headers.values() for channel in header.kept))
+    lacking = [
+        (label, [channel for channel in every if channel not in header.kept])
+        for label, header in headers.items()
+    ]
+    lacking = [(label, channels) for label, channels in lacking if channels]
+    shown = "; ".join(f"{label} lacks {', '.join(channels)}" for label, channels in lacking[:3])
+    more = f"; {len(lacking) - 3} more recordings differ" if len(lacking) > 3 else ""
+    named = " and ".join(spaces)
+    return (
+        f"Recordings keep different channels ({shown}{more}). {named[0].upper()}{named[1:]} "
+        "are identified by the channels they average, so each channel set gets columns of "
+        "its own and a cohort table splits them. Interpolate bad channels in preprocessing "
+        "to keep one column per feature.",
+    )
+
+
+def _segment_warnings(epochs: Any, recipe: Recipe) -> tuple[str, ...]:
+    inputs = RecordingInputs(epochs, recipe, recording="check", n_jobs=1)
+    return tuple(
+        f"Window {name!r} holds one Welch segment of n_fft = {n_fft} samples, so its spectrum "
+        "is a single periodogram rather than an average. Lower spectra.n_fft (half the window "
+        "gives three overlapping segments) or use multitaper."
+        for name, (count, n_fft) in sorted(inputs.welch_segments().items())
+        if count < 2
+    )
+
+
+def _missing_channels(recipe: Recipe, headers: Mapping[str, _Header]) -> dict[str, tuple[str, ...]]:
+    uses, patterns = _named_channels(recipe)
     if not uses and not patterns:
         return {}
 
     missing: dict[str, tuple[str, ...]] = {}
-    for recording in recordings:
-        # Picking needs loaded data, so pick on a one-sample stand-in with the
-        # recording's own info: the same selection load_epochs makes, without reading data.
-        info = mne.io.read_info(recording.source, verbose="error")
-        stand_in = mne.EpochsArray(np.zeros((1, info["nchan"], 1)), info, verbose="error")
-        kept = set(_pick(stand_in, recipe.inputs).ch_names)
+    for label, header in headers.items():
+        info, kept = header.info, set(header.kept)
         problems = []
         for channel, named_by in uses.items():
             if channel in kept:
@@ -801,7 +883,7 @@ def _missing_channels(
                     f"ROI {roi!r} matches none of the channels kept, with {list(pattern.patterns)}"
                 )
         if problems:
-            missing[recording.label] = tuple(problems)
+            missing[label] = tuple(problems)
     return missing
 
 
@@ -894,11 +976,18 @@ def _stage_and_publish(
     return final_outputs
 
 
+def _with_support(paths: tuple[Path, Path, Path]) -> list[Path]:
+    # write_table returns its three fixed files; a support file, when the table has one,
+    # sits beside them and has to be published with them.
+    support = paths[0].with_name(f"{paths[0].stem}_support.tsv")
+    return [*paths, *((support,) if support.exists() else ())]
+
+
 def _validate_staged_tables(outputs: tuple[Path, ...]) -> None:
     from eegtable.io import read_table
 
     for path in outputs:
-        if path.suffix == ".tsv" and not path.stem.endswith("_coverage"):
+        if path.suffix == ".tsv" and not path.stem.endswith(("_coverage", "_support")):
             read_table(path)
 
 
@@ -1008,8 +1097,8 @@ def _write(
     written: list[Path] = []
     if features.epochs is not None:
         rows = epoch_rows(epochs, recipe.output.epoch_metadata)
-        written += write_table(
-            features.epochs, recording.features_path, rows=rows, provenance=provenance
+        written += _with_support(
+            write_table(features.epochs, recording.features_path, rows=rows, provenance=provenance)
         )
     if features.crosstrial is not None:
         from eegtable.runner.compute import trial_labels
@@ -1024,8 +1113,13 @@ def _write(
                 "n_trials": [labels.count(label) for label in group_labels],
             }
         )
-        written += write_table(
-            features.crosstrial, recording.crosstrial_path, rows=group_rows, provenance=provenance
+        written += _with_support(
+            write_table(
+                features.crosstrial,
+                recording.crosstrial_path,
+                rows=group_rows,
+                provenance=provenance,
+            )
         )
     return tuple(written)
 

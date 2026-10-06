@@ -1,6 +1,8 @@
+import warnings
 from dataclasses import replace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 import eegtable.table as table_module
@@ -379,3 +381,119 @@ def test_an_incompatible_schema_is_described_by_the_columns_that_differ() -> Non
     assert "recording-02" in message
     assert _meta("Pz").name in message and _meta("C4").name in message
     assert "1 column" in message
+
+
+def test_select_matches_a_band_by_its_name() -> None:
+    # The field holds a Band, so band="alpha" used to match nothing and return an empty table.
+    assert _table().select(band="alpha").names == _table().names
+
+
+def test_select_warns_when_a_requested_value_names_no_column() -> None:
+    # The function is integrated_band_power; its columns are labelled "power". An empty
+    # result here reads as "no such feature" rather than as the mistake it is.
+    with pytest.warns(UserWarning, match="measure values"):
+        assert _table().select(measure="band_power").meta == ()
+
+
+def test_select_stays_quiet_when_known_values_simply_never_co_occur() -> None:
+    table = FeatureTable(
+        values=np.zeros((1, 2)),
+        coverage=np.ones((1, 2)),
+        meta=(_meta("C3"), _meta("C4", measure="peak")),
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert table.select(space="C3", measure="peak").meta == ()
+
+
+def test_a_join_on_epoch_aligns_features_with_metadata_after_dropped_epochs() -> None:
+    # MNE keeps the original epoch numbers in its metadata index after a drop. A 0..n index
+    # would pair epoch 4's features with epoch 0's metadata without any error.
+    table = FeatureTable(
+        values=np.array([[1.0], [2.0]]),
+        coverage=np.ones((2, 1)),
+        meta=(_meta("C3"),),
+        row_ids=(("sub-01", 4, "stim"), ("sub-01", 7, "stim")),
+    )
+    metadata = pd.DataFrame({"rating": [10, 40, 70]}, index=[0, 4, 7])
+    joined = table.to_dataframe().join(metadata, on="epoch")
+    assert joined["rating"].tolist() == [40, 70]
+    assert joined.index.names == ["recording", "epoch", "event"]
+
+
+def test_to_long_gives_one_row_per_cell_with_its_identity_and_metadata() -> None:
+    long = _identified_table("sub-01").to_long()
+    assert len(long) == 6
+    first, last = long.iloc[0], long.iloc[-1]
+    assert (first["recording"], first["epoch"], first["event"]) == ("sub-01", 0, "stim")
+    assert (first["space"], first["band"], first["window"], first["unit"]) == (
+        "C3",
+        "alpha",
+        "stim",
+        "log10",
+    )
+    assert (first["band_fmin"], first["band_fmax"]) == (8.0, 13.0)
+    assert (first["window_tmin"], first["window_tmax"]) == (0.0, 1.0)
+    assert (last["epoch"], last["space"], last["value"], last["coverage"]) == (2, "C4", 5.0, 0.75)
+    assert first["feature"] == _meta("C3").name
+
+
+def test_to_long_carries_each_flag_beside_the_cell_it_marks() -> None:
+    long = _identified_table("sub-01").to_long()
+    flagged = long.loc[long["edge_hit"], ["epoch", "space"]]
+    assert flagged.values.tolist() == [[0, "C3"], [2, "C4"]]
+
+
+def test_to_long_names_group_rows_by_their_label() -> None:
+    table = FeatureTable(
+        values=np.zeros((2, 1)),
+        coverage=np.ones((2, 1)),
+        meta=(_meta("C3"),),
+        row_labels=("rest", "task"),
+    )
+    assert table.to_long()["group"].tolist() == ["rest", "task"]
+
+
+def test_repr_summarizes_the_table_rather_than_printing_every_value() -> None:
+    # The dataclass repr printed every array and record: 300 KB for 64 channels and 5 bands.
+    text = repr(_identified_table("sub-01"))
+    assert "3 epoch rows" in text and "2 columns" in text and "power" in text
+    assert len(text) < 200
+
+
+def test_support_rides_along_with_the_columns_and_rows_it_describes() -> None:
+    table = replace(_identified_table("sub-01"), support=np.array([[0.5, 1.0]] * 3))
+    selected = table.select(space="C4")
+    assert selected.support is not None and selected.support.tolist() == [[1.0]] * 3
+    taken = table.take([2])
+    assert taken.support is not None and taken.support.tolist() == [[0.5, 1.0]]
+
+
+@pytest.mark.parametrize("support", [np.ones((3, 1)), np.full((3, 2), 1.5)])
+def test_support_must_be_a_fraction_shaped_like_the_values(support) -> None:
+    with pytest.raises(ValueError, match="support"):
+        replace(_identified_table("sub-01"), support=support)
+
+
+def test_a_joined_table_without_support_reads_as_complete() -> None:
+    # A Welch or time-domain column rests on the whole window it names.
+    restricted = replace(_identified_table("sub-01"), support=np.full((3, 2), 0.25))
+    other = replace(_identified_table("sub-01"), meta=(_meta("Pz"), _meta("Oz")))
+    joined = concat([restricted, other])
+    assert joined.support is not None
+    np.testing.assert_array_equal(joined.support, [[0.25, 0.25, 1.0, 1.0]] * 3)
+
+
+def test_a_column_a_recording_never_measured_has_no_support() -> None:
+    first = replace(_identified_table("sub-01"), support=np.full((3, 2), 0.5))
+    second = replace(
+        _identified_table("sub-02"), meta=(_meta("C3"), _meta("Pz")), support=np.full((3, 2), 0.5)
+    )
+    stacked = table_module.stack_rows([first, second], columns="union")
+    assert stacked.support is not None
+    pz = stacked.names.index(_meta("Pz").name)
+    assert stacked.support[:3, pz].tolist() == [0.0] * 3
+
+
+def test_to_long_reports_complete_support_when_none_was_recorded() -> None:
+    assert _identified_table("sub-01").to_long()["support"].tolist() == [1.0] * 6

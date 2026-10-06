@@ -451,7 +451,7 @@ Full Spectral Parameterization
 ------------------------------
 
 ``spectral_parameterization`` delegates Gaussian peak fitting and aperiodic
-parameterization to the explicit ``specparam==2.0.0rc7`` API. It leaves the
+parameterization to the specparam 2.0 API (``2.0.0rc7`` or later 2.0 releases). It leaves the
 existing robust straight-line ``aperiodic`` estimator unchanged.
 
 The fixed model has :math:`A(f)=b-\chi\log_{10}(f)`; the knee model has

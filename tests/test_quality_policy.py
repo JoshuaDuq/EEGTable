@@ -146,3 +146,13 @@ def test_design_rejects_missing_run_identity(alpha_beta_table):
     targets["run"] = ["one", None]
     with pytest.raises(ValueError, match="run"):
         build_design(alpha_beta_table, targets, target="target", runs="run")
+
+
+def test_quality_policy_masks_cells_resting_on_too_little_of_their_window(alpha_beta_table):
+    from eegtable.quality import QualityPolicy, apply_quality
+
+    table = replace(alpha_beta_table, support=np.array([[0.2, 1.0], [1.0, 1.0]]))
+    result = apply_quality(table, QualityPolicy(min_support=0.5))
+    assert np.isnan(result.table.values[0, 0])
+    assert np.isfinite(result.table.values[[0, 1, 1], [1, 0, 1]]).all()
+    assert result.ledger["reason"].tolist() == ["low_support"]

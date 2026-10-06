@@ -8,6 +8,7 @@ recording. It is what ``eegtable run`` executes.
 
 from __future__ import annotations
 
+from eegtable.extraction import extract
 from eegtable.runner.batch import (
     CheckReport,
     Recording,
@@ -22,6 +23,7 @@ from eegtable.runner.batch import (
     run,
     status,
 )
+from eegtable.runner.compute import RecordingFeatures
 from eegtable.runner.recipe import Recipe, RecipeError, load_recipe
 
 __all__ = [
@@ -29,6 +31,7 @@ __all__ = [
     "Recipe",
     "RecipeError",
     "Recording",
+    "RecordingFeatures",
     "RecordingResult",
     "RecordingStatus",
     "RunError",
@@ -37,6 +40,7 @@ __all__ = [
     "TrialError",
     "check",
     "discover",
+    "extract",
     "load_recipe",
     "run",
     "status",

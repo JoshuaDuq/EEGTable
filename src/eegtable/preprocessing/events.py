@@ -17,6 +17,28 @@ from .raw import validate_raw
 
 @dataclass(frozen=True)
 class EventData:
+    """Resolved events on the acquisition grid, from :func:`resolve_events`.
+
+    Parameters
+    ----------
+    events : ndarray of int, shape (n_events, 3)
+        MNE event array after the delay correction.
+    event_id : dict of str to int
+        Event names and codes; ``{"fixed": 1}`` for fixed-length epochs.
+    metadata : DataFrame or None
+        One row per event.
+    original_sfreq : float
+        Acquisition sample rate, in Hz.
+    original_row : ndarray of int
+        Row number of each event in the resolved array.
+    original_samples : ndarray of int
+        Event samples before the delay correction.
+    delay : float
+        Delay correction, in seconds.
+    shift_samples : int
+        Samples subtracted from every event, ``round(delay * sfreq)``.
+    """
+
     events: NDArray[np.int64]
     event_id: dict[str, int]
     metadata: pd.DataFrame | None
@@ -63,6 +85,31 @@ def resolve_events(
     events: NDArray[Any] | None = None,
     metadata: pd.DataFrame | None = None,
 ) -> EventData:
+    """Resolve the epoching events on the acquisition sample grid.
+
+    Event-related settings read events from annotations, a stim channel or an MNE
+    event file; fixed-length settings make one event per window. Event samples
+    must be unique, strictly increasing and inside the recording both before and
+    after the ``delay`` correction, and every code in ``event_id`` must occur.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Recording the events belong to.
+    settings : EventSettings or FixedEpochSettings
+        Event source, codes and delay, or fixed-epoch geometry. A fixed
+        ``duration`` and its stride must align with acquisition samples.
+    events : ndarray of int, shape (n_events, 3), optional
+        MNE event array used instead of the configured source; refused for fixed
+        epochs.
+    metadata : DataFrame, optional
+        One row per resolved event, in event order.
+
+    Returns
+    -------
+    EventData
+        Delay-corrected events with their original samples and row numbers.
+    """
     validate_raw(raw)
     sfreq = float(raw.info["sfreq"])
     if isinstance(settings, FixedEpochSettings):

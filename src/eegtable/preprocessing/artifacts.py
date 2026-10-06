@@ -16,6 +16,27 @@ from .raw import good_eeg_names, require_names
 
 @dataclass(frozen=True)
 class ArtifactModel:
+    """A fitted artifact operator awaiting review; fitting excludes nothing.
+
+    Parameters
+    ----------
+    method : {"ica", "ssp", "regression"}
+        Kind of operator.
+    model : object
+        The fitted MNE object: an ``ICA``, a list of SSP projectors or an
+        ``EOGRegression``.
+    fit_id : str
+        Identity of the fit, from its training data, settings and method. A review
+        decision must quote it.
+    compatibility : dict
+        Channel names and types, bad labels, sample rate, reference flag and
+        projectors of the training data; data the operator is applied to must
+        match them.
+    evidence : dict
+        Detector output for review, such as ICA scores, ICLabel classes and
+        ``suggested_exclude``.
+    """
+
     method: str
     model: Any
     fit_id: str
@@ -25,15 +46,60 @@ class ArtifactModel:
 
 @dataclass(frozen=True)
 class ReviewedArtifact:
+    """An artifact operator with its validated review decision, from :func:`review_artifact`.
+
+    Parameters
+    ----------
+    artifact : ArtifactModel
+        The reviewed fit.
+    decision : dict
+        ``fit_id`` and the choice: ICA ``exclude``, SSP ``include`` or regression
+        ``apply``.
+    """
+
     artifact: ArtifactModel
     decision: dict[str, Any]
 
 
 def reference_artifact_data(raw: Any, reference: str | tuple[str, ...]) -> Any:
+    """Copy of the continuous data re-referenced for fitting an artifact model.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording.
+    reference : str or tuple of str
+        ``"average"`` of the good EEG channels (at least two), or the names of good
+        EEG channels.
+
+    Returns
+    -------
+    mne.io.Raw
+    """
     return reference_epochs(raw, ReferenceSettings(channels=reference))
 
 
 def fit_ssp(raw: Any, settings: SSPSettings) -> ArtifactModel:
+    """Fit EEG projectors around EOG and ECG events; none is applied.
+
+    Uses MNE's ``compute_proj_eog`` for each EOG channel and ``compute_proj_ecg``
+    for the ECG channel; projectors already in ``raw`` are not candidates. Each
+    channel must yield events, and the total number of projectors must be
+    positive and below the EEG rank.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording with at least one good EEG channel.
+    settings : SSPSettings
+        Projectors per artifact channel, channels, filter band below Nyquist,
+        window and rejection thresholds.
+
+    Returns
+    -------
+    ArtifactModel
+        Method ``"ssp"``; the detected event samples are the evidence.
+    """
     good_eeg_names(raw)
     channels = [*settings.eog_channels, *([settings.ecg_channel] if settings.ecg_channel else [])]
     require_names(raw, channels, "artifact.ssp")
@@ -77,6 +143,23 @@ def fit_ssp(raw: Any, settings: SSPSettings) -> ArtifactModel:
 
 
 def fit_eog_regression(raw: Any, settings: RegressionSettings) -> ArtifactModel:
+    """Fit MNE's ``EOGRegression`` of the good EEG channels on the EOG channels.
+
+    Trained on consecutive ``tstep`` segments, dropping those overlapping BAD
+    annotations or exceeding the thresholds. Nothing is applied.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording with an explicitly applied EEG reference.
+    settings : RegressionSettings
+        EOG channels, segment length and rejection thresholds.
+
+    Returns
+    -------
+    ArtifactModel
+        Method ``"regression"``; the number of training segments is the evidence.
+    """
     if not raw.info["custom_ref_applied"]:
         raise ValueError("artifact.reference: regression requires explicitly referenced EEG")
     require_names(raw, list(settings.eog_channels), "artifact.regression.eog_channels")
@@ -107,6 +190,22 @@ def fit_eog_regression(raw: Any, settings: RegressionSettings) -> ArtifactModel:
 
 
 def review_artifact(model: ArtifactModel, decision: dict[str, Any]) -> ReviewedArtifact:
+    """Validate a review decision against the fit it names.
+
+    Parameters
+    ----------
+    model : ArtifactModel
+        The fitted operator.
+    decision : dict
+        Exactly ``fit_id``, which must equal ``model.fit_id``, and the method's
+        choice: for ICA ``exclude``, a list of unique component indices; for SSP
+        ``include``, a list of unique projector indices; for regression ``apply``,
+        a bool. An empty list keeps the data unchanged.
+
+    Returns
+    -------
+    ReviewedArtifact
+    """
     field_name = {"ica": "exclude", "ssp": "include", "regression": "apply"}[model.method]
     mapping(decision, "review.artifact", {"fit_id", field_name})
     if decision.get("fit_id") != model.fit_id:
@@ -133,6 +232,24 @@ def review_artifact(model: ArtifactModel, decision: dict[str, Any]) -> ReviewedA
 
 
 def apply_artifact(inst: Any, reviewed: ReviewedArtifact) -> Any:
+    """Apply a reviewed artifact operator to a copy of continuous data or epochs.
+
+    The fit is not repeated. ICA removes the excluded components, SSP applies the
+    included projectors, and regression subtracts the fitted EOG contribution when
+    ``apply`` is true. An empty choice returns the samples unchanged.
+
+    Parameters
+    ----------
+    inst : mne.io.Raw or mne.Epochs
+        Data with the channel names and types, bad labels, sample rate, reference
+        flag and projectors of the training data.
+    reviewed : ReviewedArtifact
+        From :func:`review_artifact`; the decision is validated again.
+
+    Returns
+    -------
+    mne.io.Raw or mne.Epochs
+    """
     artifact = reviewed.artifact
     review_artifact(artifact, reviewed.decision)
     if identity(channel_identity(inst)) != identity(artifact.compatibility):

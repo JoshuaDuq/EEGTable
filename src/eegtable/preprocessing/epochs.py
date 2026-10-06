@@ -37,6 +37,32 @@ def make_epochs(
     settings: EventEpochSettings | FixedEpochSettings,
     rejection: ThresholdSettings | None = None,
 ) -> Any:
+    """Cut padded epochs around the resolved events.
+
+    Epochs span the analysis window widened by ``settings.padding`` on each side,
+    with no baseline, projection, decimation or detrending. Epochs overlapping a
+    BAD annotation are dropped; no thresholds are applied here. At least one epoch
+    must remain, with finite samples and a good EEG channel.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous recording.
+    events : EventData
+        From :func:`~eegtable.preprocessing.events.resolve_events`; its metadata
+        becomes the epochs' metadata.
+    settings : EventEpochSettings or FixedEpochSettings
+        Analysis window and padding.
+    rejection : ThresholdSettings, optional
+        Only its ``tmin`` and ``tmax`` are used here: they fix the window that
+        later threshold rejection judges, inside the analysis window. None judges
+        the whole analysis window.
+
+    Returns
+    -------
+    mne.Epochs
+        Preloaded epochs.
+    """
     # The rejection window is fixed here, on the analysis bounds, not on the padding.
     tmin, tmax = analysis_bounds(settings, events.original_sfreq)
     reject_tmin = tmin if rejection is None or rejection.tmin is None else rejection.tmin
@@ -69,6 +95,21 @@ def make_epochs(
 
 
 def interpolate_channels(epochs: Any) -> Any:
+    """Spline-interpolate the bad EEG channels of a copy and mark them good.
+
+    Bad labels on other channel types stay. Without bad EEG channels the copy is
+    returned unchanged; otherwise every EEG channel needs a finite nonzero position
+    and at least four must be good.
+
+    Parameters
+    ----------
+    epochs : mne.Epochs
+        Epochs with finite samples.
+
+    Returns
+    -------
+    mne.Epochs
+    """
     # Only EEG bads are targets; EOG/ECG bad labels are restored afterwards.
     validate_epochs(epochs)
     working = epochs.copy()
@@ -89,6 +130,22 @@ def interpolate_channels(epochs: Any) -> Any:
 
 
 def reference_epochs(epochs: Any, settings: ReferenceSettings) -> Any:
+    """Re-reference the EEG of a copy of epochs or continuous data.
+
+    Parameters
+    ----------
+    epochs : mne.Epochs or mne.io.Raw
+        Data to re-reference.
+    settings : ReferenceSettings
+        ``channels`` is ``"average"`` of the good EEG channels (at least two), a
+        tuple of good EEG channel names, or None to leave the reference unchanged.
+        ``add_channels`` first restores missing acquisition-reference electrodes
+        as zero channels, which a custom reference already applied rules out.
+
+    Returns
+    -------
+    mne.Epochs or mne.io.Raw
+    """
     working = restore_reference_channels(epochs, settings.add_channels)
     if settings.channels is None:
         return working
@@ -108,6 +165,21 @@ def reference_epochs(epochs: Any, settings: ReferenceSettings) -> Any:
 
 
 def detrend_epochs(epochs: Any, method: str) -> Any:
+    """Remove the mean (``"constant"``) or linear trend (``"linear"``) of each EEG trace.
+
+    Uses SciPy's ``detrend`` on a copy; other channel types are unchanged.
+
+    Parameters
+    ----------
+    epochs : mne.Epochs
+        Epochs to detrend.
+    method : {"constant", "linear"}
+        Detrending type.
+
+    Returns
+    -------
+    mne.Epochs
+    """
     if method not in ("constant", "linear"):
         raise ValueError("epochs.detrend: expected constant or linear")
     picks = [
@@ -119,6 +191,20 @@ def detrend_epochs(epochs: Any, method: str) -> Any:
 
 
 def baseline_epochs(epochs: Any, baseline: tuple[float | None, float | None]) -> Any:
+    """Subtract the mean of a baseline interval from a copy, with MNE's ``apply_baseline``.
+
+    Parameters
+    ----------
+    epochs : mne.Epochs
+        Epochs on their final time grid.
+    baseline : tuple of (float or None, float or None)
+        Interval in seconds; None extends to the epoch's first or last sample.
+        Bounds may lie at most one sample outside the epoch.
+
+    Returns
+    -------
+    mne.Epochs
+    """
     # Like MNE, accept bounds up to one sample outside the rounded final grid.
     tstep = 1.0 / epochs.info["sfreq"]
     start = epochs.times[0] if baseline[0] is None else baseline[0]

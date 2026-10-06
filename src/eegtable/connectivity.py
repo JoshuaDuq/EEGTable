@@ -417,6 +417,36 @@ def spectral_connectivity_time(
     Coverage is the window mean of the minimum input coverage for each channel
     pair; ROI edge coverage averages the corresponding channel-pair coverages.
     Requires the ``connectivity`` extra.
+
+    Parameters
+    ----------
+    signal : Signal
+        Broadband epochs, finite throughout each window.
+    method : {"coh", "imcoh", "plv", "ciplv", "pli", "wpli"}
+        Estimator. ``"imcoh"`` is reported as a magnitude, since its sign depends
+        on the order of the two nodes.
+    bands : sequence of Band
+        Bands to average over. Each must contain at least one of ``freqs`` and end
+        at or below the Nyquist frequency. When the recording's passband is known,
+        a band outside it is refused and one partly outside it warns.
+    windows : sequence of Window
+        Analysis windows.
+    freqs : sequence of float
+        Morlet frequencies in Hz, positive, strictly increasing and at most the
+        Nyquist frequency.
+    n_cycles : float, default 7.0
+        Cycles of every wavelet. More cycles narrow the frequency smoothing but
+        lengthen the support trimmed from each window edge.
+    smoothing_seconds : float, default 0.0
+        Duration of the temporal Hanning smoother, at most the retained window.
+    groups : mapping of str to sequence of str, optional
+        ROI name to member channels. None uses every channel as a node.
+
+    Returns
+    -------
+    FeatureTable
+        One row per epoch and one column per node pair, band and window, with
+        ``space_kind="pair"``.
     """
     if method not in ("coh", "imcoh", "plv", "ciplv", "pli", "wpli"):
         raise ValueError(f"unsupported per-epoch connectivity method {method!r}.")

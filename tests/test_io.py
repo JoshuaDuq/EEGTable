@@ -460,8 +460,20 @@ def test_a_sidecar_that_is_not_json_is_named(tmp_path) -> None:
         read_table(path)
 
 
+def _with_inline_computations(path: Path) -> None:
+    """Turn a bundle into a schema 2 one, which wrote each column's computation in full."""
+    sidecar_path = path.with_suffix(".json")
+    sidecar = json.loads(sidecar_path.read_text())
+    shared = sidecar.pop("computations")
+    for column in sidecar["columns"]:
+        column["computation"] = shared[column["computation"]]
+    sidecar["schema"] = 2
+    sidecar_path.write_text(json.dumps(sidecar))
+
+
 def _as_written_by_eegfeat(path: Path) -> None:
     """Turn a bundle into one eegfeat wrote: no schema, no manifests, the old names."""
+    _with_inline_computations(path)
     for file in (path, path.with_name(f"{path.stem}_coverage.tsv")):
         file.write_text(file.read_text().replace("__eegtable_row_id", "__eegfeat_row_id", 1))
     sidecar_path = path.with_suffix(".json")
@@ -494,3 +506,33 @@ def test_a_bundle_written_by_eegfeat_still_needs_its_coverage_file(tmp_path) -> 
 
     with pytest.raises(ValueError, match="legacy feature bundle file manifest"):
         read_table(path)
+
+
+def test_support_round_trips_and_no_file_is_written_without_it(tmp_path) -> None:
+    base = _epoch_table()
+    restricted = replace(base, support=np.full(base.values.shape, 0.5))
+    write_table(restricted, tmp_path / "restricted.tsv")
+    assert (tmp_path / "restricted_support.tsv").is_file()
+    read = read_table(tmp_path / "restricted.tsv")
+    assert read.support is not None
+    np.testing.assert_array_equal(read.support, restricted.support)
+
+    write_table(base, tmp_path / "complete.tsv")
+    assert not (tmp_path / "complete_support.tsv").exists()
+    assert read_table(tmp_path / "complete.tsv").support is None
+
+
+def test_a_computation_shared_by_many_columns_is_written_once(tmp_path) -> None:
+    # Pairwise connectivity repeats one computation, channel list included, across
+    # thousands of columns; written per column, a 64-channel sidecar reached 51 MB.
+    write_table(_epoch_table(), tmp_path / "t.tsv")
+    sidecar = json.loads((tmp_path / "t.json").read_text())
+    keys = {column["computation"] for column in sidecar["columns"]}
+    assert len(keys) == 1 and set(sidecar["computations"]) == keys
+
+
+def test_a_bundle_with_each_computation_written_inline_still_reads(tmp_path) -> None:
+    path = tmp_path / "t.tsv"
+    write_table(_epoch_table(), path)
+    _with_inline_computations(path)
+    _assert_same_table(read_table(path), _epoch_table())

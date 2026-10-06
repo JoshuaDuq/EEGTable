@@ -94,4 +94,8 @@ def _mean_over_channels(
         mean = np.where(
             finite.any(axis=1), np.nanmean(np.where(finite, subset, np.nan), axis=1), np.nan
         )
-    return mean, coverage[:, picks, :].mean(axis=1)
+    members = coverage[:, picks, :]
+    # A member without a value put none of its input into the mean. A unit with no member
+    # value at all is withheld, and reports the input it had, as a withheld channel does.
+    averaged = np.where(finite, members, 0.0).mean(axis=1)
+    return mean, np.where(finite.any(axis=1), averaged, members.mean(axis=1))

@@ -113,6 +113,12 @@ class CommonSpatialPattern:
         topographically. A filter is not a pattern and does not map to the scalp.
     eigenvalues : ndarray, shape (n_components,)
         Fraction of the pooled variance each component assigns to ``classes[0]``.
+    ch_names : tuple of str
+        Channels the filters were fitted on, in order.
+    classes : tuple of int
+        The two class labels, ascending.
+    computation : ComputationSpec
+        How the filters were fitted.
     """
 
     filters: npt.NDArray[np.float64]
@@ -247,6 +253,16 @@ class CommonSpatialPattern:
         self, signal: Signal, *, rows: npt.NDArray[np.intp] | None = None
     ) -> npt.NDArray[np.float64]:
         """Project epochs and return each component's log relative power.
+
+        A sample that is non-finite in any channel is left out of every
+        component's variance.
+
+        Parameters
+        ----------
+        signal : Signal
+            Epochs with the fitted channels in the same order.
+        rows : ndarray of int, optional
+            Epochs to transform; unique and in range. None transforms all.
 
         Returns
         -------

@@ -329,3 +329,50 @@ def test_periodic_power_is_named_with_its_unit_and_its_fit(normalize: str, unit:
     assert (meta.measure, meta.unit, meta.normalization) == ("periodic_power", unit, normalize)
     fit = json.loads(meta.computation.parameters_json)["input_computation"]
     assert (fit["method"], fit["parameters"]["fit_range"]) == ("aperiodic_ratio", [3.0, 30.0])
+
+
+def test_tfr_power_carries_how_much_of_its_window_the_wavelets_supported() -> None:
+    # Only coefficients whose whole wavelet fits the window are averaged. How much of the
+    # window that leaves must reach the table, or a value resting on a sliver reads as sound.
+    spectra = _tfr_baseline_and_stimulus([1.0, 2.0], scale=1.0)
+    support = np.ones(spectra.data.shape)
+    support[:, :, 1] = 0.25
+    table = mean_tfr_power(replace(spectra, support=support), bands=[ALPHA], include_global=False)
+    stimulus = [i for i, m in enumerate(table.meta) if m.window == "stimulus"]
+    assert table.support is not None
+    np.testing.assert_allclose(table.support[:, stimulus], 0.25)
+
+
+def test_a_baseline_normalized_value_rests_on_the_less_supported_window() -> None:
+    spectra = _tfr_baseline_and_stimulus([1.0, 2.0], scale=1.0)
+    support = np.ones(spectra.data.shape)
+    support[:, :, 0] = 0.1
+    table = mean_tfr_power(
+        replace(spectra, support=support),
+        bands=[ALPHA],
+        include_global=False,
+        baseline="baseline",
+        normalize="db",
+    )
+    assert table.support is not None
+    np.testing.assert_allclose(table.support, 0.1)
+
+
+def test_psd_power_records_no_support_restriction() -> None:
+    freqs = np.linspace(0.0, 40.0, 41)
+    table = integrated_band_power(_spectra(np.ones(41), freqs), bands=[ALPHA], include_global=False)
+    assert table.support is None
+
+
+def test_epochs_passed_for_spectra_name_the_constructors() -> None:
+    # The epochs object reached a missing attribute deep inside; say what to build instead.
+    from tests.synthetic import make_epochs
+
+    with pytest.raises(TypeError, match="Spectra.welch"):
+        integrated_band_power(make_epochs(), bands=[ALPHA])  # type: ignore[arg-type]
+
+
+def test_an_unknown_normalization_lists_the_known_ones() -> None:
+    freqs = np.linspace(0.0, 40.0, 41)
+    with pytest.raises(ValueError, match="log10"):
+        integrated_band_power(_spectra(np.ones(41), freqs), bands=[ALPHA], normalize="relative")  # type: ignore[arg-type]

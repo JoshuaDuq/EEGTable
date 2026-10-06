@@ -113,12 +113,38 @@ def _parser() -> argparse.ArgumentParser:
     )
     init_parser.set_defaults(handler=_init)
     report_parser = commands.add_parser("report", help="write an auditable cohort quality report")
-    report_parser.add_argument("recipe", type=Path)
-    report_parser.add_argument("output", type=Path)
-    report_parser.add_argument("--rows", choices=("epochs", "groups"), default="epochs")
-    report_parser.add_argument("--by", nargs="+", default=["recording"])
-    report_parser.add_argument("--min-coverage", type=float, default=0.0)
-    report_parser.add_argument("--reject-flag", action="append", default=[])
+    report_parser.add_argument("recipe", type=Path, help="the recipe whose results to report")
+    report_parser.add_argument("output", type=Path, help="the HTML report to write")
+    report_parser.add_argument(
+        "--rows",
+        choices=("epochs", "groups"),
+        default="epochs",
+        help="per-epoch features or cross-trial group rows (default epochs)",
+    )
+    report_parser.add_argument(
+        "--by",
+        nargs="+",
+        default=["recording"],
+        help="descriptor columns to summarize quality by (default recording)",
+    )
+    report_parser.add_argument(
+        "--min-coverage",
+        type=float,
+        default=0.0,
+        help="mask cells resting on less finite input than this fraction (default 0)",
+    )
+    report_parser.add_argument(
+        "--min-support",
+        type=float,
+        default=0.0,
+        help="mask Morlet cells resting on less of their window than this fraction (default 0)",
+    )
+    report_parser.add_argument(
+        "--reject-flag",
+        action="append",
+        default=[],
+        help="mask cells carrying this flag; repeat for several",
+    )
     report_parser.set_defaults(handler=_report)
     from eegtable.preprocessing.cli import register
 
@@ -151,7 +177,9 @@ def _report(args: argparse.Namespace) -> int:
         else:
             paths = [entry.recording.crosstrial_path for entry in entries]
             dataset = read_group_dataset(paths)
-        policy = QualityPolicy(args.min_coverage, tuple(args.reject_flag))
+        policy = QualityPolicy(
+            args.min_coverage, tuple(args.reject_flag), min_support=args.min_support
+        )
         write_quality_report(
             dataset.table,
             dataset.targets,
@@ -367,5 +395,6 @@ def _check_lines(
         for label, problems in report.missing_channels.items():
             lines.extend(f"  {label}: {problem}" for problem in problems)
         return lines
+    lines.extend(f"! {warning}" for warning in report.warnings)
     lines.append(f"{CHECK} Ready: eegtable run {recipe_path}")
     return lines

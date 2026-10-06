@@ -148,7 +148,46 @@ def spectral_parameterization(
     fitted peak whose center lies in that half-open band: center frequency,
     height above the aperiodic component, and bandwidth (twice Gaussian sigma).
     An absent peak is NaN with ``spectral_no_peak``. Backend fitting errors
-    propagate because ``SpectralModel(debug=True)`` is mandatory.
+    propagate because ``SpectralModel(debug=True)`` is mandatory. Each epoch,
+    channel and window is fitted separately. Requires ``eegtable[spectral-model]``.
+
+    Parameters
+    ----------
+    spectra : Spectra
+        Linear power spectral density (``representation="psd"``) on a uniform
+        frequency grid, finite and positive inside ``fit_range``.
+    bands : sequence of Band
+        Bands, with unique names inside ``fit_range``, in which to report the
+        highest peak. Empty by default, giving only the aperiodic parameters and
+        fit diagnostics.
+    fit_range : tuple of float, default (2.0, 40.0)
+        Frequency range fitted, in Hz. The axis must span it, it must hold at
+        least five bins and lie above zero, and, when the passband is known, lie
+        entirely inside it.
+    aperiodic_mode : {"fixed", "knee"}, default "fixed"
+        ``"knee"`` adds a knee parameter to the offset and exponent.
+    peak_width_limits : tuple of float, default (0.5, 12.0)
+        Lower and upper bounds of the fitted peak width, in Hz.
+    max_n_peaks : int, default 6
+        Most peaks fitted per spectrum.
+    min_peak_height : float, default 0.0
+        Absolute height a peak needs above the aperiodic fit, in log10 power.
+    peak_threshold : float, default 2.0
+        Relative threshold for detecting a peak, in standard deviations of the
+        flattened spectrum.
+    groups : mapping of str to sequence of str, optional
+        ROI name to member channels. None gives one column per channel.
+    include_global : bool, default True
+        Also emit the mean across all channels.
+
+    Returns
+    -------
+    FeatureTable
+        ``specparam_offset``, ``specparam_exponent``, ``specparam_knee`` (knee
+        mode), ``specparam_n_peaks``, ``specparam_r_squared`` and
+        ``specparam_error`` (mean absolute error in log10 power), then
+        ``specparam_peak_cf``, ``specparam_peak_height`` and
+        ``specparam_peak_width`` for each band.
     """
     from specparam import SpectralModel
 

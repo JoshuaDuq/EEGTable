@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://joshuaduq.github.io/EEGTable/
+    about: Guides, method definitions and the API reference.

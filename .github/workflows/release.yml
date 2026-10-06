@@ -1,0 +1,38 @@
+name: release
+
+# Publishes to PyPI when a version tag is pushed. PyPI trusts this workflow directly
+# (trusted publishing), so no token is stored; register the publisher on PyPI once.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check --strict dist/*
+      # The tag names the release; a wheel of another version would publish the wrong one.
+      - run: test -f "dist/eegtable-${GITHUB_REF_NAME#v}-py3-none-any.whl"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

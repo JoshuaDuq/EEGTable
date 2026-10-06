@@ -311,7 +311,7 @@ def load_model_recipe(path: str | Path) -> ModelRecipe:
         raise ValueError("group-row models do not support covariate columns.")
     validation = _validation(record.get("validation", {}), analysis.task)
     quality_record = _mapping(
-        record.get("quality", {}), "quality", {"min_coverage", "rejected_flags"}
+        record.get("quality", {}), "quality", {"min_coverage", "min_support", "rejected_flags"}
     )
     return ModelRecipe(
         source,
@@ -324,6 +324,7 @@ def load_model_recipe(path: str | Path) -> ModelRecipe:
         QualityPolicy(
             _fraction(quality_record.get("min_coverage", 0), "quality.min_coverage"),
             _strings(quality_record.get("rejected_flags", []), "quality.rejected_flags"),
+            min_support=_fraction(quality_record.get("min_support", 0), "quality.min_support"),
         ),
         _preprocessing(record.get("preprocessing", {}), validation.seed),
         _path(record["output"], source.parent, "output"),

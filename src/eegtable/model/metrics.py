@@ -35,6 +35,40 @@ _DEFAULT_AGGREGATION_CONFIG = AggregationConfig()
 
 @dataclass(frozen=True)
 class ClassificationResult:
+    """Scores from :func:`classification_metrics`.
+
+    With ``groups``, every scalar score is the equal-weight mean over the subjects
+    for which it is defined, while ``confusion`` stays pooled over trials, so
+    accuracy recomputed from ``confusion`` is the pooled value, not ``accuracy``.
+
+    Parameters
+    ----------
+    y_true, y_pred : ndarray of int
+        The labels scored.
+    y_prob, y_score : ndarray or None
+        The probabilities and decision scores scored, if any.
+    groups : ndarray or None
+        Subject labels, or None for pooled scores.
+    accuracy : float
+        Fraction of trials classified correctly.
+    balanced_accuracy : float
+        Mean recall of the two classes; NaN, and left out of subject means, for a
+        subject with one class.
+    auc, average_precision : float
+        Ranking scores from ``y_score``, else from the class-1 probability. NaN
+        without either, or with a single class.
+    f1, precision, recall : float
+        For class 1. NaN where undefined, e.g. recall without positive trials.
+    specificity : float
+        Recall of class 0; NaN without negative trials.
+    confusion : ndarray of int, shape (2, 2)
+        Trial counts, rows true and columns predicted, in label order ``(0, 1)``.
+    per_subject : mapping of str to mapping of str to float
+        Each subject's scalar scores; empty without ``groups``.
+    mean_subject_auc : float
+        The subject-mean AUC, equal to ``auc`` with ``groups``; NaN without them.
+    """
+
     # When `groups` is given, every scalar below is the mean over subjects, giving each subject
     # equal weight, while `confusion` stays pooled counts over all trials. The two therefore
     # disagree by design: accuracy recomputed from `confusion` is the trial-pooled value, not
@@ -148,6 +182,26 @@ def classification_metrics(
     y_score: npt.NDArray[np.float64] | None = None,
     groups: npt.NDArray[np.object_] | None = None,
 ) -> ClassificationResult:
+    """Binary classification scores, pooled over trials or averaged over subjects.
+
+    Parameters
+    ----------
+    y_true, y_pred : ndarray of int, shape (n_trials,)
+        Labels and predictions coded 0 and 1; any other label raises.
+    y_prob : ndarray, optional
+        Finite probabilities, shape ``(n_trials, 2)`` in class order ``(0, 1)``,
+        or ``(n_trials,)`` for class 1.
+    y_score : ndarray, optional
+        Finite decision scores, shape ``(n_trials,)``, larger for class 1. AUC and
+        average precision use them in preference to ``y_prob``.
+    groups : ndarray, optional
+        Subject label of each trial; every trial needs one. Each scalar is then
+        the equal-weight mean over the subjects for which it is defined.
+
+    Returns
+    -------
+    ClassificationResult
+    """
     # The confusion matrix, specificity and the positive class of precision and recall all
     # assume 0/1 coding, so any other coding is refused instead of scored against it.
     labels = np.unique(np.concatenate([np.ravel(y_true), np.ravel(y_pred)]))
@@ -235,6 +289,36 @@ def regression_metrics(
     config: AggregationConfig = _DEFAULT_AGGREGATION_CONFIG,
     folds: npt.NDArray[np.intp] | None = None,
 ) -> tuple[dict[str, float], list[dict[str, object]]]:
+    """Pooled regression scores and, with ``groups``, the subject-level correlation.
+
+    Parameters
+    ----------
+    y_true, y_pred : ndarray, shape (n_trials,)
+        Aligned targets and predictions, finite on every trial.
+    groups : ndarray, optional
+        Subject label of each trial; every trial needs one. Adds the Fisher-z mean
+        of the within-subject correlations (:func:`subject_level_r`), which raises
+        for a subject with fewer than three trials or an undefined correlation.
+    config : AggregationConfig, optional
+        Subject weighting of that mean. Intervals are not reported here; call
+        :func:`subject_level_r` for them.
+    folds : ndarray, optional
+        Outer fold of each trial, as :func:`fold_results` returns them. Targets and
+        predictions are then centred within each subject and fold before
+        correlating, so differing fold-model offsets do not drive the score. Pass
+        them whenever a subject is scored by several folds.
+
+    Returns
+    -------
+    summary : dict of str to float
+        ``pearson_r``, ``r2`` and ``explained_variance`` over all trials, ``n``,
+        and ``subject_level_r``, also under the alias ``avg_subject_r_fisher_z``,
+        NaN without ``groups``. A constant target leaves ``r2`` and
+        ``explained_variance`` NaN or ``-inf``. Fewer than two trials give NaN
+        scores.
+    per_subject : list of dict
+        ``{"subject": ..., "r": ...}`` for each subject; empty without ``groups``.
+    """
     yt = np.asarray(y_true, dtype=float)
     yp = np.asarray(y_pred, dtype=float)
     _check_aligned("Regression", yt, yp)
@@ -294,6 +378,31 @@ def within_subject_centered_metrics(
     nuisance_prediction: npt.NDArray[np.float64],
     groups: npt.NDArray[np.object_],
 ) -> dict[str, float]:
+    """Within-subject R² of a full and a nuisance-only prediction, and their difference.
+
+    The target and both predictions are centred within each subject, so the scores
+    reflect trial-level tracking rather than subject offsets. Each subject's
+    ``1 - SS_res / SS_tot`` is averaged with equal weight; a subject with fewer than
+    two trials or a constant target is skipped.
+
+    Parameters
+    ----------
+    target : ndarray, shape (n_trials,)
+        Finite target.
+    full_prediction : ndarray, shape (n_trials,)
+        Finite predictions of the full model.
+    nuisance_prediction : ndarray, shape (n_trials,)
+        Finite predictions of the nuisance-only model for the same trials.
+    groups : ndarray, shape (n_trials,)
+        Subject label of each trial; every trial needs one.
+
+    Returns
+    -------
+    dict of str to float
+        ``within_subject_centered_full_r2``, ``within_subject_centered_nuisance_r2``
+        and ``within_subject_centered_delta_r2``, full minus nuisance. All NaN when
+        no subject qualifies.
+    """
     grp = np.asarray(groups)
     t = np.asarray(target, dtype=float)
     f = np.asarray(full_prediction, dtype=float)
@@ -367,6 +476,34 @@ def within_condition_metrics(
     groups: npt.NDArray[np.object_],
     conditions: npt.NDArray[np.object_],
 ) -> dict[str, float]:
+    """Within-condition R² of a full and a nuisance-only prediction, and their difference.
+
+    As :func:`within_subject_centered_metrics`, but centring within each subject and
+    condition cell, so condition means drive neither score. Cells with fewer than
+    two trials are left out; a subject is skipped when the target is constant
+    within every remaining cell.
+
+    Parameters
+    ----------
+    target : ndarray, shape (n_trials,)
+        Finite target.
+    full_prediction : ndarray, shape (n_trials,)
+        Finite predictions of the full model.
+    nuisance_prediction : ndarray, shape (n_trials,)
+        Finite predictions of the nuisance-only model for the same trials.
+    groups : ndarray, shape (n_trials,)
+        Subject label of each trial; every trial needs one.
+    conditions : ndarray, shape (n_trials,)
+        Condition label of each trial; every trial needs one.
+
+    Returns
+    -------
+    dict of str to float
+        ``within_condition_centered_full_r2``, ``..._nuisance_r2`` and
+        ``..._delta_r2``, plus the numbers of subjects and trials scored
+        (``..._n_subjects``, ``..._n_trials``). The scores are NaN when no subject
+        qualifies.
+    """
     grp = np.asarray(groups)
     t = np.asarray(target, dtype=float)
     f = np.asarray(full_prediction, dtype=float)

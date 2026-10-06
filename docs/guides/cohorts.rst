@@ -42,6 +42,8 @@ flags as well. Choose a fixed exclusion policy before evaluating a model:
    from eegtable.model import build_design
 
    dataset = read_dataset(paths)
+   # This cohort includes peak_frequency, whose edge_hit flag marks peaks on a band edge;
+   # a flag no measure in the cohort raises is refused.
    policy = QualityPolicy(min_coverage=0.8, rejected_flags=("edge_hit",))
    design = build_design(dataset.table, dataset.targets, target="rating",
                          groups="subject_id", quality=policy)
@@ -49,7 +51,9 @@ flags as well. Choose a fixed exclusion policy before evaluating a model:
 
 Choose ``rejected_flags`` from ``dataset.table.flags``; an unknown flag raises.
 ``min_coverage`` is a finite fraction in ``[0, 1]`` and rejects cells strictly
-below the threshold. Rejected cells become NaN, with a ``quality_rejected``
+below the threshold. ``min_support`` does the same for the fraction of a
+window a Morlet value rests on; values without temporal restriction always
+pass it. Rejected cells become NaN, with a ``quality_rejected``
 flag and a ledger of their reasons. Rows, feature definitions, original
 coverage, and other flags are retained; the input table is unchanged.
 Missingness learned from the cohort, imputation,

@@ -4,6 +4,8 @@ A table is stored as three files beside one another:
 
 - ``<name>.tsv``, the values, one row per epoch or trial group, NaN as ``n/a``;
 - ``<name>_coverage.tsv``, the coverage matrix in the same layout;
+- ``<name>_support.tsv``, only for tables whose values rest on part of their
+  windows (Morlet power), the fraction of each window each value rests on;
 - ``<name>.json``, a sidecar holding the :class:`~eegtable.FeatureMeta` of every
   column, the row semantics and any per-cell flags.
 
@@ -36,6 +38,9 @@ from eegtable.table import (
     _json_value,
     stack_rows,
 )
+
+_SCHEMA = 3
+"""Schema 3 shares computations across columns; schema 2, still read, wrote each in full."""
 
 _NA = "n/a"
 """Missing-value marker, following the BIDS convention for tabular files."""
@@ -126,18 +131,19 @@ def write_table(
         ],
         axis=1,
     )
-    coverage_frame = pd.concat(
-        [
-            pd.DataFrame({key: key_values}),
-            uid_frame,
-            pd.DataFrame(table.coverage, columns=names),
-        ],
-        axis=1,
-    )
+
+    def matrix_frame(matrix: npt.NDArray[np.float64]) -> pd.DataFrame:
+        return pd.concat(
+            [pd.DataFrame({key: key_values}), uid_frame, pd.DataFrame(matrix, columns=names)],
+            axis=1,
+        )
 
     coverage_path = target.with_name(f"{target.stem}_coverage.tsv")
+    support_path = target.with_name(f"{target.stem}_support.tsv")
     sidecar_path = target.with_suffix(".json")
     sidecar = _sidecar(table, key, list(descriptors.columns), coverage_path.name, provenance)
+    if table.support is not None:
+        sidecar["support"] = support_path.name
     sidecar["row_text_columns"] = [
         column
         for column in [key, *descriptors.columns]
@@ -151,15 +157,25 @@ def write_table(
         )
     ]
 
+    payloads = [(target, values_frame), (coverage_path, matrix_frame(table.coverage))]
+    if table.support is not None:
+        payloads.append((support_path, matrix_frame(table.support)))
     with TemporaryDirectory(prefix=".eegtable-", dir=target.parent) as temporary:
         staging = Path(temporary)
-        staged = tuple(staging / path.name for path in (target, coverage_path, sidecar_path))
-        _write_tsv(values_frame, staged[0])
-        _write_tsv(coverage_frame, staged[1])
-        sidecar["schema"] = 2
-        sidecar["files"] = {path.name: file_hash(path) for path in staged[:2]}
-        _write_text(json.dumps(sidecar, indent=2, allow_nan=False) + "\n", staged[2])
-        _publish_bundle(staged, (target, coverage_path, sidecar_path), staging / "backup")
+        staged = [staging / path.name for path, _ in payloads]
+        for (_, frame), path in zip(payloads, staged, strict=True):
+            _write_tsv(frame, path)
+        sidecar["schema"] = _SCHEMA
+        sidecar["files"] = {path.name: file_hash(path) for path in staged}
+        staged_sidecar = staging / sidecar_path.name
+        _write_text(json.dumps(sidecar, indent=2, allow_nan=False) + "\n", staged_sidecar)
+        _publish_bundle(
+            (*staged, staged_sidecar),
+            (*(path for path, _ in payloads), sidecar_path),
+            staging / "backup",
+            # A support file left from an earlier bundle would describe values it never saw.
+            remove=() if table.support is not None else (support_path,),
+        )
     return target, coverage_path, sidecar_path
 
 
@@ -181,7 +197,9 @@ def read_table(path: str | os.PathLike[str]) -> FeatureTable:
 
 
 def _table_from_sidecar(source: Path, sidecar: Mapping[str, Any]) -> FeatureTable:
-    meta = tuple(_meta_from_record(record) for record in sidecar["columns"])
+    shared = sidecar.get("computations")
+    specs: dict[str, ComputationSpec] = {}
+    meta = tuple(_meta_from_record(record, shared, specs) for record in sidecar["columns"])
     names = [m.name for m in meta]
 
     if "n_rows" not in sidecar:
@@ -198,6 +216,11 @@ def _table_from_sidecar(source: Path, sidecar: Mapping[str, Any]) -> FeatureTabl
         source.with_name(sidecar["coverage"]),
         names,
         expected_uids,
+    )
+    support = (
+        _read_matrix(source.with_name(sidecar["support"]), names, expected_uids)
+        if sidecar.get("support")
+        else None
     )
     column_index = {name: i for i, name in enumerate(names)}
     flags: dict[str, npt.NDArray[np.bool_]] = {}
@@ -222,6 +245,7 @@ def _table_from_sidecar(source: Path, sidecar: Mapping[str, Any]) -> FeatureTabl
                 (str(recording), int(epoch), str(event)) for recording, epoch, event in identifiers
             )
         ),
+        support=support,
     )
 
 
@@ -347,7 +371,7 @@ def _read_sidecar(source: Path) -> dict[str, Any]:
         raise ValueError(f"{path} is not a feature sidecar ({exc}).{hint}") from exc
     if isinstance(sidecar, dict) and "schema" not in sidecar and "eegfeat_version" in sidecar:
         return _legacy_sidecar(source, sidecar)
-    if not isinstance(sidecar, dict) or sidecar.get("schema") != 2:
+    if not isinstance(sidecar, dict) or sidecar.get("schema") not in (2, _SCHEMA):
         raise ValueError(f"{path}: unsupported feature bundle schema; regenerate the bundle.")
     text_columns = sidecar.get("row_text_columns")
     if not isinstance(text_columns, list):
@@ -356,8 +380,15 @@ def _read_sidecar(source: Path) -> dict[str, Any]:
     if not set(text_columns).issubset(sidecar["row_columns"]):
         raise ValueError(f"{path}: text descriptor columns are not declared row columns.")
     coverage = sidecar["coverage"]
+    support = sidecar.get("support")
     expected = {source.name, source.stem + "_coverage.tsv"}
-    if coverage != source.stem + "_coverage.tsv" or set(sidecar["files"]) != expected:
+    if support is not None:
+        expected.add(source.stem + "_support.tsv")
+    if (
+        coverage != source.stem + "_coverage.tsv"
+        or support not in (None, source.stem + "_support.tsv")
+        or set(sidecar["files"]) != expected
+    ):
         raise ValueError(f"{path}: invalid feature bundle file manifest.")
     for name, checksum in sidecar["files"].items():
         payload = source.parent / name
@@ -399,6 +430,7 @@ def _sidecar(
     from eegtable import __version__
 
     names = table.names
+    computations: dict[str, dict[str, object]] = {}
     flags = {
         flag: {
             names[column]: np.flatnonzero(cells[:, column]).tolist()
@@ -415,7 +447,8 @@ def _sidecar(
         "row_ids": None if table.row_ids is None else list(table.row_ids),
         "row_columns": [key, *descriptor_columns],
         "coverage": coverage_name,
-        "columns": [_meta_record(m) for m in table.meta],
+        "columns": [_column_record(m, computations) for m in table.meta],
+        "computations": computations,
         "flags": flags,
     }
     if provenance is not None:
@@ -423,14 +456,44 @@ def _sidecar(
     return sidecar
 
 
-def _meta_record(meta: FeatureMeta) -> dict[str, Any]:
+def _column_record(meta: FeatureMeta, computations: dict[str, dict[str, object]]) -> dict[str, Any]:
     # The record the column's name is hashed from, so no field can be written differently.
-    fields = cast(dict[str, Any], _json_value(meta.record()))
-    return {"name": meta.name, **fields, "parameter_hash": meta.parameter_hash}
+    # Its computation goes into a table shared by the bundle: many columns, every pair of a
+    # connectivity matrix, carry the same one, channel list and all.
+    key = meta.computation.parameter_hash
+    if key not in computations:
+        computations[key] = meta.computation.record()
+    fields = cast(dict[str, Any], _json_value(meta.fields_record()))
+    return {"name": meta.name, **fields, "computation": key, "parameter_hash": meta.parameter_hash}
 
 
-def _meta_from_record(record: Mapping[str, Any]) -> FeatureMeta:
-    computation = record["computation"]
+def _computation(
+    record: Mapping[str, Any],
+    shared: Mapping[str, Any] | None,
+    specs: dict[str, ComputationSpec],
+) -> ComputationSpec:
+    written = record["computation"]
+    if not isinstance(written, str):
+        # Schema 2 and eegfeat bundles wrote each column's computation in full.
+        return ComputationSpec.create(written["method"], **dict(written["parameters"]))
+    if written not in specs:
+        if shared is None or written not in shared:
+            raise ValueError(
+                f"sidecar column {record['name']!r} names a computation the sidecar lacks."
+            )
+        # Not checked against its key here: every column's own hash covers its computation,
+        # so a swapped or altered entry already fails that check.
+        entry = shared[written]
+        specs[written] = ComputationSpec.create(entry["method"], **dict(entry["parameters"]))
+    return specs[written]
+
+
+def _meta_from_record(
+    record: Mapping[str, Any],
+    shared: Mapping[str, Any] | None = None,
+    specs: dict[str, ComputationSpec] | None = None,
+) -> FeatureMeta:
+    computation = _computation(record, shared, {} if specs is None else specs)
     bounds = record["window_bounds"]
     phase_band = record.get("phase_band")
     amplitude_band = record.get("amplitude_band")
@@ -445,9 +508,7 @@ def _meta_from_record(record: Mapping[str, Any]) -> FeatureMeta:
         normalization=record["normalization"],
         unit=record["unit"],
         source=record["source"],
-        computation=ComputationSpec.create(
-            computation["method"], **dict(computation["parameters"])
-        ),
+        computation=computation,
         freq_resolution_hz=record["freq_resolution_hz"],
         phase_band=_band_from_record(phase_band),
         amplitude_band=_band_from_record(amplitude_band),
@@ -515,12 +576,18 @@ def _write_text(text: str, path: Path) -> None:
     os.replace(partial, path)
 
 
-def _publish_bundle(staged: tuple[Path, ...], final: tuple[Path, ...], backup: Path) -> None:
+def _publish_bundle(
+    staged: tuple[Path, ...],
+    final: tuple[Path, ...],
+    backup: Path,
+    *,
+    remove: tuple[Path, ...] = (),
+) -> None:
     backup.mkdir()
     saved: list[tuple[Path, Path]] = []
     published: list[Path] = []
     try:
-        for target in final:
+        for target in (*final, *remove):
             if target.exists():
                 copy = backup / target.name
                 os.replace(target, copy)

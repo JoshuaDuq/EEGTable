@@ -77,7 +77,7 @@ those fields.
 Anatomy of a feature table
 --------------------------
 
-A :class:`~eegtable.FeatureTable` has five aligned parts.
+A :class:`~eegtable.FeatureTable` has six aligned parts.
 
 ``values``
    Shape ``(n_rows, n_features)``.
@@ -85,8 +85,15 @@ A :class:`~eegtable.FeatureTable` has five aligned parts.
 ``coverage``
    Same shape. Fraction of finite input behind each value, in ``[0, 1]``.
    This is the fraction of the input that was present. It is not an artifact
-   score. For Morlet input, ``support`` on :class:`~eegtable.Spectra` is the fraction of
-   the requested window with complete wavelet support.
+   score.
+
+``support``
+   Same shape, or ``None``. Fraction of the requested window each value rests
+   on. Morlet power averages only coefficients whose whole wavelet fits inside
+   the window, so a short window or a low frequency can leave a small part of
+   it. ``None`` means every value rests on its whole window, as Welch,
+   multitaper and time-domain values do. ``QualityPolicy(min_support=...)``
+   excludes values resting on too little.
 
 ``meta``
    One :class:`~eegtable.FeatureMeta` per column. Fields are the measure, band,
@@ -139,6 +146,40 @@ mean, changes its feature identity even when the spatial label stays the same.
 Connectivity records the member channels of every node as well. Reordering
 members within an ROI does not change its identity.
 
+In a cohort, a recording that dropped a bad channel therefore measures a
+different global mean, and an ROI given as patterns resolves to different
+members. Stacked with ``columns="union"``, each channel set gets columns of its
+own, each missing for the other recordings. ``eegtable check`` warns when the
+recordings of a recipe keep different channels. Interpolating bad channels
+during preprocessing keeps one column per feature.
+
+.. _concepts-spatial:
+
+Spatial aggregation
+-------------------
+
+An ROI or global value is the mean of its member channels' values, not a value
+computed from their averaged signal. Members that produced no value, such as a
+channel where no peak was found, are left out of the mean rather than counted as
+zero. The unit's coverage counts only the members its value was averaged over:
+an ROI whose value comes from one of three channels reports a third of their
+input, even when all three inputs were finite. When no member produced a value,
+the unit is ``NaN`` and reports its members' input coverage, as a withheld
+channel does. A flag set on any member marks the whole unit.
+
+.. _concepts-windows:
+
+Windows and their bounds
+------------------------
+
+Both bounds of a window are inclusive. A finite bound must lie within the data:
+it may reach one sample past the last one, whose interval it closes, so 0–30 s
+is a whole window for a 30 s epoch whose last sample is at 29.99 s. Further out,
+the window is refused rather than clipped, because a clipped window would keep
+naming a span it never measured. An infinite bound runs to the edge of the data.
+The runner, :meth:`~eegtable.Spectra.welch` and its siblings record a whole-epoch
+window with the epochs' actual bounds.
+
 .. _concepts-row-kinds:
 
 Epoch rows and group rows
@@ -150,6 +191,14 @@ There are two kinds of table. They are not merged.
 ``(recording, epoch index, event)`` triple per row. Joining feature columns checks those identities; stacking recordings
 retains them and rejects duplicates. :func:`eegtable.model.build_design` accepts only
 per-epoch tables.
+
+:meth:`~eegtable.FeatureTable.to_dataframe` indexes these rows by the same triple.
+The epoch index is the epoch's original number, which MNE also keeps in
+``epochs.metadata`` after dropping epochs, so
+``features.to_dataframe().join(epochs.metadata, on="epoch")`` pairs every row
+with its own trial. :meth:`~eegtable.FeatureTable.to_long` gives one row per
+value instead, with the column's metadata beside it, for mixed models and
+plotting.
 
 **Group-row tables** come from measures that are undefined on one trial.
 Those measures are inter-trial phase coherence, pairwise phase consistency,

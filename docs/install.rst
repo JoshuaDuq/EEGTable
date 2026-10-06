@@ -25,7 +25,7 @@ Requirements
       :link: https://mne.tools/stable/
       :link-type: url
 
-      ``numpy>=1.26``, ``scipy>=1.11``, ``pandas>=2.0,<3.0``, ``mne>=1.8``.
+      ``numpy>=1.26``, ``scipy>=1.11``, ``pandas>=2.0``, ``mne>=1.10``.
 
 Setup
 -----
@@ -101,14 +101,15 @@ not alter the core feature definitions. Combine related extras, for example
      - ``mne-bids>=0.19``, ``pybv``
      - Native EEG BIDS discovery, loading and preprocessing.
    * - ``[spectral-model]``
-     - ``specparam==2.0.0rc7``
+     - ``specparam>=2.0.0rc7,<2.1``
      - Full fixed/knee spectral parameterization and band peaks.
    * - ``[irasa]``
      - ``neurodsp>=2.3.0``
      - IRASA aperiodic and oscillatory separation.
    * - ``[cycles]``
-     - ``bycycle>=1.2.0``
-     - Cycle waveform and burst features.
+     - ``bycycle>=1.2.0``, ``pandas<3.0``
+     - Cycle waveform and burst features. ByCycle 1.2.0 fails under pandas 3,
+       so this extra keeps pandas 2.
    * - ``[complexity]``
      - ``antropy>=0.2.2``
      - Permutation entropy, Lempel–Ziv complexity and DFA.
@@ -135,9 +136,10 @@ For development with the scientific integrations and documentation:
 
    python -m pip install -e ".[dev,docs,model,connectivity,microstates,importance,preprocessing,preprocessing-auto,bids,spectral-model,irasa,cycles,complexity,pac,riemann]"
 
-The dependency bounds above follow ``pyproject.toml``. EEGTable constrains
-pandas to version 2 and pins specparam to ``2.0.0rc7``; preserve those bounds
-when preparing a reproducible environment. ``preprocessing-auto`` and
+The dependency bounds above follow ``pyproject.toml``. The ``cycles`` extra
+keeps pandas below 3, and ``spectral-model`` accepts specparam's 2.0 releases
+from ``2.0.0rc7``. Each output's provenance records the versions it was computed
+with; reinstall those to reproduce it exactly. ``preprocessing-auto`` and
 ``preprocessing-gui`` supplement the ``preprocessing`` extra and should be
 installed with it.
 
