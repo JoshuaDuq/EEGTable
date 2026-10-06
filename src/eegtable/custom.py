@@ -15,6 +15,7 @@ import numpy as np
 import numpy.typing as npt
 
 from eegtable._expand import expand, expand_signal
+from eegtable._validation import blank_non_finite
 from eegtable.bands import Band
 from eegtable.signal import TimeSeries
 from eegtable.spectra import Spectra, Window
@@ -76,7 +77,7 @@ def spectral_measure(
         freqs: npt.NDArray[np.float64],
         weights: npt.NDArray[np.float64],
     ) -> tuple[npt.NDArray[np.float64], dict[str, npt.NDArray[np.bool_]]]:
-        result = kernel(data, freqs, weights)
+        result = kernel(blank_non_finite(data), freqs, weights)
         values, flags = result if isinstance(result, tuple) else (result, {})
         return np.asarray(values, dtype=float), dict(flags)
 

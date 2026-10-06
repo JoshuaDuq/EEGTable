@@ -537,4 +537,4 @@
      - –
      - –
 
-**Covered by unit tests only, not yet by a real-data check:** ``cycle_features``, ``pac_surrogates``, ``spectral_connectivity_time``, ``apply_quality``, ``cohort_quality``, ``feature_quality``, ``intraclass_reliability``.
+**Covered by unit tests only, not yet by a real-data check:** ``cycle_features``, ``pac_surrogates``, ``spectral_connectivity_time``, ``apply_quality``, ``cohort_quality``, ``feature_quality``, ``intraclass_reliability``, ``extract``, ``signal_measure``, ``spectral_measure``.

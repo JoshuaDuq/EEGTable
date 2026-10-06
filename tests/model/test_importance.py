@@ -9,11 +9,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import make_scorer
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from eegtable.model.estimators import ridge_pipeline
@@ -27,7 +28,7 @@ from eegtable.model.importance import (
 )
 from eegtable.model.scoring import pearsonr_scorer
 from eegtable.model.splits import Fold, InnerSplit, loso_folds
-from eegtable.model.transformers import PreprocessingConfig
+from eegtable.model.transformers import Deconfounder, PreprocessingConfig
 from eegtable.table import FeatureMeta
 
 PIPE = Pipeline([("regressor", DummyRegressor(strategy="mean"))])
@@ -339,6 +340,59 @@ def test_shap_importance_refuses_columns_that_are_not_input_features() -> None:
     pipe = ridge_pipeline(PreprocessingConfig(pca_enabled=True), seed=0).fit(X, X[:, 0])
     with _shap_stand_in(), pytest.raises(ValueError, match="input feature"):
         shap_importance(pipe, X, ["f0", "f1", "f2"])
+
+
+@pytest.mark.parametrize("container", ["direct", "pipeline", "columns", "union"])
+def test_shap_importance_refuses_covariate_mixing(container) -> None:
+    rng = np.random.default_rng(12)
+    nuisance, target = rng.normal(size=(2, 100))
+    values = np.column_stack([2 * nuisance + target, nuisance])
+    transform = Deconfounder(n_covariates=1)
+    if container == "pipeline":
+        transform = Pipeline([("deconfound", transform)])
+    elif container == "columns":
+        transform = ColumnTransformer(
+            [("deconfound", transform, [0, 1])], verbose_feature_names_out=False
+        )
+    elif container == "union":
+        transform = FeatureUnion([("deconfound", transform)], verbose_feature_names_out=False)
+    model = Pipeline([("transform", transform), ("model", LinearRegression())]).fit(values, target)
+    changed = values.copy()
+    changed[:, 1] += 1
+    assert not np.allclose(model.predict(values), model.predict(changed))
+
+    with _shap_stand_in(), pytest.raises(ValueError, match="original-input SHAP attribution"):
+        shap_importance(model, values, ["eeg", "nuisance"])
+
+
+def test_shap_importance_allows_a_deconfounder_without_covariates() -> None:
+    values = np.random.default_rng(12).normal(size=(40, 2))
+    model = Pipeline([("deconfound", Deconfounder()), ("model", LinearRegression())]).fit(
+        values, values[:, 0] + values[:, 1]
+    )
+    with _shap_stand_in():
+        importance = shap_importance(model, values, ["a", "b"])
+    assert np.all(importance.values > 0)
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_shap_importance_allows_an_inactive_column_transformer_deconfounder(nested) -> None:
+    values = np.random.default_rng(12).normal(size=(40, 2))
+    transform = ColumnTransformer(
+        [("inactive", Deconfounder(n_covariates=1), [])],
+        remainder="passthrough",
+        verbose_feature_names_out=False,
+    )
+    if nested:
+        transform = Pipeline([("columns", transform)])
+    model = Pipeline([("transform", transform), ("model", LinearRegression())]).fit(
+        values, values.sum(axis=1)
+    )
+    np.testing.assert_array_equal(model[:-1].transform(values), values)
+
+    with _shap_stand_in():
+        importance = shap_importance(model, values, ["a", "b"])
+    np.testing.assert_allclose(importance.values, np.abs(values - values.mean(axis=0)).mean(axis=0))
 
 
 def _nuisance_design() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

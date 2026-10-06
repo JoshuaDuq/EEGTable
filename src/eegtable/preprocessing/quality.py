@@ -108,7 +108,8 @@ def detect_annotations(
             min_length_good=muscle.min_length_good,
         )
         annotations.append(spans)
-        evidence["muscle_scores"] = scores
+        # MNE returns NaN for samples excluded by BAD annotations; JSON uses null.
+        evidence["muscle_scores"] = np.where(np.isnan(scores), np.asarray(None), scores).tolist()
     return QualityCandidates(tuple(dict.fromkeys(bads)), tuple(annotations), evidence)
 
 

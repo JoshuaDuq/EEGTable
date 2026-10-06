@@ -95,6 +95,35 @@ def test_suggested_raw_review_applies_candidates(raw, tmp_path):
         save_review(workflow, "raw", tmp_path / "x.yaml", suggested=True)
 
 
+def test_cropped_raw_gate_keeps_acquisition_duration_and_span_clock(raw, tmp_path):
+    from eegtable.preprocessing.config import CropSettings
+    from eegtable.preprocessing.review import gate_view
+
+    base = config_for(raw, tmp_path)
+    workflow = open_workflow(
+        replace(
+            base,
+            processing=replace(base.processing, crop=CropSettings(4.0, 28.0)),
+            workflow=WorkflowSettings(raw_review="required"),
+        )
+    )
+    assert run_until(workflow, "review-raw").state == "needs-review"
+    gate = gate_view(workflow, "review-raw")
+    assert gate["duration"] == raw.n_times / raw.info["sfreq"]
+    span = {"onset": 26.0, "duration": 1.0, "description": "BAD_manual"}
+    assert span["onset"] + span["duration"] <= gate["duration"]
+    decision = tmp_path / "decision.yaml"
+    decision.write_text(
+        json.dumps({"parent_id": gate["parent_id"], "bads": [], "spans": [span]}),
+        encoding="utf-8",
+    )
+    save_review(workflow, "raw", decision)
+    assert run_until(workflow, "review-raw").state == "completed"
+    reviewed = read_checkpoint(workflow, "review-raw").state.raw
+    assert reviewed.annotations.onset.tolist() == [raw.first_time + span["onset"]]
+    assert reviewed.annotations.duration.tolist() == [span["duration"]]
+
+
 def test_suggested_artifact_review_takes_detector_union(mixture, tmp_path):
     from eegtable.preprocessing.config import ArtifactSettings, ICASettings
 
@@ -230,3 +259,15 @@ def test_viewer_shows_epochs_before_raw_without_an_ica(qt_stubbed):
     assert epochs.calls == [("plot", True)] and raw.calls == []
     review_module.open_viewer(SimpleNamespace(raw=raw, epochs=None, artifact=None))
     assert raw.calls == [("plot", True)]
+
+
+def test_viewer_shows_epochs_after_ica_application(qt_stubbed):
+    from types import SimpleNamespace
+
+    model, epochs = _Plottable(), _Plottable()
+    state = SimpleNamespace(
+        raw=None, epochs=epochs, artifact=SimpleNamespace(method="ica", model=model)
+    )
+    review_module.open_viewer(state)
+    assert epochs.calls == [("plot", True)]
+    assert model.calls == []

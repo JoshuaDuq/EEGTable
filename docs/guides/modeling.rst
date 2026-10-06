@@ -829,9 +829,10 @@ scoring, harmonization, and nuisance settings used for evaluation.
   permutation importance. Pass the feature names that were selected so a score
   can be matched after fold-local column drops.
 - :func:`eegtable.model.shap_importance_over_folds` computes SHAP values.
-- SHAP explanations after a step such as PCA cannot be assigned to individual
-  input features by the feature-name mapping. Permutation importance instead
-  perturbs input columns before the pipeline transforms them.
+- SHAP explanations after PCA or covariate deconfounding cannot be assigned to
+  individual input features by the feature-name mapping and raise an error.
+  Permutation importance perturbs input columns before the pipeline transforms
+  them and supports these models.
 
 The example below fits EEG features only, even if ``design`` has covariates.
 To explain a model that includes covariates:

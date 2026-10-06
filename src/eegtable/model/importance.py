@@ -8,8 +8,9 @@ from typing import Literal
 import numpy as np
 import numpy.typing as npt
 from sklearn.base import is_classifier
+from sklearn.compose import ColumnTransformer
 from sklearn.inspection import permutation_importance as sklearn_perm_importance
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import FeatureUnion, Pipeline
 
 from eegtable._validation import blank_non_finite
 from eegtable.model._deps import require_shap
@@ -25,7 +26,7 @@ from eegtable.model.crossfit import (
 )
 from eegtable.model.execution import run_folds
 from eegtable.model.splits import Fold, InnerSplit
-from eegtable.model.transformers import transform_feature_names
+from eegtable.model.transformers import Deconfounder, transform_feature_names
 from eegtable.table import FeatureMeta
 
 __all__ = [
@@ -169,6 +170,26 @@ def permutation_importance(
     return Importance(feature_names=names, values=values, per_fold=per_fold)
 
 
+def _validate_shap_preprocessing(preprocessor: object) -> None:
+    if isinstance(preprocessor, Deconfounder) and preprocessor.n_covariates > 0:
+        raise ValueError(
+            "Deconfounder mixes features and covariates, so original-input SHAP "
+            "attribution cannot be recovered from the transformed columns."
+        )
+    if isinstance(preprocessor, Pipeline):
+        for _, step in preprocessor.steps:
+            _validate_shap_preprocessing(step)
+    elif isinstance(preprocessor, ColumnTransformer):
+        for name, transformer, _ in preprocessor.transformers_:
+            outputs = preprocessor.output_indices_[name]
+            if outputs.start != outputs.stop:
+                _validate_shap_preprocessing(transformer)
+    elif isinstance(preprocessor, FeatureUnion):
+        for _, transformer in preprocessor.transformer_list:
+            if transformer != "drop":
+                _validate_shap_preprocessing(transformer)
+
+
 def shap_importance(
     model: Pipeline,
     X: npt.NDArray[np.float64],
@@ -187,8 +208,8 @@ def shap_importance(
     ----------
     model : Pipeline
         Fitted pipeline whose steps report their output feature names. Steps that
-        mix features, such as PCA, raise: their outputs belong to no single input
-        feature.
+        mix input columns, such as PCA or an active Deconfounder, raise:
+        original-input SHAP attribution cannot be recovered from those outputs.
     X : ndarray
         Rows to explain.
     feature_names : sequence of str
@@ -202,6 +223,8 @@ def shap_importance(
         Features the pipeline dropped score 0. For a binary classifier with
         per-class SHAP values, class 1's are used. ``per_fold`` is empty.
     """
+    for _, step in model.steps[:-1]:
+        _validate_shap_preprocessing(step)
     require_shap()
     import shap
 

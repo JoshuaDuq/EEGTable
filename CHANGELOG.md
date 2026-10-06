@@ -9,6 +9,9 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
+- Morlet feature identities include the retained TFR time axis. Decimation and
+  time offsets can change window averages and now produce distinct columns.
+  Recompute existing Morlet tables before stacking them with new results.
 - **Column names change once for two groups of features.** Tables computed before
   this release do not stack with new ones under `columns="identical"`, and the
   default `"union"` would keep both sets of columns side by side. Rerun with
@@ -110,6 +113,19 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Custom spectral kernels receive non-finite bins as NaN as documented, so
+  NaN-aware reductions omit infinities while preserving input coverage.
+- Cross-fitting rejects missing or incorrectly shaped participant/run labels
+  before checking group separation; missing labels could evade overlap checks.
+- SHAP input attribution rejects covariate deconfounding, which mixes features
+  with nuisance columns and previously reported zero nuisance importance even
+  when those columns affected predictions.
+- Muscle-detector scores excluded by existing BAD annotations are saved as JSON
+  null, so annotation checkpoints remain writable without changing the scores.
+- Raw review gates retain acquisition duration after cropping, keeping manual
+  span bounds consistent with acquisition-relative onsets.
+- Reviewing epochs after ICA application opens the epochs viewer instead of
+  trying to plot ICA sources from unavailable raw data.
 - The weekly public-dataset validation workflow never ran a test. A cache miss left
   no `MNE_DATA` directory for MNE to download into, and an unquoted version pin
   broke the shell command.

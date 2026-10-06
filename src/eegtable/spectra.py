@@ -434,6 +434,12 @@ class Spectra:
                 # this scaling existed must not land on the same column.
                 scaling="power_divided_by_sfreq",
                 sfreq_hz=float(sfreq),
+                # Decimation and its offset change which coefficients enter the mean.
+                # MNE retains their times even when it no longer retains the decimation.
+                n_times=int(times.size),
+                time_axis_sha256=hashlib.sha256(
+                    np.ascontiguousarray(times, dtype="<f8").tobytes()
+                ).hexdigest(),
                 **reduction,
             ),
             passband=_passband(tfr),

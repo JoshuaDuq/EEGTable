@@ -56,6 +56,40 @@ def test_the_morlet_constructor_is_the_tfr_route_without_restating_its_settings(
     assert spectra.computation == manual.computation
 
 
+def test_morlet_decimation_that_changes_values_changes_column_identity() -> None:
+    epochs = make_epochs()
+    settings = dict(recording="sub-01", freqs=np.array([8.0, 10.0, 12.0]), n_cycles=3.0)
+    tables = [
+        ef.mean_tfr_power(
+            Spectra.morlet(epochs, WINDOWS, decim=decim, **settings),
+            bands=[ef.Band("alpha", 8.0, 12.0)],
+        )
+        for decim in (1, 4)
+    ]
+
+    assert not np.array_equal(tables[0].values, tables[1].values)
+    assert set(tables[0].names).isdisjoint(tables[1].names)
+
+
+def test_morlet_time_offsets_with_the_same_sample_count_have_distinct_identities() -> None:
+    epochs = make_epochs(seconds=2.004)
+    settings = dict(freqs=np.array([8.0, 10.0, 12.0]), n_cycles=3.0)
+    tfrs = [
+        epochs.compute_tfr(
+            "morlet", decim=decim, average=False, return_itc=False, verbose=False, **settings
+        )
+        for decim in (4, slice(1, None, 4))
+    ]
+    spectra = [
+        Spectra.from_tfr(tfr, WINDOWS, recording="sub-01", n_cycles=3.0, sfreq=250.0)
+        for tfr in tfrs
+    ]
+
+    assert tfrs[0].times.size == tfrs[1].times.size
+    assert not np.array_equal(spectra[0].data, spectra[1].data, equal_nan=True)
+    assert spectra[0].computation != spectra[1].computation
+
+
 def test_a_constructor_keeps_good_eeg_channels_by_default() -> None:
     epochs = make_epochs(bads=["Pz"])
     spectra = Spectra.welch(epochs, recording="sub-01", fmin=1.0, fmax=40.0)

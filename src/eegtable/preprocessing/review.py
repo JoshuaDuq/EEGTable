@@ -142,7 +142,7 @@ def open_viewer(state: Any) -> None:
     import mne
 
     with mne.viz.use_browser_backend("qt"):
-        if state.artifact is not None and state.artifact.method == "ica":
+        if state.epochs is None and state.artifact is not None and state.artifact.method == "ica":
             model = state.artifact.model.copy()
             # Picks would force every component into one figure, which on a full montage is
             # taller than any screen; topomap figures have no scrollbars, so the components
@@ -175,7 +175,7 @@ def gate_view(workflow: Workflow, stage: str) -> dict[str, Any]:
         "parent_id": identity({name: identities[name] for name in parents}),
     }
     if stage == "review-raw":
-        return {**view, **_raw_gate(path, metadata["candidates"])}
+        return {**view, **_raw_gate(path, metadata)}
     if stage == "review-epochs":
         return {**view, **_epoch_gate(path)}
     return {**view, **_artifact_gate(path, metadata["artifact"])}
@@ -187,10 +187,11 @@ def _item(
     return {"id": id, "label": label, "tags": tags, "score": score, "suggested": suggested}
 
 
-def _raw_gate(path: Path, candidates: dict[str, Any]) -> dict[str, Any]:
+def _raw_gate(path: Path, metadata: dict[str, Any]) -> dict[str, Any]:
     import mne
 
     raw = mne.io.read_raw_fif(path / "data_raw.fif", preload=False, verbose="error")
+    candidates = metadata["candidates"]
     reasons = _bad_channel_reasons(candidates.get("bad_channels"))
     for name in candidates.get("evidence", {}).get("amplitude", []):
         reasons.setdefault(name, []).insert(0, "amplitude")
@@ -206,7 +207,8 @@ def _raw_gate(path: Path, candidates: dict[str, Any]) -> dict[str, Any]:
         for name, kind in zip(raw.ch_names, raw.get_channel_types(), strict=True)
     ]
     spans = [{**span, "suggested": True} for span in candidates.get("spans", [])]
-    duration = raw.n_times / raw.info["sfreq"]
+    acquisition = metadata["provenance"]
+    duration = acquisition["original_n_times"] / acquisition["original_sfreq"]
     return {"field": "bads", "items": items, "spans": spans, "duration": duration}
 
 

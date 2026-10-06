@@ -15,6 +15,43 @@ def test_candidates_do_not_change_raw(raw):
     assert result.bads
 
 
+def test_muscle_scores_preserve_excluded_samples_in_checkpoint(raw, tmp_path):
+    from eegtable.preprocessing.checkpoints import publish_checkpoint
+    from eegtable.preprocessing.config import (
+        BadSpan,
+        FixedEpochSettings,
+        MuscleSettings,
+        ProcessingSettings,
+    )
+    from eegtable.preprocessing.pipeline import StageData, execute_numeric
+    from eegtable.preprocessing.provenance import canonical_json
+
+    raw.set_annotations(mne.Annotations([2.0], [1.0], ["BAD_recorded"]))
+    settings = ProcessingSettings(
+        FixedEpochSettings(2),
+        annotations=AnnotationSettings(
+            bad_spans=(BadSpan(4.0, 1.0, "BAD_manual"),),
+            muscle=MuscleSettings((90.0, 110.0), 4.0, 0.1),
+        ),
+    )
+    state = execute_numeric("load", StageData(raw), settings)
+    state = execute_numeric("annotate", state, settings)
+    evidence = state.candidates["evidence"]
+    canonical_json(evidence)
+    scores = evidence["muscle_scores"]
+    expected = mne.preprocessing.annotate_muscle_zscore(
+        state.raw, ch_type="eeg", filter_freq=(90.0, 110.0)
+    )[1]
+    missing = np.isnan(expected)
+    np.testing.assert_array_equal([score is None for score in scores], missing)
+    np.testing.assert_array_equal(np.asarray(scores, dtype=float)[~missing], expected[~missing])
+    assert missing.sum() == 2 * raw.info["sfreq"]
+
+    checkpoint = publish_checkpoint(tmp_path, "annotate", "a" * 64, state, {}, {})
+    assert checkpoint.state.candidates["evidence"] == evidence
+    np.testing.assert_array_equal(checkpoint.state.raw.get_data(), raw.get_data())
+
+
 def test_stimulation_agrees(raw):
     from eegtable.preprocessing.quality import repair_stimulation
 

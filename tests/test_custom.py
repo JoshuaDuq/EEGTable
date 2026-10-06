@@ -9,6 +9,7 @@ import pytest
 import eegtable as ef
 from eegtable.runner import load_recipe
 from eegtable.runner.measures import MEASURES
+from eegtable.table import ComputationSpec
 from tests.synthetic import make_epochs
 
 ALPHA = ef.Band("alpha", 8.0, 13.0)
@@ -35,6 +36,34 @@ def test_a_spectral_measure_reduces_each_band_window_and_channel_with_the_kernel
     np.testing.assert_allclose(channel.values[:, 0], spectra.data[:, cz, 0, inside].max(axis=-1))
     assert {meta.measure for meta in table.meta} == {"peak_power"}
     assert {meta.unit for meta in table.meta} == {"V^2/Hz"}
+
+
+@pytest.mark.parametrize("missing", [np.inf, -np.inf])
+def test_custom_spectral_kernels_receive_nonfinite_bins_as_nan(missing) -> None:
+    power = np.array([1.0, 2.0, missing]).reshape(1, 1, 1, 3)
+    spectra = ef.Spectra(
+        data=power,
+        freqs=np.array([1.0, 2.0, 3.0]),
+        ch_names=("Cz",),
+        windows=(ef.Window("all", -np.inf, np.inf),),
+        coverage=np.isfinite(power).astype(float),
+        source="provided",
+        representation="psd",
+        support=np.ones(power.shape),
+        row_ids=(("sub-01", 0, "event"),),
+        computation=ComputationSpec.create("provided"),
+    )
+
+    def mean_power(power, freqs, weights):
+        del freqs, weights
+        return np.nanmean(power, axis=-1)
+
+    table = ef.spectral_measure(
+        spectra, mean_power, measure="mean_power", unit="V^2/Hz", include_global=False
+    )
+    assert table.values[0, 0] == 1.5
+    assert table.coverage[0, 0] == 0.75
+    assert spectra.data[0, 0, 0, 2] == missing
 
 
 def test_a_signal_measure_gets_windows_and_rois_from_the_library() -> None:

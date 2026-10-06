@@ -397,8 +397,8 @@ def test_a_setting_welch_reads_still_names_its_columns(tmp_path) -> None:
     assert set(default.epochs.names).isdisjoint(overlapped.epochs.names)
 
 
-def test_default_spectral_recipes_keep_their_column_names(tmp_path) -> None:
-    # Names include the global mean's member channels and the exact frequency grid.
+def test_default_spectral_recipe_column_names(tmp_path) -> None:
+    # Names include the global channels and frequency grid, plus retained Morlet times.
     welch = features(
         tmp_path,
         "[windows]\nbase = [-0.5, 0.0]\nstim = [0.0, 1.0]\n\n"
@@ -418,7 +418,7 @@ def test_default_spectral_recipes_keep_their_column_names(tmp_path) -> None:
         "eeg_band-power_alpha_global_stim_raw_p2f519bfa8753",
     ]
     assert list(morlet.epochs.to_dataframe().columns) == [
-        "eeg_mean-tfr-power_alpha_global_stim_raw_p8b079340cb80"
+        "eeg_mean-tfr-power_alpha_global_stim_raw_pb44a1a4fa6b1"
     ]
     for table in (welch.epochs, morlet.epochs):
         assert table.meta[0].computation.parameters["spatial_channels"] == [

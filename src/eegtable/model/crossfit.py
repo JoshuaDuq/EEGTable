@@ -8,6 +8,7 @@ from typing import Literal, cast
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 from sklearn.base import clone
 from sklearn.metrics import check_scoring
 from sklearn.model_selection import ParameterGrid
@@ -484,11 +485,9 @@ def _validate_outer_folds(
     if not folds:
         raise ValueError("At least one outer fold is required.")
 
-    if len(groups) != n_rows:
-        raise ValueError("groups length does not match X.")
-
-    if runs is not None and len(runs) != n_rows:
-        raise ValueError("runs length does not match X.")
+    for name, values in (("groups", groups), ("runs", runs)):
+        if values is not None and (np.asarray(values).shape != (n_rows,) or pd.isna(values).any()):
+            raise ValueError(f"{name} must contain one nonmissing label per row.")
 
     tested: set[int] = set()
 
