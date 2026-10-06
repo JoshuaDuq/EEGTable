@@ -9,6 +9,11 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
+- Normalized custom spectral features record units on their resulting scale
+  (`log10(unit)`, `log10 ratio`, `dB`, or `%`). Their corrected units change
+  column identities; recompute those custom tables before combining them.
+- Review checkpoint identities include their owning review policy. Existing
+  review checkpoints and downstream stages need resetting before reuse.
 - Morlet feature identities include the retained TFR time axis. Decimation and
   time offsets can change window averages and now produce distinct columns.
   Recompute existing Morlet tables before stacking them with new results.
@@ -113,10 +118,25 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Feature values, coverage and support retain exact floating-point precision
+  when reading saved TSV bundles.
+- Permutation p-values count numerical ties inclusively in either tail, so
+  rounding differences cannot exclude an identity permutation.
+- Inner tuning checks each training subject's missingness after its candidate's
+  feature selection, including ordinary scores and grid-supplied preprocessing.
+  All requested tuning metrics are validated, including under permutation.
+- Stimulation repair after cropping uses retained event onsets while preserving
+  the acquisition event ledger. Retained repair windows still require neighbors.
+- Resumed preprocessing records current review policies in provenance.
+- Simultaneous BIDS events with `value` labels and no `trial_type` retain the
+  selected event's metadata.
+- Custom measures reject complex results, unknown normalization modes and
+  parameters that would overwrite the kernel's identity.
 - Spectral power, feature values, coverage, support and scientific time/frequency
   axes reject complex inputs instead of accepting them or discarding imaginary parts.
-- Array-based cross-fitting rejects malformed targets and estimator predictions
-  before returning results, and requires fitted binary classifier classes.
+- Table and signal cross-fitting reject malformed predictions and probabilities
+  before returning results. Table cross-fitting also validates target shapes
+  and requires fitted binary classifier classes.
 - Cohort quality and subject-level scores omit unused categorical labels instead
   of creating empty groups or rejecting otherwise valid predictions.
 - Cropped BrainVision conversions preserve the acquisition time of the exported

@@ -254,14 +254,20 @@ def apply_raw_review(
     return working
 
 
-def stimulation_intervals(
+def _validate_stimulation_input(
     raw: Any, events: NDArray[np.int64], settings: StimulationSettings
-) -> list[tuple[int, int]]:
+) -> None:
     require_names(raw, settings.channels, "stimulation.channels")
     if not set(settings.channels) <= set(physiology_names(raw)):
         raise ValueError("stimulation.channels: only measured physiology channels may be repaired")
     if not set(settings.event_ids) <= set(events[:, 2]):
         raise ValueError("stimulation.event_ids: requested event code absent")
+
+
+def stimulation_intervals(
+    raw: Any, events: NDArray[np.int64], settings: StimulationSettings
+) -> list[tuple[int, int]]:
+    _validate_stimulation_input(raw, events, settings)
     # fix_stim_artifact ceils both bounds; the recorded windows must be the repaired ones.
     offsets = np.ceil(np.array([settings.tmin, settings.tmax]) * raw.info["sfreq"]).astype(int)
     if offsets[0] >= offsets[1]:

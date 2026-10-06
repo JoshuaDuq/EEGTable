@@ -7,6 +7,7 @@ import pytest
 from scipy.special import expit
 from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -154,6 +155,61 @@ def test_learned_pipeline_has_fold_fitted_feature_and_scaling_steps():
     assert isinstance(pipeline, Pipeline)
     assert list(pipeline.named_steps) == ["features", "scale", "model"]
     assert isinstance(pipeline.named_steps["scale"], StandardScaler)
+
+
+class _ComplexRegressor(DummyRegressor):
+    def predict(self, X):
+        return np.full(len(X), 0.5 + 1j)
+
+
+def test_signal_regression_rejects_complex_predictions():
+    signal, labels, groups = _signals()
+    pipeline = learned.learned_pipeline(
+        learned.MicrostateTransformer(ch_names=CHANNELS, sfreq=100.0, n_states=2),
+        _ComplexRegressor(),
+    )
+
+    with pytest.raises(ValueError, match="regression predictions must be finite and aligned"):
+        learned.cross_fit_signal_regression(
+            loso_folds(groups)[:1],
+            signal,
+            labels.astype(float),
+            groups,
+            pipeline,
+            {},
+            inner=InnerSplit("subject", n_splits=3),
+            seed=4,
+        )
+
+
+class _MalformedProbabilityClassifier(DummyClassifier):
+    def __init__(self, probabilities):
+        super().__init__()
+        self.probabilities = probabilities
+
+    def predict_proba(self, X):
+        return np.tile(self.probabilities, (len(X), 1))
+
+
+@pytest.mark.parametrize("probabilities", [[-1.0, 2.0], [0.25, 0.25], [0.5 + 1j, 0.5 - 1j]])
+def test_signal_classification_rejects_invalid_probabilities(probabilities):
+    signal, labels, groups = _signals()
+    pipeline = learned.learned_pipeline(
+        learned.CSPTransformer(ch_names=CHANNELS, n_components=2),
+        _MalformedProbabilityClassifier(probabilities),
+    )
+
+    with pytest.raises(ValueError, match="probabilities"):
+        learned.cross_fit_signal_classification(
+            loso_folds(groups)[:1],
+            signal,
+            labels,
+            groups,
+            pipeline,
+            {},
+            inner=InnerSplit("subject", n_splits=3),
+            seed=4,
+        )
 
 
 @pytest.mark.parametrize(

@@ -27,6 +27,8 @@ from eegtable.model.crossfit import (
     FoldClassification,
     FoldPrediction,
     _decision_scores,
+    _prediction_probabilities,
+    _regression_predictions,
     _validate_and_resolve_inner_groups,
     _validate_binary_labels,
     _validate_outer_folds,
@@ -384,13 +386,7 @@ def _classification_prediction(
         raise ValueError(
             f"Fold {fold.index}: integer binary predictions are required for every row."
         )
-    probability = (
-        np.asarray(model.predict_proba(X), dtype=float) if hasattr(model, "predict_proba") else None
-    )
-    if probability is not None and (
-        probability.shape != (len(X), 2) or not np.isfinite(probability).all()
-    ):
-        raise ValueError(f"Fold {fold.index}: predictions require finite binary probabilities.")
+    probability = _prediction_probabilities(model, X, fold.index)
     return FoldClassification(
         fold=fold.index,
         subject=fold.subject,
@@ -411,9 +407,7 @@ def _regression_prediction(
     y: _Target,
     parameters: dict[str, object],
 ) -> FoldPrediction:
-    prediction = np.asarray(model.predict(X), dtype=float)
-    if prediction.shape != y.shape or not np.isfinite(prediction).all():
-        raise ValueError(f"Fold {fold.index}: regression predictions must be finite and aligned.")
+    prediction = _regression_predictions(model, X, fold.index)
     return FoldPrediction(
         fold=fold.index,
         subject=fold.subject,

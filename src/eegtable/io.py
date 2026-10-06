@@ -539,6 +539,7 @@ def _read_matrix(
         sep="\t",
         na_values=[_NA],
         keep_default_na=False,
+        float_precision="round_trip",
     )
 
     missing = [name for name in names if name not in frame.columns]

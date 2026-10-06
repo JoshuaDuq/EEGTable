@@ -600,8 +600,12 @@ def permutation_test(
                 ) from exc
             null_scores.append(score)
         null_arr = np.asarray(null_scores, dtype=np.float64)
-    # "At least as extreme" means the tail the metric improves into.
-    extreme = null_arr >= observed if greater_is_better else null_arr <= observed
+    # Count numerical ties inclusively, as SciPy's permutation_test does: independently
+    # computed statistics can round differently, including an identity permutation.
+    tolerance = 100.0 * np.finfo(null_arr.dtype).eps * abs(observed)
+    extreme = (
+        null_arr >= observed - tolerance if greater_is_better else null_arr <= observed + tolerance
+    )
     count_extreme = int(np.sum(extreme))
     p_value = float((count_extreme + 1) / (len(null_arr) + 1))
 

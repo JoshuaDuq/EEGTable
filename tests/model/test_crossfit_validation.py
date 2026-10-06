@@ -6,12 +6,77 @@ from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.pipeline import Pipeline
 
 from eegtable.model.crossfit import cross_fit_classification, cross_fit_regression
+from eegtable.model.estimators import logistic_pipeline, ridge_pipeline
 from eegtable.model.splits import Fold, InnerSplit
+from eegtable.model.transformers import MissingnessThreshold, PreprocessingConfig
 
 VALUES = np.arange(16, dtype=float).reshape(8, 2)
 TARGET = np.tile([0, 1], 4)
 GROUPS = np.repeat(["s1", "s2"], 4).astype(object)
 FOLD = Fold(1, np.arange(4), np.arange(4, 8))
+
+
+@pytest.mark.parametrize("task", ["regression", "classification"])
+@pytest.mark.parametrize("from_grid", [False, True])
+def test_inner_training_subjects_must_pass_missingness_policy(task, from_grid) -> None:
+    values = np.tile(np.arange(1.0, 9.0), 5)
+    X = np.column_stack([values, values**2])
+    groups = np.repeat(list("ABCDE"), 8).astype(object)
+    X[groups == "A", 0] = np.nan
+    X[np.isin(groups, ["B", "C"]), 1] = np.nan
+    config = PreprocessingConfig(max_feature_missingness=0.5, max_subject_missingness=0.5)
+    if task == "regression":
+        pipeline = ridge_pipeline(config, seed=0)
+        evaluate, target, scoring = cross_fit_regression, values, "neg_mean_squared_error"
+        grid = {"regressor__alpha": [1.0, 10.0]}
+    else:
+        pipeline = logistic_pipeline(config, seed=0)
+        evaluate, target, scoring = cross_fit_classification, (values % 2).astype(int), "accuracy"
+        grid = {"lr__C": [0.1, 1.0]}
+    if from_grid:
+        pipeline.set_params(missingness="passthrough")
+        grid["missingness"] = [MissingnessThreshold(0.5, 0.5)]
+
+    # Holding D out drops feature 2, leaving A entirely missing on the retained feature.
+    with pytest.raises(ValueError, match="Subject A has missingness 1.00"):
+        evaluate(
+            [Fold(1, np.arange(32), np.arange(32, 40))],
+            X,
+            target,
+            groups,
+            pipeline,
+            grid,
+            inner=InnerSplit("subject", n_splits=4),
+            seed=0,
+            scoring=scoring,
+        )
+
+
+def _nonfinite_score(estimator, X, y):
+    del estimator, X, y
+    return np.nan
+
+
+@pytest.mark.parametrize("extra_metric", ["not-a-score", _nonfinite_score])
+def test_inner_tuning_validates_metrics_other_than_refit(extra_metric) -> None:
+    values = np.tile(np.arange(8.0), 5)
+    X = np.column_stack([values, values**2])
+    groups = np.repeat(list("ABCDE"), 8).astype(object)
+    pipeline = ridge_pipeline(PreprocessingConfig(), seed=0)
+
+    with pytest.raises(ValueError, match="inner fold"):
+        cross_fit_regression(
+            [Fold(1, np.arange(32), np.arange(32, 40))],
+            X,
+            values,
+            groups,
+            pipeline,
+            {"regressor__alpha": [1.0, 10.0]},
+            inner=InnerSplit("subject", n_splits=4),
+            seed=0,
+            scoring={"mse": "neg_mean_squared_error", "other": extra_metric},
+            refit="mse",
+        )
 
 
 @pytest.mark.parametrize("task", ["regression", "classification"])

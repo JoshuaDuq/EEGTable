@@ -10,7 +10,7 @@ from sklearn.preprocessing import StandardScaler
 
 import eegtable.model.nulls as nulls
 from eegtable.model import _ridge_null
-from eegtable.model.aggregate import AggregationConfig
+from eegtable.model.aggregate import AggregationConfig, subject_r_scorer
 from eegtable.model.crossfit import cross_fit_regression
 from eegtable.model.estimators import ridge_grid, ridge_pipeline
 from eegtable.model.nulls import NullConfig, _prediction_statistic, permutation_test
@@ -19,6 +19,48 @@ from eegtable.model.transformers import PreprocessingConfig
 
 GROUPS = np.repeat([f"s{i}" for i in range(6)], 12).astype(object)
 RUNS = np.tile(np.repeat(["r1", "r2", "r3"], 4), 6).astype(object)
+
+
+@pytest.mark.parametrize("greater_is_better", [True, False])
+@pytest.mark.parametrize("batched", [True, False])
+def test_identity_permutations_count_as_ties(batched, greater_is_better, monkeypatch) -> None:
+    rng = np.random.default_rng(0)
+    X, y = rng.normal(size=(9, 2)), rng.normal(size=9)
+    groups = np.repeat(["A", "B", "C"], 3).astype(object)
+    folds = loso_folds(groups)
+    pipeline = Pipeline([("regressor", Ridge(alpha=1.0, solver="svd"))])
+    inner = InnerSplit("subject", n_splits=2)
+    aggregation = AggregationConfig(ci_method="none")
+    predictions = cross_fit_regression(folds, X, y, groups, pipeline, {}, inner=inner, seed=0)
+    observed = _prediction_statistic(predictions, groups, aggregation, None)
+    # Independent floating-point calculations of the same statistic can differ by an ULP.
+    observed = np.nextafter(observed, np.inf if greater_is_better else -np.inf)
+    if not batched:
+        monkeypatch.setattr(_ridge_null, "ridge_penalty", lambda *args, **kwargs: None)
+    result = permutation_test(
+        folds,
+        X,
+        y,
+        groups,
+        np.ones(9, dtype=object),
+        pipeline,
+        {},
+        observed,
+        config=NullConfig(
+            scheme="circular_shift_within_run", min_retained_trials=3, n_permutations=100
+        ),
+        trial_indices=np.tile(np.arange(3), 3),
+        inner=inner,
+        seed=0,
+        aggregation=aggregation,
+        greater_is_better=greater_is_better,
+    )
+    identity = result.changed_fractions == 0.0
+    assert identity.any()
+    np.testing.assert_allclose(result.null[identity], observed, rtol=0, atol=1e-14)
+    strict_tail = result.null >= observed if greater_is_better else result.null <= observed
+    expected = (np.count_nonzero(strict_tail | identity) + 1) / 101
+    assert result.p_value == expected
 
 
 def _design(missing: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -196,6 +238,24 @@ def test_a_ridge_null_refits_the_procedure_once_not_once_per_draw(monkeypatch) -
     calls = _count_refits(monkeypatch)
     _null(case)
     assert len(calls) == 1  # the observed statistic's own check
+
+
+def test_multi_metric_null_checks_every_metric_on_permuted_targets() -> None:
+    case = _case("loso")
+    targets = {tuple(row): value for row, value in zip(case["X"], case["y"], strict=True)}
+
+    def alignment_score(estimator, X, y):
+        del estimator
+        expected = np.array([targets[tuple(row)] for row in X])
+        return 0.0 if np.array_equal(y, expected) else np.nan
+
+    case["options"] = {
+        "scoring": {"r": subject_r_scorer(), "alignment": alignment_score},
+        "refit": "r",
+    }
+
+    with pytest.raises(RuntimeError, match="No p-value"):
+        _null(case)
 
 
 def test_a_step_that_learns_from_the_target_falls_back_to_refitting(monkeypatch) -> None:

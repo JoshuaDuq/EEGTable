@@ -17,9 +17,16 @@ import numpy.typing as npt
 from eegtable._expand import expand, expand_signal
 from eegtable._validation import blank_non_finite
 from eegtable.bands import Band
+from eegtable.power import _unit
 from eegtable.signal import TimeSeries
 from eegtable.spectra import Spectra, Window
 from eegtable.table import FeatureTable, Normalization
+
+
+def _real_values(values: Any) -> npt.NDArray[np.float64]:
+    if np.iscomplexobj(values):
+        raise TypeError("Custom measures must return real feature values.")
+    return np.asarray(values, dtype=float)
 
 
 def spectral_measure(
@@ -79,13 +86,22 @@ def spectral_measure(
     ) -> tuple[npt.NDArray[np.float64], dict[str, npt.NDArray[np.bool_]]]:
         result = kernel(blank_non_finite(data), freqs, weights)
         values, flags = result if isinstance(result, tuple) else (result, {})
-        return np.asarray(values, dtype=float), dict(flags)
+        return _real_values(values), dict(flags)
 
     return expand(
         spectra,
         adapted,
         measure=measure,
-        unit=unit,
+        unit=_unit(
+            {
+                "raw": unit,
+                "log10": f"log10({unit})",
+                "log_ratio": "log10 ratio",
+                "db": "dB",
+                "percent": "%",
+            },
+            normalize,
+        ),
         bands=bands,
         groups=groups,
         include_global=include_global,
@@ -145,7 +161,7 @@ def signal_measure(
         mask: npt.NDArray[np.bool_],
     ) -> dict[str, npt.NDArray[np.float64]]:
         del signal, mask
-        return {measure: np.asarray(kernel(trace, times), dtype=float)}
+        return {measure: _real_values(kernel(trace, times))}
 
     return expand_signal(
         series,
@@ -163,6 +179,8 @@ def signal_measure(
 def _identity(
     kernel: Callable[..., Any], parameters: Mapping[str, object] | None
 ) -> dict[str, object]:
+    if parameters is not None and "kernel" in parameters:
+        raise ValueError("parameters cannot override the kernel identity.")
     # The label is the user's choice; the kernel's own name keeps two different
     # computations under one label from being stacked as one feature.
     name = f"{getattr(kernel, '__module__', '?')}.{getattr(kernel, '__qualname__', repr(kernel))}"

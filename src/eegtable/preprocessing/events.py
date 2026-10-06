@@ -165,6 +165,8 @@ def resolve_events(
 
 
 def _bids_annotation_labels(sidecar: pd.DataFrame) -> pd.Series[Any]:
+    if "trial_type" not in sidecar:
+        return sidecar["value"].fillna("na").astype(str)
     labels = sidecar["trial_type"].copy()
     if "value" in sidecar:
         value_counts = sidecar.groupby("trial_type", dropna=False)["value"].transform(
@@ -200,7 +202,7 @@ def attach_bids_metadata(
                 )
         samples += raw.first_samp
         selected = np.isin(samples, events.original_samples)
-        if source.source == "annotations" and "trial_type" in sidecar:
+        if source.source == "annotations" and {"trial_type", "value"}.intersection(sidecar):
             ambiguous = pd.Series(samples).duplicated(keep=False).to_numpy()
             label_matches = _bids_annotation_labels(sidecar).isin(source.event_id).to_numpy()
             selected &= ~ambiguous | label_matches

@@ -85,6 +85,8 @@ def ridge_penalty(
     if (
         type(pipeline) is not Pipeline
         or metric_fn is not None
+        # The batched statistic cannot validate additional metrics on each draw.
+        or (isinstance(scoring, Mapping) and len(scoring) > 1)
         or not isinstance(_chosen_scorer(scoring, refit), _SubjectRScorer)
     ):
         return None

@@ -64,6 +64,23 @@ def test_stimulation_agrees(raw):
     np.testing.assert_array_equal(actual.get_data(), expected.get_data())
 
 
+@pytest.mark.parametrize("position", ["before", "first", "last", "after"])
+def test_public_stimulation_repair_rejects_invalid_windows(raw, position):
+    from eegtable.preprocessing.quality import repair_stimulation
+
+    samples = {
+        "before": raw.first_samp - 100,
+        "first": raw.first_samp,
+        "last": raw.last_samp,
+        "after": raw.last_samp + 100,
+    }
+    events = np.array([[samples[position], 0, 1]])
+    settings = StimulationSettings((1,), ("C3",), -0.004, 0.008, "linear")
+
+    with pytest.raises(ValueError, match="neighboring samples"):
+        repair_stimulation(raw, events, settings)
+
+
 def test_review_unknown_candidate_fails(raw):
     from eegtable.preprocessing.quality import apply_raw_review
 

@@ -38,6 +38,79 @@ def test_a_spectral_measure_reduces_each_band_window_and_channel_with_the_kernel
     assert {meta.unit for meta in table.meta} == {"V^2/Hz"}
 
 
+@pytest.mark.parametrize(
+    ("mode", "unit"),
+    [
+        ("raw", "V^2/Hz"),
+        ("log10", "log10(V^2/Hz)"),
+        ("log_ratio", "log10 ratio"),
+        ("db", "dB"),
+        ("percent", "%"),
+    ],
+)
+def test_custom_spectral_units_follow_normalization(mode, unit) -> None:
+    spectra = ef.Spectra.welch(
+        make_epochs(),
+        recording="sub-01",
+        fmin=1.0,
+        fmax=40.0,
+        windows=[ef.Window("base", -0.5, 0.0), ef.Window("stim", 0.0, 1.0)],
+    )
+    table = ef.spectral_measure(
+        spectra,
+        _peak_power,
+        measure="peak_power",
+        unit="V^2/Hz",
+        normalize=mode,
+        baseline="base" if mode in ("log_ratio", "db", "percent") else None,
+    )
+
+    assert {meta.unit for meta in table.meta} == {unit}
+
+
+def test_custom_spectral_measure_rejects_unknown_normalization() -> None:
+    spectra = ef.Spectra.welch(make_epochs(), recording="sub-01", fmin=1.0, fmax=40.0)
+
+    with pytest.raises(ValueError, match="normalize must be one of"):
+        ef.spectral_measure(spectra, _peak_power, measure="m", unit="V^2/Hz", normalize="typo")
+
+
+def test_custom_spectral_measure_rejects_complex_values() -> None:
+    spectra = ef.Spectra.welch(make_epochs(), recording="sub-01", fmin=1.0, fmax=40.0)
+
+    def complex_power(power, freqs, weights):
+        return _peak_power(power, freqs, weights) + 1j
+
+    with pytest.raises(TypeError, match="real feature values"):
+        ef.spectral_measure(spectra, complex_power, measure="m", unit="V^2/Hz")
+
+
+def test_custom_signal_measure_rejects_complex_values() -> None:
+    signal = ef.Signal.from_epochs(make_epochs(), recording="sub-01")
+
+    def complex_amplitude(trace, times):
+        return _largest_deflection(trace, times) + 1j
+
+    with pytest.raises(TypeError, match="real feature values"):
+        ef.signal_measure(
+            [signal], complex_amplitude, measure="m", unit="V", windows=[ef.Window("stim", 0, 1)]
+        )
+
+
+def test_custom_parameters_cannot_override_kernel_identity() -> None:
+    signal = ef.Signal.from_epochs(make_epochs(), recording="sub-01")
+
+    with pytest.raises(ValueError, match="kernel identity"):
+        ef.signal_measure(
+            [signal],
+            _largest_deflection,
+            measure="m",
+            unit="V",
+            windows=[ef.Window("stim", 0, 1)],
+            parameters={"kernel": "another_kernel"},
+        )
+
+
 @pytest.mark.parametrize("missing", [np.inf, -np.inf])
 def test_custom_spectral_kernels_receive_nonfinite_bins_as_nan(missing) -> None:
     power = np.array([1.0, 2.0, missing]).reshape(1, 1, 1, 3)

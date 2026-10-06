@@ -96,6 +96,16 @@ def test_epoch_table_round_trips_exactly(tmp_path) -> None:
     _assert_same_table(read_table(tmp_path / "sub-01_features.tsv"), table)
 
 
+@pytest.mark.parametrize("field", ["values", "coverage", "support"])
+def test_feature_matrices_preserve_float_precision(tmp_path, field) -> None:
+    numbers = np.random.default_rng(42).uniform(size=(3, 2))
+    table = replace(_epoch_table(), **{field: numbers})
+    path = tmp_path / "features.tsv"
+    write_table(table, path)
+
+    np.testing.assert_array_equal(getattr(read_table(path), field), numbers)
+
+
 def test_group_table_round_trips_with_its_row_labels(tmp_path) -> None:
     table = _group_table()
     write_table(table, tmp_path / "sub-01_crosstrial.tsv")

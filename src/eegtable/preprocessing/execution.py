@@ -28,7 +28,11 @@ from .pipeline import StageData, execute_numeric, result_from_state
 from .provenance import file_hash, fingerprint, identity
 from .stages import STAGES, enabled, get_stage, stage_settings
 
-POLICIES = {"review-raw": "raw_review", "review-artifact": "artifact_review"}
+POLICIES = {
+    "review-raw": "raw_review",
+    "review-artifact": "artifact_review",
+    "review-epochs": "epoch_review",
+}
 HELP = {
     "parent_id": "Identity of the reviewed checkpoint. Leave as written.",
     "fit_id": "Identity of the fitted model. Leave as written.",
@@ -235,6 +239,8 @@ def stage_identities(workflow: Workflow, source_id: str) -> dict[str, str]:
     for stage in STAGES:
         parents = {name: resolved[name] for name in stage.parents}
         settings = stage_settings(stage, workflow.config.processing)
+        if stage.review:
+            settings[POLICIES[stage.name]] = _policy(workflow, stage.name)
         if stage.name == "load" and workflow.config.input.bids is not None:
             bids = _input_provenance(workflow.config)["bids"]
             settings["bids_input"] = {
@@ -505,6 +511,7 @@ def _run_locked(
     )
     if stage == "apply-artifact":
         state = _join_branches(parents["epoch"].state, parents["review-artifact"].state)
+    state = replace(state, provenance={**state.provenance, **_policies(workflow.config.workflow)})
     decision = None
     if definition.review:
         decision = read_decision(workflow, stage, parent_ids)
@@ -543,7 +550,7 @@ def _run_locked(
 
 
 def _policies(workflow: WorkflowSettings) -> dict[str, Any]:
-    return {"raw_review": workflow.raw_review, "artifact_review": workflow.artifact_review}
+    return {name: getattr(workflow, name) for name in POLICIES.values()}
 
 
 def run_step(

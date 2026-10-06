@@ -43,6 +43,7 @@ from .events import EventData, attach_bids_metadata, resolve_events
 from .ica import fit_ica
 from .provenance import fingerprint, serializable
 from .quality import (
+    _validate_stimulation_input,
     apply_raw_review,
     detect_annotations,
     detect_bad_channels,
@@ -292,10 +293,25 @@ def _stage_repair_stim(
 ) -> StageData:
     assert settings.stimulation is not None and state.events is not None
     events = state.events.events
-    intervals = stimulation_intervals(state.raw, events, settings.stimulation)
+    _validate_stimulation_input(state.raw, events, settings.stimulation)
+    retained = events[
+        np.isin(events[:, 2], settings.stimulation.event_ids)
+        & (events[:, 0] >= state.raw.first_samp)
+        & (events[:, 0] <= state.raw.last_samp)
+    ]
+    repaired, intervals = state.raw, []
+    if len(retained):
+        stimulation = replace(
+            settings.stimulation,
+            event_ids=tuple(
+                code for code in settings.stimulation.event_ids if code in retained[:, 2]
+            ),
+        )
+        intervals = stimulation_intervals(state.raw, retained, stimulation)
+        repaired = repair_stimulation(state.raw, retained, stimulation)
     return replace(
         state,
-        raw=repair_stimulation(state.raw, events, settings.stimulation),
+        raw=repaired,
         provenance={**state.provenance, "repaired_samples": intervals},
     )
 
@@ -579,6 +595,7 @@ def preprocess(
             "settings": serializable(settings),
             "raw_review": workflow.raw_review,
             "artifact_review": workflow.artifact_review,
+            "epoch_review": workflow.epoch_review,
         },
     )
     for stage in STAGES:

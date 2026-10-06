@@ -9,12 +9,14 @@ from eegtable.preprocessing import open_workflow, preprocess, read_checkpoint, r
 from eegtable.preprocessing.config import (
     ArtifactSettings,
     AutoRejectSettings,
+    CropSettings,
     EventEpochSettings,
     EventSettings,
     FilterSettings,
     FixedEpochSettings,
     ICASettings,
     ProcessingSettings,
+    StimulationSettings,
     read_yaml,
 )
 from eegtable.preprocessing.review import save_review
@@ -51,6 +53,45 @@ def test_no_stage_matches_direct_mne(raw):
     assert result.events["retained"].all()
     np.testing.assert_array_equal(result.events["original_row"], np.arange(5))
     np.testing.assert_array_equal(result.events["original_sample"], result.events["event_sample"])
+
+
+@pytest.mark.parametrize("retained_code", [1, 2])
+def test_stimulation_repair_after_crop_preserves_original_event_ledger(retained_code):
+    raw = mne.io.RawArray(
+        np.random.default_rng(4).normal(0, 1e-6, (1, 1000)),
+        mne.create_info(["Cz"], 100, "eeg"),
+    )
+    middle_label = "stim" if retained_code == 1 else "other"
+    raw.set_annotations(mne.Annotations([1, 5, 9], [0, 0, 0], ["stim", middle_label, "stim"]))
+    event_id = {"stim": 1} if retained_code == 1 else {"stim": 1, "other": 2}
+    settings = ProcessingSettings(
+        EventEpochSettings(EventSettings("annotations", event_id), 0, 0.5),
+        crop=CropSettings(3, 7),
+        stimulation=StimulationSettings((1,), ("Cz",), -0.01, 0.02, "linear"),
+    )
+    result = preprocess(raw, settings)
+    expected = raw.copy().crop(3, 7)
+    intervals = []
+    if retained_code == 1:
+        mne.preprocessing.fix_stim_artifact(
+            expected,
+            events=np.array([[500, 0, 1]]),
+            event_id=1,
+            tmin=-0.01,
+            tmax=0.02,
+            mode="linear",
+            picks=["Cz"],
+        )
+        intervals = [(499, 502)]
+
+    np.testing.assert_array_equal(
+        result.epochs.get_data()[0], expected.get_data(start=200, stop=251)
+    )
+    assert result.epochs.events[:, 0].tolist() == [500]
+    assert result.epochs.selection.tolist() == [1]
+    assert result.events["original_sample"].tolist() == [100, 500, 900]
+    assert result.events["retained"].tolist() == [False, True, False]
+    assert result.provenance["repaired_samples"] == intervals
 
 
 def test_checkpointed_ica_review_and_autoreject_export(mixture, tmp_path):

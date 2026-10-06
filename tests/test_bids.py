@@ -293,6 +293,23 @@ def test_simultaneous_unselected_bids_event_does_not_replace_selected_metadata(d
     assert list(result.epochs.metadata["reaction_time"]) == [0.2, 0.4]
 
 
+def test_simultaneous_value_only_bids_events_keep_selected_metadata(dataset):
+    _, paths = dataset
+    events_path = paths[0].find_matching_sidecar(suffix="events", extension=".tsv")
+    events = pd.read_csv(events_path, sep="\t").drop(columns="trial_type")
+    cue = events.iloc[:1].copy()
+    cue["value"] = 3
+    cue["reaction_time"] = 9.0
+    pd.concat([events, cue]).sort_values("onset").to_csv(events_path, sep="\t", index=False)
+
+    result = bids.preprocess_bids(
+        bids.read_bids(paths[0]),
+        ProcessingSettings(EventEpochSettings(EventSettings("annotations", {"1": 1}), 0, 0.5)),
+    )
+
+    assert result.epochs.metadata["reaction_time"].tolist() == [0.2, 0.4]
+
+
 def test_simultaneous_hierarchical_bids_events_keep_the_selected_value(dataset):
     _, paths = dataset
     events_path = paths[0].find_matching_sidecar(suffix="events", extension=".tsv")

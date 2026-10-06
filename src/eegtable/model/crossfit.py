@@ -20,7 +20,7 @@ from eegtable.model.design import harmonize_fold
 from eegtable.model.execution import run_folds
 from eegtable.model.residualize import residualize_targets, residualize_within_subjects
 from eegtable.model.splits import Fold, InnerSplit, inner_cv
-from eegtable.model.transformers import _check_subject_missingness
+from eegtable.model.transformers import MissingnessThreshold, _check_subject_missingness
 from eegtable.model.tuning import (
     FoldFitError,
     _validate_grouped_estimator,
@@ -181,6 +181,8 @@ def _select_fold_local_params(
         raise ValueError("refit=False cannot return a fitted outer-fold model.")
 
     chosen_scoring = _chosen_scorer(scoring, refit)
+    metrics = dict(scoring) if isinstance(scoring, Mapping) else {None: chosen_scoring}
+    selected_metric = refit if isinstance(scoring, Mapping) else None
 
     outer_train = np.asarray(f.train, dtype=np.intp)
     train_groups = inner_groups[outer_train]
@@ -256,21 +258,20 @@ def _select_fold_local_params(
                 )
                 _check_subject_missingness(fitted, X_train, groups[train_idx])
 
-                if isinstance(chosen_scoring, _SubjectRScorer):
-                    score = chosen_scoring(fitted, X_valid, y_valid, groups[valid_idx])
-                else:
-                    scorer = check_scoring(fitted, scoring=chosen_scoring)
-                    score = float(scorer(fitted, X_valid, y_valid))
+                for name, metric in metrics.items():
+                    if isinstance(metric, _SubjectRScorer):
+                        score = metric(fitted, X_valid, y_valid, groups[valid_idx])
+                    else:
+                        scorer = check_scoring(fitted, scoring=metric)
+                        score = float(scorer(fitted, X_valid, y_valid))
+                    if not np.isfinite(score):
+                        raise ValueError(f"non-finite inner CV score for metric {name!r}.")
+                    if name == selected_metric:
+                        scores[position, split] = score
             except Exception as exc:
                 raise FoldFitError(
                     f"Outer fold {f.index}: inner fold failed for parameters {parameters}: {exc}"
                 ) from exc
-
-            if not np.isfinite(score):
-                raise FoldFitError(
-                    f"Outer fold {f.index}: non-finite inner CV score for parameters {parameters}."
-                )
-            scores[position, split] = score
 
     # The first of equally scored candidates wins, as in a grid search.
     return candidates[int(np.argmax([np.mean(row) for row in scores]))]
@@ -318,6 +319,17 @@ def _residualize(
         target, covariates, groups, train_idx, test_idx, columns=residualize_on
     )
     return X_train, X_test, y_train, y_test
+
+
+def _needs_subject_checks(pipeline: Pipeline, grid: Mapping[str, Sequence[object]]) -> bool:
+    for parameters in ParameterGrid(dict(grid)):
+        candidate = clone(pipeline).set_params(**parameters)
+        if any(
+            isinstance(step, MissingnessThreshold)
+            for step in candidate.get_params(deep=True).values()
+        ):
+            return True
+    return False
 
 
 def _fit_fold(
@@ -378,8 +390,11 @@ def _fit_fold(
         )
 
     if grid:
-        # Only eegtable's own loop can hand a scorer the subject of each validation row.
-        needs_groups = isinstance(_chosen_scorer(scoring, refit), _SubjectRScorer)
+        # Inner scorers and missingness checks need subjects, which GridSearchCV passes
+        # only to the splitter. A grid can introduce its own missingness step.
+        needs_groups = isinstance(
+            _chosen_scorer(scoring, refit), _SubjectRScorer
+        ) or _needs_subject_checks(pipeline, grid)
         if harmonization is not None or residualize_on or needs_groups:
             best_params = _select_fold_local_params(
                 f,
@@ -536,6 +551,38 @@ def _validate_outer_folds(
                 raise ValueError(f"Fold {fold.index}: train/test run overlap.")
 
 
+def _regression_predictions(
+    model: Pipeline, X: npt.NDArray[np.float64], fold: int
+) -> npt.NDArray[np.float64]:
+    predictions = np.asarray(model.predict(X))
+    if (
+        predictions.shape != (len(X),)
+        or np.iscomplexobj(predictions)
+        or not np.isfinite(predictions).all()
+    ):
+        raise ValueError(f"Fold {fold}: regression predictions must be finite and aligned.")
+    return np.asarray(predictions, dtype=np.float64)
+
+
+def _prediction_probabilities(
+    model: Pipeline, X: npt.NDArray[np.float64], fold: int
+) -> npt.NDArray[np.float64] | None:
+    if not hasattr(model, "predict_proba"):
+        return None
+    probabilities = np.asarray(model.predict_proba(X))
+    if (
+        probabilities.shape != (len(X), 2)
+        or np.iscomplexobj(probabilities)
+        or not np.isfinite(probabilities).all()
+    ):
+        raise ValueError(f"Fold {fold}: predictions require finite binary probabilities.")
+    if np.any((probabilities < 0.0) | (probabilities > 1.0)) or not np.allclose(
+        probabilities.sum(axis=1), 1.0
+    ):
+        raise ValueError(f"Fold {fold}: probabilities must be in [0, 1] and sum to one.")
+    return np.asarray(probabilities, dtype=np.float64)
+
+
 def _decision_scores(model: Pipeline, X: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
     if not hasattr(model, "decision_function"):
         return None
@@ -598,21 +645,13 @@ def _cross_fit_engine(
         model = fitted.model
 
         if task == "regression":
-            y_pred = np.asarray(model.predict(fitted.X_test))
-            if (
-                y_pred.shape != fitted.y_test.shape
-                or np.iscomplexobj(y_pred)
-                or not np.isfinite(y_pred).all()
-            ):
-                raise ValueError(
-                    f"Fold {f.index}: regression predictions must be finite and aligned."
-                )
+            y_pred = _regression_predictions(model, fitted.X_test, f.index)
             return FoldPrediction(
                 fold=f.index,
                 subject=f.subject,
                 rows=f.test,
                 y_true=np.asarray(fitted.y_test, dtype=np.float64),
-                y_pred=np.asarray(y_pred, dtype=np.float64),
+                y_pred=y_pred,
                 best_params=fitted.best_params,
             )
 
@@ -626,22 +665,7 @@ def _cross_fit_engine(
             or not np.isin(y_pred, raw_classes).all()
         ):
             raise ValueError(f"Fold {f.index}: binary predictions are required for every row.")
-        y_prob: npt.NDArray[np.float64] | None = None
-        if hasattr(model, "predict_proba"):
-            probabilities = np.asarray(model.predict_proba(fitted.X_test))
-            if (
-                probabilities.shape != (len(fitted.X_test), 2)
-                or np.iscomplexobj(probabilities)
-                or not np.isfinite(probabilities).all()
-            ):
-                raise ValueError(
-                    f"Fold {f.index}: predictions require finite binary probabilities."
-                )
-            if np.any((probabilities < 0.0) | (probabilities > 1.0)) or not np.allclose(
-                probabilities.sum(axis=1), 1.0
-            ):
-                raise ValueError(f"Fold {f.index}: probabilities must be in [0, 1] and sum to one.")
-            y_prob = np.asarray(probabilities, dtype=np.float64)
+        y_prob = _prediction_probabilities(model, fitted.X_test, f.index)
 
         return FoldClassification(
             fold=f.index,

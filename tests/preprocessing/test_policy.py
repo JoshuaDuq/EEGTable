@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from eegtable.preprocessing import open_workflow, read_checkpoint, reset_from, run_until
+from eegtable.preprocessing import list_steps, open_workflow, read_checkpoint, reset_from, run_until
 from eegtable.preprocessing.config import (
     AmplitudeSettings,
     AnnotationSettings,
@@ -45,6 +45,30 @@ def test_suggested_raw_policy_records_a_bound_decision_and_continues(raw, tmp_pa
     assert decision["spans"] == []
     assert len(decision["parent_id"]) == 64
     assert read_checkpoint(workflow, "review-raw").state.raw.info["bads"] == ["C3", "Fp1"]
+
+
+def test_resumed_raw_review_records_current_policy(raw, tmp_path):
+    config = _loud(raw, tmp_path, raw_review="required")
+    workflow = open_workflow(config)
+    assert run_until(workflow, "review-raw").state == "needs-review"
+    load_id = read_checkpoint(workflow, "load").artifact_id
+    workflow = open_workflow(replace(config, workflow=WorkflowSettings(raw_review="suggested")))
+
+    assert run_until(workflow, "epoch").state == "completed"
+    assert read_checkpoint(workflow, "epoch").state.provenance["raw_review"] == "suggested"
+    assert read_checkpoint(workflow, "load").artifact_id == load_id
+
+
+def test_changed_raw_policy_invalidates_review_and_downstream_only(raw, tmp_path):
+    config = _loud(raw, tmp_path, raw_review="suggested")
+    workflow = open_workflow(config)
+    assert run_until(workflow, "epoch").state == "completed"
+    changed = open_workflow(replace(config, workflow=WorkflowSettings(raw_review="required")))
+
+    states = {step.stage: step.state for step in list_steps(changed)}
+    assert states["annotate"] == "completed"
+    assert states["review-raw"] == "stale"
+    assert states["epoch"] == "stale"
 
 
 def test_suggested_decision_goes_stale_with_its_detector(raw, tmp_path):
