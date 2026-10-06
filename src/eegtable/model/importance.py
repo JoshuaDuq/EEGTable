@@ -10,6 +10,7 @@ import numpy.typing as npt
 from sklearn.base import is_classifier
 from sklearn.compose import ColumnTransformer
 from sklearn.inspection import permutation_importance as sklearn_perm_importance
+from sklearn.metrics import check_scoring
 from sklearn.pipeline import FeatureUnion, Pipeline
 
 from eegtable._validation import blank_non_finite
@@ -158,8 +159,14 @@ def permutation_importance(
     """
     X_arr = np.asarray(X, dtype=np.float64)
     y_arr = np.asarray(y)
+    scorer = check_scoring(model, scoring=scoring)
+
+    def score(estimator: Pipeline, values: npt.NDArray[np.float64], targets: object) -> float:
+        # Each shuffle must be scored before any in-place preprocessing changes it.
+        return float(scorer(estimator, values.copy(), targets))
+
     res = sklearn_perm_importance(
-        model, X_arr, y_arr, scoring=scoring, n_repeats=n_repeats, random_state=seed
+        model, X_arr, y_arr, scoring=score, n_repeats=n_repeats, random_state=seed
     )
     values = np.asarray(res.importances_mean, dtype=np.float64)
     if feature_names is None:

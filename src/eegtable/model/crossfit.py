@@ -250,9 +250,10 @@ def _select_fold_local_params(
             _validate_grouped_estimator(candidate)
 
             try:
+                # Fitting and preprocessing can modify arrays in place.
                 fitted = fit_untuned(
                     candidate,
-                    X_train,
+                    X_train.copy(),
                     y_train,
                     seed=seed,
                     fold=f.index,
@@ -261,10 +262,10 @@ def _select_fold_local_params(
 
                 for name, metric in metrics.items():
                     if isinstance(metric, _SubjectRScorer):
-                        score = metric(fitted, X_valid, y_valid, groups[valid_idx])
+                        score = metric(fitted, X_valid.copy(), y_valid, groups[valid_idx])
                     else:
                         scorer = check_scoring(fitted, scoring=metric)
-                        score = float(scorer(fitted, X_valid, y_valid))
+                        score = float(scorer(fitted, X_valid.copy(), y_valid))
                     if not np.isfinite(score):
                         raise ValueError(f"non-finite inner CV score for metric {name!r}.")
                     if name == selected_metric:
@@ -568,7 +569,7 @@ def _prediction_probabilities(
 ) -> npt.NDArray[np.float64] | None:
     if not hasattr(model, "predict_proba"):
         return None
-    probabilities = np.asarray(model.predict_proba(X))
+    probabilities = np.asarray(model.predict_proba(X.copy()))
     if (
         probabilities.shape != (len(X), 2)
         or np.iscomplexobj(probabilities)
@@ -585,7 +586,7 @@ def _prediction_probabilities(
 def _decision_scores(model: Pipeline, X: npt.NDArray[np.float64]) -> npt.NDArray[np.float64] | None:
     if not hasattr(model, "decision_function"):
         return None
-    scores = np.asarray(model.decision_function(X))
+    scores = np.asarray(model.decision_function(X.copy()))
     if scores.shape != (len(X),) or np.iscomplexobj(scores) or not np.isfinite(scores).all():
         raise ValueError("Binary decision scores must be finite with one value per row.")
     return np.asarray(scores, dtype=np.float64)
@@ -657,7 +658,7 @@ def _cross_fit_engine(
         raw_classes = np.asarray(getattr(model, "classes_", None))
         if np.iscomplexobj(raw_classes) or not np.array_equal(raw_classes, [0, 1]):
             raise ValueError(f"Fold {f.index}: classification requires fitted classes 0/1.")
-        y_pred = np.asarray(model.predict(fitted.X_test))
+        y_pred = np.asarray(model.predict(fitted.X_test.copy()))
         if (
             y_pred.shape != fitted.y_test.shape
             or np.iscomplexobj(y_pred)

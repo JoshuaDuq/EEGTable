@@ -593,8 +593,9 @@ def _check_subject_missingness(
     groups: npt.NDArray[np.object_],
 ) -> None:
     # Pipelines never route groups to their steps, so max_subject_missingness is applied to
-    # the fitted model instead, against the columns each missingness step kept.
-    for seen, step in _missingness_inputs(model, np.asarray(X, dtype=np.float64)):
+    # the fitted model instead, against the columns each missingness step kept. Traversing
+    # its preprocessing must not change input shared with other candidates or scorers.
+    for seen, step in _missingness_inputs(model, np.array(X, dtype=np.float64, copy=True)):
         if np.any(step.support_mask_):
             validate_subject_missingness(
                 seen[:, step.support_mask_], groups, maximum=step.max_subject_missingness

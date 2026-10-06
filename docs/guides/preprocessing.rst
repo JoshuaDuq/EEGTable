@@ -129,11 +129,16 @@ A later ``run`` reuses a checkpoint whose recipe and parents still match.
   ``status`` uses the saved source fingerprint; even ``--verify`` verifies
   checkpoint payloads rather than rereading the acquisition recording. A later
   ``run`` detects changes to that recording and refuses stale checkpoints.
+  The fingerprint includes ``info["description"]``, whose original value is
+  preserved in provenance, so corrected acquisition notes also require a reset.
 - **External inputs**: montage, event, and metadata files are hashed when
   checking checkpoint identities. Editing a file in place makes its stage
   (``prepare`` for montages, ``events`` for events or metadata) and dependent
   checkpoints stale; reset from that stage before running again. Missing
   files raise an error. Rewriting identical contents preserves reuse.
+- **Scientific packages**: PyPREP, autoreject, scikit-learn, Picard, ICLabel, and ONNX Runtime
+  versions enter the identities of the enabled stages that use them. Upgrading
+  one of these packages makes that stage and its dependent checkpoints stale.
 - **Missing acquisition reference**: ``reference.add_channels`` belongs to
   ``artifact-reference`` when artifact fitting re-references the data, so
   changing those electrodes also invalidates that reference and its fitted
@@ -399,7 +404,8 @@ Artifact Settings
   ``tstep``, ``eog_channels``, ``ecg_channel``, and ``iclabel``.
 
 **ICLabel**: ``iclabel`` takes ``threshold`` (default 0.8) and ``keep``
-(default ``[brain, other]``). It runs ICLabel on the training copy and
+(default ``[brain, other]``). It runs ICLabel on the training copy using
+the ONNX backend installed by ``preprocessing-auto`` and
 requires:
 
 - ``infomax`` or ``picard``.

@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -124,6 +125,27 @@ def test_signals_disagreeing_on_the_time_axis_raise() -> None:
     )
     with pytest.raises(ValueError, match="same time axis"):
         _run(signals=[_signal(ALPHA, 2.0), shifted])
+
+
+def test_signals_reject_a_sample_shift_at_a_large_time_origin() -> None:
+    first, second = _signal(ALPHA, 2.0), _signal(BETA, 4.0)
+    first = replace(first, times=first.times + 1001.0)
+    second = replace(second, times=second.times + 1001.0 + 1.0 / SFREQ)
+
+    with pytest.raises(ValueError, match="same time axis"):
+        _run(signals=[first, second], windows=[Window("late", 1001.0, 1002.0)])
+
+
+def test_signals_reject_close_but_distinct_sampling_frequencies() -> None:
+    first, second = _signal(ALPHA, 2.0), _signal(BETA, 4.0)
+    first = replace(first, times=first.times + 1001.0)
+    sfreq = SFREQ + 0.0005
+    second = replace(
+        second, sfreq=sfreq, times=first.times[0] + np.arange(second.times.size) / sfreq
+    )
+
+    with pytest.raises(ValueError, match="sampling frequency"):
+        _run(signals=[first, second], windows=[Window("late", 1001.0, 1002.0)])
 
 
 def test_signals_disagreeing_on_channels_raise() -> None:

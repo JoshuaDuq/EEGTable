@@ -17,7 +17,9 @@ from ._deps import require
 from .checkpoints import Checkpoint, load_checkpoint, publish_checkpoint, write_pointer
 from .checks import validate_source_destinations
 from .config import (
+    AutoRejectSettings,
     EventEpochSettings,
+    ICASettings,
     PreprocessingConfig,
     ProcessingSettings,
     WorkflowSettings,
@@ -229,6 +231,26 @@ def _input_provenance(config: PreprocessingConfig) -> dict[str, Any]:
     }
 
 
+def _scientific_packages(stage: str, settings: ProcessingSettings) -> tuple[str, ...]:
+    if stage == "detect-bads" and settings.bad_channels is not None:
+        return ("pyprep",)
+    if stage == "fit-rejection" and isinstance(settings.rejection, AutoRejectSettings):
+        return ("autoreject", "scikit-learn")
+    artifact = settings.artifact
+    if (
+        stage == "fit-artifact"
+        and artifact is not None
+        and isinstance(artifact.settings, ICASettings)
+    ):
+        packages = ["scikit-learn"]
+        if artifact.settings.method == "picard":
+            packages.append("python-picard")
+        if artifact.settings.iclabel is not None:
+            packages.extend(("mne-icalabel", "onnxruntime"))
+        return tuple(packages)
+    return ()
+
+
 def stage_identities(workflow: Workflow, source_id: str) -> dict[str, str]:
     reset = _reset_tokens(workflow)
     resolved: dict[str, str] = {}
@@ -237,6 +259,14 @@ def stage_identities(workflow: Workflow, source_id: str) -> dict[str, str]:
     # that renaming it does not mark every finished preprocessing stage stale.
     versions["eegfeat"] = version("eegtable")
     for stage in STAGES:
+        stage_versions = dict(versions)
+        if _enabled(workflow, stage.name):
+            stage_versions.update(
+                {
+                    name: version(name)
+                    for name in _scientific_packages(stage.name, workflow.config.processing)
+                }
+            )
         parents = {name: resolved[name] for name in stage.parents}
         settings = stage_settings(stage, workflow.config.processing)
         if stage.review:
@@ -269,7 +299,7 @@ def stage_identities(workflow: Workflow, source_id: str) -> dict[str, str]:
                 "settings": settings,
                 "decision": decision,
                 "reset": reset.get(stage.name),
-                "versions": versions,
+                "versions": stage_versions,
             }
         )
     return resolved

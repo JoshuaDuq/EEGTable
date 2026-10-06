@@ -435,12 +435,12 @@ def check_signals(signals: Sequence[TimeSeries], windows: Sequence[Window]) -> N
                 "recording, epoch or event identity differs. Rows are never aligned "
                 "or reindexed here."
             )
-        if not np.isclose(signal.sfreq, first.sfreq):
+        if signal.sfreq != first.sfreq:
             raise ValueError(
                 "all signals must share the same sampling frequency; got "
                 f"{first.sfreq} and {signal.sfreq} Hz."
             )
-        if signal.times.shape != first.times.shape or not np.allclose(signal.times, first.times):
+        if not np.array_equal(signal.times, first.times):
             raise ValueError("all signals must share the same time axis.")
 
 

@@ -105,13 +105,22 @@ def test_iclabel_requires_extended_infomax_and_average_reference():
         ICLabelSettings(keep=("cortex",))
 
 
-def test_iclabel_labels_every_component(mixture):
+def test_iclabel_uses_onnx_to_label_every_component(mixture, monkeypatch):
     pytest.importorskip("mne_icalabel")
+    import mne_icalabel.iclabel
+
     from eegtable.preprocessing.artifacts import reference_artifact_data
     from eegtable.preprocessing.config import FilterSettings, ICLabelSettings
     from eegtable.preprocessing.ica import fit_ica
     from eegtable.preprocessing.raw import filter_raw
 
+    classify = mne_icalabel.iclabel.iclabel_label_components
+
+    def classify_with_onnx(*args, **kwargs):
+        assert kwargs.get("backend") == "onnx"
+        return classify(*args, **kwargs)
+
+    monkeypatch.setattr(mne_icalabel.iclabel, "iclabel_label_components", classify_with_onnx)
     # ICLabel's training band, 1-100 Hz: fit_ica adds the 1 Hz high-pass.
     lowpassed = filter_raw(mixture, FilterSettings(h_freq=100.0))
     referenced = reference_artifact_data(lowpassed, "average")

@@ -113,6 +113,32 @@ def test_group_table_round_trips_with_its_row_labels(tmp_path) -> None:
     _assert_same_table(read_table(tmp_path / "sub-01_crosstrial.tsv"), table)
 
 
+@pytest.mark.parametrize("indices", [[-1], [0.5], [True], ["1"], [[1]], [3]])
+def test_reader_rejects_invalid_flag_row_positions(tmp_path, indices) -> None:
+    path = tmp_path / "features.tsv"
+    table = _epoch_table()
+    write_table(table, path)
+    sidecar_path = path.with_suffix(".json")
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar["flags"]["artifact"] = {table.names[0]: indices}
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="flag.*row positions"):
+        read_table(path)
+
+
+def test_reader_accepts_an_empty_flag_row_list(tmp_path) -> None:
+    path = tmp_path / "features.tsv"
+    table = _epoch_table()
+    write_table(table, path)
+    sidecar_path = path.with_suffix(".json")
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    sidecar["flags"]["artifact"] = {table.names[0]: []}
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+
+    assert not read_table(path).flags["artifact"].any()
+
+
 def test_read_table_accepts_the_row_id_column_written_before_the_rename(tmp_path) -> None:
     table = _epoch_table()
     path = tmp_path / "sub-01_features.tsv"

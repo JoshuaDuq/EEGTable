@@ -233,6 +233,13 @@ def _table_from_sidecar(source: Path, sidecar: Mapping[str, Any]) -> FeatureTabl
     for key, cells in sidecar["flags"].items():
         flag = np.zeros(values.shape, dtype=bool)
         for name, row_indices in cells.items():
+            if not isinstance(row_indices, list) or any(
+                type(row) is not int or not 0 <= row < values.shape[0] for row in row_indices
+            ):
+                raise ValueError(
+                    f"sidecar flag {key!r} for {name!r} requires integer row positions "
+                    f"in [0, {values.shape[0]})."
+                )
             flag[np.asarray(row_indices, dtype=int), column_index[name]] = True
         flags[key] = flag
 

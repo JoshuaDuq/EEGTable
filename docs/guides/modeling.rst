@@ -245,6 +245,13 @@ scikit-learn's `nested cross-validation example
 and `grouped split documentation
 <https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data>`_.
 
+Candidate fits, validation scores, and classification response methods receive
+separate feature arrays. This keeps their inputs unchanged when an estimator or
+transformer operates in place, as allowed by ``Ridge(copy_X=False)`` and
+``StandardScaler(copy=False)``. Permutation importance also isolates each score
+so preprocessing cannot alter later feature shuffles. Prediction intervals keep
+the test arrays separate for each fold and quantile model.
+
 Grouped fitting rejects pipeline components with their own ``cv`` parameter,
 including ``RidgeCV``, ``ElasticNetCV``, stacking, and ``RFECV``. Their internal
 splits do not receive this workflow's group labels, and preprocessing outside

@@ -147,7 +147,7 @@ def _label_components(training: Any, model: Any, settings: ICASettings) -> dict[
     assert settings.iclabel is not None
     # inplace=False keeps the classifier's verdict out of the saved ICA object.
     probabilities = np.asarray(
-        iclabel_label_components(training, model.copy(), inplace=False), dtype=float
+        iclabel_label_components(training, model.copy(), inplace=False, backend="onnx"), dtype=float
     )
     if probabilities.shape != (model.n_components_, len(ICLABEL_CLASSES)):
         raise ValueError("artifact.ica.iclabel: unexpected classifier output shape")

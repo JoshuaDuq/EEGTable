@@ -3,7 +3,14 @@ from dataclasses import replace
 import pytest
 
 from eegtable.preprocessing import list_steps, open_workflow, run_step, run_until
-from eegtable.preprocessing.config import FilterSettings
+from eegtable.preprocessing.config import (
+    ArtifactSettings,
+    AutoRejectSettings,
+    BadChannelSettings,
+    FilterSettings,
+    ICASettings,
+    ICLabelSettings,
+)
 
 from .test_execution import config_for
 
@@ -28,6 +35,90 @@ def test_source_change_requires_explicit_reset(raw, tmp_path):
     raw.save(workflow.config.input.path, fmt="double", overwrite=True)
     with pytest.raises(ValueError, match="reset"):
         run_step(workflow, "load")
+
+
+def test_source_description_change_requires_explicit_reset(raw, tmp_path):
+    from eegtable.preprocessing import read_checkpoint
+
+    raw.info["description"] = "Original acquisition notes"
+    workflow = open_workflow(config_for(raw, tmp_path))
+    run_step(workflow, "load")
+    assert read_checkpoint(workflow, "load").state.provenance["original_description"] == (
+        raw.info["description"]
+    )
+    raw.info["description"] = "Corrected acquisition notes"
+    raw.save(workflow.config.input.path, fmt="double", overwrite=True)
+
+    with pytest.raises(ValueError, match="reset"):
+        run_step(workflow, "load")
+
+
+@pytest.mark.parametrize(
+    "package,stage,field,value",
+    [
+        ("pyprep", "detect-bads", "bad_channels", BadChannelSettings()),
+        (
+            "autoreject",
+            "fit-rejection",
+            "rejection",
+            AutoRejectSettings((1,), (0.5,), 2),
+        ),
+        (
+            "scikit-learn",
+            "fit-rejection",
+            "rejection",
+            AutoRejectSettings((1,), (0.5,), 2),
+        ),
+        (
+            "scikit-learn",
+            "fit-artifact",
+            "artifact",
+            ArtifactSettings("ica", ICASettings(n_components=4)),
+        ),
+        (
+            "python-picard",
+            "fit-artifact",
+            "artifact",
+            ArtifactSettings("ica", ICASettings(method="picard")),
+        ),
+        (
+            "mne-icalabel",
+            "fit-artifact",
+            "artifact",
+            ArtifactSettings(
+                "ica", ICASettings(method="infomax", iclabel=ICLabelSettings()), "average"
+            ),
+        ),
+        (
+            "onnxruntime",
+            "fit-artifact",
+            "artifact",
+            ArtifactSettings(
+                "ica", ICASettings(method="infomax", iclabel=ICLabelSettings()), "average"
+            ),
+        ),
+    ],
+)
+def test_scientific_package_change_invalidates_owning_stage(
+    raw, tmp_path, monkeypatch, package, stage, field, value
+):
+    from eegtable.preprocessing import execution
+
+    base = config_for(raw, tmp_path)
+    workflow = open_workflow(replace(base, processing=replace(base.processing, **{field: value})))
+    installed_version = execution.version
+    monkeypatch.setattr(
+        execution, "version", lambda name: "before" if name == package else installed_version(name)
+    )
+    before = execution.stage_identities(workflow, "source")
+    monkeypatch.setattr(
+        execution, "version", lambda name: "after" if name == package else installed_version(name)
+    )
+    after = execution.stage_identities(workflow, "source")
+
+    assert before["load"] == after["load"]
+    assert before[stage] != after[stage]
+    assert before["export"] != after["export"]
 
 
 def test_disabled_filter_change_does_not_invalidate_events(raw, tmp_path):

@@ -6,6 +6,7 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from sklearn.linear_model import LogisticRegression, RidgeClassifier
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 from eegtable.model.crossfit import cross_fit_classification
@@ -28,6 +29,31 @@ def test_probability_columns_are_pinned_to_the_recorded_classes() -> None:
         assert prediction.y_prob is not None
         assert prediction.y_prob.shape[1] == len(prediction.classes)
         np.testing.assert_allclose(prediction.y_prob.sum(axis=1), 1.0)
+
+
+def test_classification_responses_receive_unmodified_test_data() -> None:
+    values = X * [2, 3, 4] + 10
+    predictions = []
+    for copy in (True, False):
+        pipeline = Pipeline(
+            [("scale", StandardScaler(copy=copy)), ("classifier", LogisticRegression())]
+        )
+        predictions.append(
+            cross_fit_classification(
+                loso_folds(GROUPS),
+                values,
+                Y,
+                GROUPS,
+                pipeline,
+                {},
+                inner=STRATIFIED,
+                seed=0,
+            )
+        )
+    for copied, inplace in zip(*predictions, strict=True):
+        np.testing.assert_array_equal(copied.y_pred, inplace.y_pred)
+        np.testing.assert_allclose(copied.y_prob, inplace.y_prob)
+        np.testing.assert_allclose(copied.y_score, inplace.y_score)
 
 
 def test_a_single_class_training_fold_raises() -> None:

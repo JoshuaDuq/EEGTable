@@ -70,7 +70,11 @@ def fingerprint(inst: Any) -> str:
     digest.update(str(inst.info["meas_date"]).encode())
     digest.update(
         canonical_json(
-            {"highpass": inst.info["highpass"], "lowpass": inst.info["lowpass"]}
+            {
+                "highpass": inst.info["highpass"],
+                "lowpass": inst.info["lowpass"],
+                "description": inst.info["description"],
+            }
         ).encode()
     )
     if hasattr(inst, "first_samp"):

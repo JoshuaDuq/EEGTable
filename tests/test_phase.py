@@ -297,6 +297,23 @@ def test_mismatched_channels_or_times_raise() -> None:
         pac(slow, shifted, windows=[WINDOW])
 
 
+def test_pac_rejects_a_sample_shift_regardless_of_time_origin() -> None:
+    slow, fast = _coupled(0.5)
+    slow = replace(slow, times=slow.times + 1000.0)
+    fast = replace(fast, times=fast.times + 1000.0 + 1.0 / SFREQ)
+
+    with pytest.raises(ValueError, match="same time axis"):
+        pac(slow, fast, windows=[Window("all", -np.inf, np.inf)])
+
+
+def test_pac_requires_the_same_sampling_frequency() -> None:
+    slow, fast = _coupled(0.5)
+    fast = replace(fast, sfreq=fast.sfreq * (1.0 + 5e-8))
+
+    with pytest.raises(ValueError, match="same sampling frequency"):
+        pac(slow, fast, windows=[WINDOW])
+
+
 def test_mismatched_pac_epochs_sampling_or_row_identity_raise() -> None:
     slow, fast = _coupled(0.5)
     fewer = BandSignal.from_arrays(

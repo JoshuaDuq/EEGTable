@@ -126,7 +126,7 @@ def _split_conformal(
     residuals = np.abs(y_train[cal_idx] - model_proper.predict(X_train[cal_idx]))
     q_hat = _compute_conformal_quantile(residuals, alpha)
 
-    y_test_pred = np.asarray(model_proper.predict(X_test), dtype=np.float64)
+    y_test_pred = np.asarray(model_proper.predict(X_test.copy()), dtype=np.float64)
     if not np.all(np.isfinite(y_test_pred)):
         raise ValueError("Test predictions must be finite.")
     return y_test_pred - q_hat, y_test_pred + q_hat
@@ -182,7 +182,7 @@ def _conformal_cv_plus(
 
         val_preds = np.asarray(model_fold.predict(X_train[val_idx]), dtype=np.float64)
         residuals = np.abs(y_train[val_idx] - val_preds)
-        test_preds = np.asarray(model_fold.predict(X_test), dtype=np.float64)
+        test_preds = np.asarray(model_fold.predict(X_test.copy()), dtype=np.float64)
         lower_chunks.append(test_preds[:, None] - residuals[None, :])
         upper_chunks.append(test_preds[:, None] + residuals[None, :])
 
@@ -261,10 +261,10 @@ def _conformal_quantile(
             y_val - np.asarray(high.predict(X_train[val_idx]), dtype=np.float64),
         )
         lower_chunks.append(
-            np.asarray(low.predict(X_test), dtype=np.float64)[:, None] - scores[None, :]
+            np.asarray(low.predict(X_test.copy()), dtype=np.float64)[:, None] - scores[None, :]
         )
         upper_chunks.append(
-            np.asarray(high.predict(X_test), dtype=np.float64)[:, None] + scores[None, :]
+            np.asarray(high.predict(X_test.copy()), dtype=np.float64)[:, None] + scores[None, :]
         )
 
     return _cv_plus_bounds(lower_chunks, upper_chunks, alpha, len(X_test))

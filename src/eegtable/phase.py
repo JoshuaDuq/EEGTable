@@ -228,6 +228,8 @@ def pac(
         The slower band, whose phase modulates. Conventionally theta or alpha.
     amplitude_signal : BandSignal
         The faster band, whose envelope is modulated. Conventionally gamma.
+        Epoch identities, channel order, time samples and sampling frequency
+        must match ``phase_signal`` exactly.
     windows : sequence of Window
         Analysis windows.
     normalize : bool, default True
@@ -256,11 +258,9 @@ def pac(
             "phase_signal and amplitude_signal must have the same shape; got "
             f"{phase_signal.analytic.shape} and {amplitude_signal.analytic.shape}."
         )
-    if phase_signal.times.shape != amplitude_signal.times.shape or not np.allclose(
-        phase_signal.times, amplitude_signal.times
-    ):
+    if not np.array_equal(phase_signal.times, amplitude_signal.times):
         raise ValueError("phase_signal and amplitude_signal must share the same time axis.")
-    if not np.isclose(phase_signal.sfreq, amplitude_signal.sfreq):
+    if phase_signal.sfreq != amplitude_signal.sfreq:
         raise ValueError(
             "phase_signal and amplitude_signal must share the same sampling frequency."
         )

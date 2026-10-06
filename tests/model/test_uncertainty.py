@@ -8,6 +8,7 @@ from sklearn.feature_selection import RFECV
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression, Ridge, RidgeCV
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.random_projection import GaussianRandomProjection
 
 from eegtable.model.uncertainty import (
@@ -17,6 +18,31 @@ from eegtable.model.uncertainty import (
 )
 
 PIPE = Pipeline([("regressor", DummyRegressor(strategy="mean"))])
+
+
+@pytest.mark.parametrize("method", ["split", "cv_plus", "quantile"])
+def test_interval_predictions_receive_unmodified_test_data(method: str) -> None:
+    rng = np.random.default_rng(3)
+    values = rng.normal(size=(80, 3)) * [2, 3, 4] + 10
+    target = values @ np.array([2, -1, 1]) + rng.normal(scale=0.2, size=80)
+    intervals = []
+    for copy in (True, False):
+        pipeline = Pipeline([("scale", StandardScaler(copy=copy)), ("model", Ridge())])
+        held_out = values[60:].copy()
+        intervals.append(
+            prediction_intervals(
+                pipeline,
+                values[:60],
+                target[:60],
+                held_out,
+                method=method,
+                cv_splits=3,
+                seed=0,
+            )
+        )
+        np.testing.assert_array_equal(held_out, values[60:])
+    np.testing.assert_allclose(intervals[0].lower, intervals[1].lower)
+    np.testing.assert_allclose(intervals[0].upper, intervals[1].upper)
 
 
 @pytest.mark.parametrize("method", ["split", "cv_plus"])

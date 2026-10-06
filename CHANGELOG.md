@@ -9,6 +9,11 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
+- Preprocessing source fingerprints include acquisition descriptions, and enabled
+  scientific stages include their optional package versions. Existing checkpoint
+  trees require resetting the load stage before reuse.
+- ICLabel explicitly uses ONNX Runtime, already required by `preprocessing-auto`,
+  so installing PyTorch cannot silently change its inference backend.
 - Welch and multitaper constructors and runner features record sampling rate and
   the exact frequency grid in their column identities, as `from_spectrum` does.
   Recompute existing PSD tables before combining them with new results.
@@ -121,6 +126,14 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Signals combined into one feature table and PAC operands require exact time
+  samples and sampling frequencies; relative tolerances could accept shifted data.
+- Model tuning, classification responses, permutation importance and prediction
+  intervals isolate reused feature arrays from in-place scikit-learn transforms.
+- Feature readers reject malformed quality-flag row positions instead of
+  truncating fractional indices or interpreting negative indices from the end.
+- Preprocessing checkpoints become stale when acquisition descriptions or
+  configured scientific package versions change, preserving current provenance.
 - ERD/ERS coverage includes the baseline's finite-input coverage before spatial
   averaging, so incomplete baselines cannot pass a full-coverage quality threshold.
 - Grouped fitting rejects active trial-wise early stopping in gradient boosting,

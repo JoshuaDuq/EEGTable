@@ -7,7 +7,9 @@ import pandas as pd
 import pytest
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.dummy import DummyRegressor
+from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from eegtable.model.aggregate import fold_results, subject_level_r
 from eegtable.model.crossfit import cross_fit_regression
@@ -125,6 +127,38 @@ def test_cross_fit_applies_target_residualization() -> None:
     raw_y_fold0 = Y[predictions[0].rows]
     assert not np.allclose(predictions[0].y_true, raw_y_fold0)
     assert np.allclose(predictions[0].y_true, 0.0, atol=1e-10)
+
+
+@pytest.mark.parametrize("inplace_step", ["regressor", "scaler"])
+def test_inner_candidates_receive_unmodified_split_data(inplace_step: str) -> None:
+    rng = np.random.default_rng(7)
+    values = rng.normal(size=(60, 3)) * [2, 3, 4] + 10
+    covariates = rng.normal(size=(60, 1))
+    target = values @ np.array([2, -1, 1]) + 2 * covariates[:, 0] + rng.normal(scale=0.2, size=60)
+    groups = np.repeat(["a", "b", "c", "d", "e"], 12).astype(object)
+    predictions = []
+    for copy in (True, False):
+        steps = [("regressor", Ridge(copy_X=copy if inplace_step == "regressor" else True))]
+        if inplace_step == "scaler":
+            steps.insert(0, ("scaler", StandardScaler(copy=copy)))
+        predictions.append(
+            cross_fit_regression(
+                loso_folds(groups),
+                values,
+                target,
+                groups,
+                Pipeline(steps),
+                {"regressor__alpha": [100.0, 0.001]},
+                inner=BY_SUBJECT,
+                seed=0,
+                covariates=covariates,
+                residualize_on=("nuisance",),
+                scoring="neg_mean_squared_error",
+            )
+        )
+    for copied, inplace in zip(*predictions, strict=True):
+        assert copied.best_params == inplace.best_params
+        np.testing.assert_allclose(copied.y_pred, inplace.y_pred)
 
 
 def test_cross_fit_regression_rejects_residualize_on_without_covariates() -> None:

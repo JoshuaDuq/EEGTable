@@ -12,7 +12,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import make_scorer
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
@@ -87,6 +87,22 @@ def test_permutation_importance_names_every_feature_it_scores() -> None:
     y = X[:, 0] * 2.0
     result = permutation_importance(PIPE.fit(X, y), X, y, n_repeats=3, seed=0)
     assert len(result.feature_names) == result.values.size == 3
+
+
+def test_permutation_scores_receive_unmodified_feature_values() -> None:
+    rng = np.random.default_rng(7)
+    values = rng.normal(size=(80, 3)) * [2, 3, 4] + 10
+    target = values @ np.array([2, -1, 1]) + rng.normal(scale=0.2, size=80)
+    importances = []
+    for copy in (True, False):
+        pipeline = Pipeline([("scale", StandardScaler(copy=copy)), ("model", Ridge())])
+        pipeline.fit(values[:60].copy(), target[:60])
+        held_out = values[60:].copy()
+        importances.append(
+            permutation_importance(pipeline, held_out, target[60:], n_repeats=4, seed=0)
+        )
+        np.testing.assert_array_equal(held_out, values[60:])
+    np.testing.assert_allclose(importances[0].values, importances[1].values)
 
 
 def test_importance_aggregates_by_a_metadata_field_not_a_name_fragment(
