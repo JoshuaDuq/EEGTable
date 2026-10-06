@@ -159,7 +159,7 @@ def test_source_glob_selects_only_the_paradigms_recordings(tmp_path):
     layout = tmp_path / "sub-0001" / "eeg" / "fastr"
     layout.mkdir(parents=True)
     for name in ("BaselineEEG_sub0001_fastr.vhdr", "ThermalPainEEGFMRI_run1_sub0001_fastr.vhdr"):
-        (layout / name).write_text("")
+        (layout / name).write_text("", encoding="utf-8")
     found = convert.find_source_files(
         tmp_path, "brainvision", "thermalactive", "fastr", "ThermalPain*_run*.vhdr"
     )

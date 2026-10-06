@@ -8,7 +8,7 @@ ROOT = Path(__file__).parents[1]
 
 
 def test_packaging_only_advertises_implemented_features() -> None:
-    configuration = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    configuration = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     optional_dependencies = configuration["project"]["optional-dependencies"]
 
     capabilities = {
@@ -21,12 +21,12 @@ def test_packaging_only_advertises_implemented_features() -> None:
     }
     for extra, package in capabilities.items():
         assert any(package in requirement for requirement in optional_dependencies[extra])
-        assert package in (ROOT / "README.md").read_text().lower()
-        assert package in (ROOT / "docs" / "install.rst").read_text().lower()
+        assert package in (ROOT / "README.md").read_text(encoding="utf-8").lower()
+        assert package in (ROOT / "docs" / "install.rst").read_text(encoding="utf-8").lower()
 
 
 def test_package_description_represents_the_full_feature_scope() -> None:
-    configuration = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    configuration = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert configuration["project"]["description"] == (
         "Labelled EEG feature extraction and modeling for MNE objects"
@@ -34,7 +34,7 @@ def test_package_description_represents_the_full_feature_scope() -> None:
 
 
 def test_ci_covers_supported_endpoints_optional_integrations_and_the_wheel() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert 'python-version: ["3.11", "3.14"]' in workflow
     assert (

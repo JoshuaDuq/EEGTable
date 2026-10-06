@@ -179,14 +179,18 @@ def _execute(args: argparse.Namespace) -> int:
 def _init(args: argparse.Namespace) -> int:
     if args.config.exists():
         raise ValueError(f"{args.config} already exists; choose another path")
-    content = resources.files("eegtable.preprocessing").joinpath("template.yaml").read_text()
+    content = (
+        resources.files("eegtable.preprocessing")
+        .joinpath("template.yaml")
+        .read_text(encoding="utf-8")
+    )
     if args.mode == "resting":
         content = (
             content[: content.index("epochs:\n")]
             + "epochs:\n  kind: fixed\n  duration: 2.0\n  overlap: 0.0\n"
             "  padding: 0.0\n  baseline: null\n  detrend: null\n"
         )
-    with args.config.open("x") as stream:
+    with args.config.open("x", encoding="utf-8") as stream:
         stream.write(content)
     print(
         f"Wrote {args.config}. Set input and output, then: eegtable preprocess check {args.config}"

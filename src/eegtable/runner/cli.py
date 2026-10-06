@@ -306,7 +306,7 @@ def _init(args: argparse.Namespace) -> int:
         print(f"eegtable: error: {path} already exists; choose another path.", file=sys.stderr)
         return 2
     template = resources.files("eegtable.runner").joinpath(_TEMPLATES[args.template])
-    path.write_text(template.read_text())
+    path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
     print(f"Wrote {path}. Set inputs.root and output.root, then run: eegtable check {path}")
     return 0
 

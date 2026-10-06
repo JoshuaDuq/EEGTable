@@ -85,7 +85,7 @@ def test_headless_review(raw, tmp_path):
     template = read_yaml(pending.steps[-1].path)
     template.update(bads=[], spans=[])
     decision = tmp_path / "decision.yaml"
-    decision.write_text(json.dumps(template))
+    decision.write_text(json.dumps(template), encoding="utf-8")
     save_review(workflow, "raw", decision)
     assert run_until(workflow, "epoch").state == "completed"
 
@@ -157,9 +157,11 @@ def test_second_run_keeps_pending_edits(raw, tmp_path):
     config = config_for(raw, tmp_path)
     workflow = open_workflow(replace(config, workflow=WorkflowSettings(raw_review="required")))
     pending = run_until(workflow).steps[-1].path
-    pending.write_text(pending.read_text().replace("bads: null", "bads: [C3]"))
+    pending.write_text(
+        pending.read_text(encoding="utf-8").replace("bads: null", "bads: [C3]"), encoding="utf-8"
+    )
     assert run_until(workflow).state == "needs-review"
-    assert "bads: [C3]" in pending.read_text()
+    assert "bads: [C3]" in pending.read_text(encoding="utf-8")
 
 
 def test_run_loads_the_source_once(raw, tmp_path, monkeypatch):
@@ -246,14 +248,17 @@ def external_input_workflow(request, raw, tmp_path):
     if request.param == "montage":
         path = tmp_path / "montage.sfp"
         positions = raw.get_montage().get_positions()["ch_pos"]
-        path.write_text("".join(f"{name} {x} {y} {z}\n" for name, (x, y, z) in positions.items()))
+        path.write_text(
+            "".join(f"{name} {x} {y} {z}\n" for name, (x, y, z) in positions.items()),
+            encoding="utf-8",
+        )
         processing = replace(config.processing, channels=ChannelSettings(montage=path))
         stage = "prepare"
     else:
         events = tmp_path / "events-eve.txt"
-        events.write_text("2250 0 1\n3500 0 1\n")
+        events.write_text("2250 0 1\n3500 0 1\n", encoding="utf-8")
         metadata = tmp_path / "metadata.tsv"
-        metadata.write_text("condition\nold\nold\n")
+        metadata.write_text("condition\nold\nold\n", encoding="utf-8")
         processing = ProcessingSettings(
             EventEpochSettings(
                 EventSettings("file", {"stimulus": 1}, path=events),
@@ -273,14 +278,14 @@ def test_external_input_change_invalidates_owning_stage(external_input_workflow)
     workflow, path, stage = external_input_workflow
     run_until(workflow, "epoch")
     if path.suffix == ".sfp":
-        lines = path.read_text().splitlines()
+        lines = path.read_text(encoding="utf-8").splitlines()
         name, x, y, z = lines[0].split()
         lines[0] = f"{name} {float(x) + 0.01} {y} {z}"
-        path.write_text("\n".join(lines) + "\n")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     elif path.suffix == ".tsv":
-        path.write_text("condition\nnew\nnew\n")
+        path.write_text("condition\nnew\nnew\n", encoding="utf-8")
     else:
-        path.write_text("2500 0 1\n3750 0 1\n")
+        path.write_text("2500 0 1\n3750 0 1\n", encoding="utf-8")
 
     states = {status.stage: status.state for status in list_steps(workflow)}
     assert states["load"] == "completed"

@@ -230,7 +230,7 @@ def load_recipe(source: str | os.PathLike[str] | Mapping[str, Any]) -> Recipe:
     if isinstance(source, Mapping):
         return _recipe_from_mapping(source)
     source = Path(source)
-    text = source.read_text()
+    text = source.read_text(encoding="utf-8")
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:

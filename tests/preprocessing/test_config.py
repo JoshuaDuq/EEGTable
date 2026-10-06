@@ -5,7 +5,8 @@ def write_config(tmp_path, extra=""):
     path = tmp_path / "preprocessing.yaml"
     path.write_text(
         "input: {path: raw.fif}\noutput: {directory: out, name: subject}\n"
-        "epochs: {kind: fixed, duration: 2.0}\n" + extra
+        "epochs: {kind: fixed, duration: 2.0}\n" + extra,
+        encoding="utf-8",
     )
     return path
 

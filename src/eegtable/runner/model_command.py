@@ -26,7 +26,7 @@ _HEADLINE = ("pearson_r", "r2", "mean_absolute_error", "balanced_accuracy", "auc
 
 
 def _score_lines(path: Path) -> list[str]:
-    summaries = json.loads(path.read_text())
+    summaries = json.loads(path.read_text(encoding="utf-8"))
     lines = ["Held-out scores, pooled over folds:"]
     for name, summary in summaries.items():
         overall = summary["overall"]
@@ -42,9 +42,11 @@ def handle(args: argparse.Namespace) -> int:
     try:
         if args.model_command == "init":
             template = (
-                resources.files("eegtable.runner").joinpath("model_template.yaml").read_text()
+                resources.files("eegtable.runner")
+                .joinpath("model_template.yaml")
+                .read_text(encoding="utf-8")
             )
-            with args.recipe.open("x") as stream:
+            with args.recipe.open("x", encoding="utf-8") as stream:
                 stream.write(template)
             print(
                 f"Wrote {args.recipe}. Set inputs, target and output, then run: "

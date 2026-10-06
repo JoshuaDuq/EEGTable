@@ -36,7 +36,8 @@ GENERIC = ["Stimulus,S  2,1,1,0", "Stimulus,S  1,300,1,0", "Stimulus,S  2,901,1,
 
 def vmrk(path, data, markers):
     path.write_text(
-        HEAD.format(data=data) + "\n".join(f"Mk{i}={m}" for i, m in enumerate(markers, 1)) + "\n"
+        HEAD.format(data=data) + "\n".join(f"Mk{i}={m}" for i, m in enumerate(markers, 1)) + "\n",
+        encoding="utf-8",
     )
 
 
@@ -45,7 +46,7 @@ def test_splice_keeps_the_derivatives_header_and_takes_the_named_markers(tmp_pat
     vmrk(fixed, "fixed.eeg", NAMED)
     vmrk(old, "sub-01_desc-bcgnet_eeg.eeg", GENERIC)
     repair.splice_markers(fixed, old)
-    text = old.read_text()
+    text = old.read_text(encoding="utf-8")
     assert "DataFile=sub-01_desc-bcgnet_eeg.eeg" in text
     assert [line.split("=", 1)[1] for line in text.splitlines() if line.startswith("Mk")] == NAMED
 
@@ -56,7 +57,7 @@ def test_splice_refuses_when_the_generic_positions_do_not_match(tmp_path):
     vmrk(old, "old.eeg", ["Stimulus,S  2,5,1,0", "Stimulus,S  1,300,1,0", "Stimulus,S  2,901,1,0"])
     with pytest.raises(ValueError, match="positions"):
         repair.splice_markers(fixed, old)
-    assert "Stimulus,S  2,5,1,0" in old.read_text()
+    assert "Stimulus,S  2,5,1,0" in old.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
@@ -128,7 +129,8 @@ def bundle(tmp_path):
         f"{stem}_events.tsv", sep="\t", index=False
     )
     Path(f"{stem}_recipe.yaml").write_text(
-        'epochs:\n  events: {source: annotations, event_id: {"Stimulus/S  1": 1}}\n'
+        'epochs:\n  events: {source: annotations, event_id: {"Stimulus/S  1": 1}}\n',
+        encoding="utf-8",
     )
     manifest = {
         "schema": 1,
@@ -138,7 +140,7 @@ def bundle(tmp_path):
         },
         "provenance": provenance,
     }
-    Path(f"{stem}_preprocessing.json").write_text(json.dumps(manifest))
+    Path(f"{stem}_preprocessing.json").write_text(json.dumps(manifest), encoding="utf-8")
     return stem
 
 
@@ -147,9 +149,9 @@ def test_bundle_repair_renames_everywhere_and_rehashes(tmp_path):
     repair.repair_bundle(Path(f"{stem}_preprocessing.json"))
     assert mne.read_epochs(f"{stem}_epo.fif", verbose=False).event_id == {"Trig_therm/T  1": 1}
     assert pd.read_csv(f"{stem}_events.tsv", sep="\t")["label"].tolist() == ["Trig_therm/T  1"] * 2
-    recipe = yaml.safe_load(Path(f"{stem}_recipe.yaml").read_text())
+    recipe = yaml.safe_load(Path(f"{stem}_recipe.yaml").read_text(encoding="utf-8"))
     assert recipe["epochs"]["events"]["event_id"] == {"Trig_therm/T  1": 1}
-    manifest = json.loads(Path(f"{stem}_preprocessing.json").read_text())
+    manifest = json.loads(Path(f"{stem}_preprocessing.json").read_text(encoding="utf-8"))
     assert manifest["provenance"]["events"]["event_id"] == {"Trig_therm/T  1": 1}
     for name, digest in manifest["files"].items():
         assert file_hash(tmp_path / name) == digest
@@ -163,7 +165,9 @@ def test_bundle_repair_restamps_the_epochs_identity(tmp_path):
     epochs = mne.read_epochs(f"{stem}_epo.fif", verbose=False)
     provenance = _upstream_provenance(Path(f"{stem}_epo.fif"), epochs)
     assert provenance is not None
-    assert provenance["identity"] == identity(json.loads(manifest_path.read_text())["provenance"])
+    assert provenance["identity"] == identity(
+        json.loads(manifest_path.read_text(encoding="utf-8"))["provenance"]
+    )
 
 
 def test_bundle_repair_preserves_other_trigger_codes(tmp_path):
@@ -180,12 +184,13 @@ def test_bundle_repair_preserves_other_trigger_codes(tmp_path):
     recipe = Path(f"{stem}_recipe.yaml")
     recipe.write_text(
         "epochs:\n  events: {source: annotations, "
-        'event_id: {"Stimulus/S  1": 1, "Stimulus/S  10": 10}}\n'
+        'event_id: {"Stimulus/S  1": 1, "Stimulus/S  10": 10}}\n',
+        encoding="utf-8",
     )
     manifest_path = Path(f"{stem}_preprocessing.json")
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["provenance"]["events"]["event_id"]["Stimulus/S  10"] = 10
-    manifest_path.write_text(json.dumps(manifest))
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     repair.repair_bundle(manifest_path)
 
@@ -197,11 +202,13 @@ def test_bundle_repair_preserves_other_trigger_codes(tmp_path):
         "Trig_therm/T  1",
         "Stimulus/S  10",
     ]
-    assert yaml.safe_load(recipe.read_text())["epochs"]["events"]["event_id"] == {
+    assert yaml.safe_load(recipe.read_text(encoding="utf-8"))["epochs"]["events"]["event_id"] == {
         "Trig_therm/T  1": 1,
         "Stimulus/S  10": 10,
     }
-    assert json.loads(manifest_path.read_text())["provenance"]["events"]["event_id"] == {
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["provenance"]["events"][
+        "event_id"
+    ] == {
         "Trig_therm/T  1": 1,
         "Stimulus/S  10": 10,
     }
@@ -218,9 +225,9 @@ def test_rename_changes_only_the_two_complete_marker_descriptions(description):
 def test_bundle_repair_refuses_colliding_event_labels_before_writing(tmp_path):
     stem = bundle(tmp_path)
     manifest_path = Path(f"{stem}_preprocessing.json")
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["provenance"]["events"]["event_id"]["Trig_therm/T  1"] = 10
-    manifest_path.write_text(json.dumps(manifest))
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     originals = {path: path.read_bytes() for path in tmp_path.iterdir()}
     with pytest.raises(ValueError, match="collid"):
         repair.repair_bundle(manifest_path)
@@ -252,7 +259,7 @@ def test_only_live_bundles_are_repaired(tmp_path):
     for folder in ("sub-01/eeg", "_superseded_v1/sub-01/eeg"):
         (tmp_path / folder).mkdir(parents=True)
         (tmp_path / folder / "sub-01_task-thermalactive_run-1_preprocessing.json").write_text(
-            '{"provenance": {"event_id": {"Stimulus/S  1": 1}}}'
+            '{"provenance": {"event_id": {"Stimulus/S  1": 1}}}', encoding="utf-8"
         )
     (tmp_path / "sub-01/eeg/._sub-01_task-thermalactive_run-1_preprocessing.json").write_bytes(
         b"\x00\x05\x16\x07"

@@ -611,7 +611,7 @@ def _statuses(recipe: Recipe, recordings: tuple[Recording, ...]) -> tuple[Record
 
 def _failure_of(recording: Recording) -> str | None:
     try:
-        failure = json.loads(recording.failure_path.read_text())
+        failure = json.loads(recording.failure_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return str(failure.get("error") or "failed") if isinstance(failure, dict) else None
@@ -701,7 +701,7 @@ def _last_failures(output_root: Path) -> dict[str, str]:
     if not log_path.exists():
         log_path = output_root / _LEGACY_RUN_LOG
     try:
-        log = json.loads(log_path.read_text())
+        log = json.loads(log_path.read_text(encoding="utf-8"))
         return {
             entry["label"]: entry.get("error") or "failed"
             for entry in log["recordings"]
@@ -1144,7 +1144,7 @@ def _upstream_provenance(source: Path, epochs: Any) -> dict[str, Any] | None:
 
 
 def _verify_upstream(manifest: Path, expected_identity: str) -> dict[str, Any]:
-    content = json.loads(manifest.read_text())
+    content = json.loads(manifest.read_text(encoding="utf-8"))
     if not isinstance(content, dict):
         raise ValueError("preprocessing manifest must contain an object")
     if identity(content["provenance"]) != expected_identity:
@@ -1197,7 +1197,7 @@ def _write_log(
 def _write_json(path: Path, content: Mapping[str, Any]) -> None:
     # Replaced whole, so a reader never sees a half-written file.
     staging = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    staging.write_text(json.dumps(content, indent=2) + "\n")
+    staging.write_text(json.dumps(content, indent=2) + "\n", encoding="utf-8")
     os.replace(staging, path)
 
 

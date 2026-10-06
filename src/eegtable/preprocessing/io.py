@@ -21,7 +21,7 @@ from .report import build_report
 
 
 def validate_bundle(manifest_path: Path) -> dict[str, Any]:
-    manifest: dict[str, Any] = json.loads(manifest_path.read_text())
+    manifest: dict[str, Any] = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema") != 1:
         raise ValueError("export: unsupported manifest schema")
     for name, digest in manifest["files"].items():

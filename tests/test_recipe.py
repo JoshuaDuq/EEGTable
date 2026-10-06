@@ -18,7 +18,7 @@ root = "out"
 
 def _load(tmp_path: Path, body: str, head: str = HEAD):
     path = tmp_path / "recipe.toml"
-    path.write_text(head + body)
+    path.write_text(head + body, encoding="utf-8")
     return load_recipe(path)
 
 
@@ -646,6 +646,6 @@ def test_broadband_decomposition_recipes_refuse_band_envelopes(tmp_path, measure
 def test_spectral_parameterization_recipe_refuses_tfr_input(tmp_path) -> None:
     problems = _problems(
         tmp_path,
-        '[spectra]\nmethod = "morlet"\n' '[[features]]\nmeasure = "spectral_parameterization"\n',
+        '[spectra]\nmethod = "morlet"\n[[features]]\nmeasure = "spectral_parameterization"\n',
     )
     assert "power spectral density" in problems

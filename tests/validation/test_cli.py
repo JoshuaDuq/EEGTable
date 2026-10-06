@@ -78,7 +78,7 @@ def workspace(eegbci_recordings: list[Recording], tmp_path_factory: pytest.TempP
         path = root / "epochs" / recording.name / f"{recording.name}_task-motor_epo.fif"
         path.parent.mkdir(parents=True)
         recording.epochs.save(path, fmt="double", overwrite=True, verbose="error")
-    (root / "recipe.toml").write_text(RECIPE)
+    (root / "recipe.toml").write_text(RECIPE, encoding="utf-8")
     return root
 
 
@@ -103,7 +103,7 @@ def test_check_validates_without_writing(workspace: Path) -> None:
 )
 def test_check_reports_a_channel_the_data_lacks(workspace: Path) -> None:
     broken = RECIPE.replace('hand = ["C3", "C4"]', 'hand = ["C3", "C4", "Nope"]')
-    (workspace / "broken.toml").write_text(broken)
+    (workspace / "broken.toml").write_text(broken, encoding="utf-8")
     result = _eegtable("check", "broken.toml", cwd=workspace)
     assert result.returncode == 1, (result.stdout, result.stderr)
     assert "Nope" in result.stdout + result.stderr

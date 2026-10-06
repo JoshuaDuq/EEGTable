@@ -14,7 +14,9 @@ author = "Joshua Duquette"
 # The package's own version, so the docs cannot name another one.
 release = next(
     line.split('"')[1]
-    for line in (PROJECT_ROOT / "src" / "eegtable" / "__init__.py").read_text().splitlines()
+    for line in (PROJECT_ROOT / "src" / "eegtable" / "__init__.py")
+    .read_text(encoding="utf-8")
+    .splitlines()
     if line.startswith("__version__")
 )
 copyright = "2026, Joshua Duquette"
@@ -200,7 +202,7 @@ html_context = {
         "api/preprocessing": ("guides/preprocessing", "Preprocessing guide"),
         "guides/modeling": ("api/model", "API reference"),
         "guides/preprocessing": ("api/preprocessing", "API reference"),
-    }
+    },
 }
 
 

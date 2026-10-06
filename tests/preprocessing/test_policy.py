@@ -38,7 +38,9 @@ def _loud(raw, tmp_path, **workflow):
 def test_suggested_raw_policy_records_a_bound_decision_and_continues(raw, tmp_path):
     workflow = open_workflow(_loud(raw, tmp_path, raw_review="suggested"))
     assert run_until(workflow, "review-raw").state == "completed"
-    decision = json.loads((workflow.workspace / "decisions" / "review-raw.yaml").read_text())
+    decision = json.loads(
+        (workflow.workspace / "decisions" / "review-raw.yaml").read_text(encoding="utf-8")
+    )
     assert decision["bads"] == ["C3", "Fp1"]
     assert decision["spans"] == []
     assert len(decision["parent_id"]) == 64

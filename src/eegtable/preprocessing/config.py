@@ -1172,7 +1172,7 @@ def read_yaml(path: Path) -> dict[str, Any]:
 
     UniqueLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, construct)
     try:
-        value = yaml.load(path.read_text(), Loader=UniqueLoader)
+        value = yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueLoader)
     except yaml.YAMLError as exc:
         raise ValueError(f"{path}: invalid YAML: {exc}") from exc
     if not isinstance(value, dict):
@@ -1414,7 +1414,8 @@ def _sources(source: Mapping[str, Any], base: Path) -> list[tuple[Path, Path]]:
     pattern = source.get("pattern")
     if not isinstance(pattern, str) or not pattern:
         raise ValueError("input.pattern: required with input.root")
-    if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
+    # anchor, not is_absolute(): Windows calls "/tmp/*.fif" relative, and glob then refuses it.
+    if Path(pattern).anchor or ".." in Path(pattern).parts:
         raise ValueError("input.pattern: must stay below input.root")
     # Hidden components are skipped: macOS leaves ._ AppleDouble files beside every file
     # on an external drive, and pathlib's glob matches them where a shell would not.

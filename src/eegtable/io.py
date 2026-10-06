@@ -317,8 +317,7 @@ def _read_targets(
     missing_descriptors = [column for column in descriptor_columns if column not in frame.columns]
     if missing_descriptors:
         raise ValueError(
-            f"{source.name} lacks descriptor columns its sidecar describes: "
-            f"{missing_descriptors}"
+            f"{source.name} lacks descriptor columns its sidecar describes: {missing_descriptors}"
         )
 
     identifiers = pd.DataFrame(table.row_ids, columns=["recording", "epoch", "event"])
@@ -360,7 +359,7 @@ def _legacy_sidecar(source: Path, sidecar: dict[str, Any]) -> dict[str, Any]:
 def _read_sidecar(source: Path) -> dict[str, Any]:
     path = source.with_suffix(".json")
     try:
-        sidecar = cast(dict[str, Any], json.loads(path.read_text()))
+        sidecar = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         # macOS writes a "._" twin beside every file on an exFAT drive, and globs find them.
         hint = (
@@ -549,13 +548,13 @@ def _read_matrix(
     uid_column = _ROW_UID if _ROW_UID in frame.columns else _LEGACY_ROW_UID
     if uid_column not in frame.columns:
         raise ValueError(
-            f"{path.name} has no {_ROW_UID} column; " "regenerate this legacy feature bundle."
+            f"{path.name} has no {_ROW_UID} column; regenerate this legacy feature bundle."
         )
 
     actual_uids = frame[uid_column].astype(str).tolist()
     if actual_uids != list(expected_uids):
         raise ValueError(
-            f"{path.name}: row identities or row order disagree " "with the JSON sidecar."
+            f"{path.name}: row identities or row order disagree with the JSON sidecar."
         )
 
     return np.asarray(
@@ -572,7 +571,7 @@ def _write_tsv(frame: pd.DataFrame, path: Path) -> None:
 
 def _write_text(text: str, path: Path) -> None:
     partial = path.with_name(path.name + ".partial")
-    partial.write_text(text)
+    partial.write_text(text, encoding="utf-8")
     os.replace(partial, path)
 
 

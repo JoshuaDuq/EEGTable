@@ -168,7 +168,7 @@ def gate_view(workflow: Workflow, stage: str) -> dict[str, Any]:
         name: require_stage(workflow, name, identities) for name in enabled_parents(workflow, stage)
     }
     parent, path = next(iter(parents.items()))
-    metadata = json.loads((path / "state.json").read_text())
+    metadata = json.loads((path / "state.json").read_text(encoding="utf-8"))
     view = {
         "stage": stage,
         "parent": parent,

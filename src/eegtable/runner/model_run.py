@@ -513,7 +513,7 @@ def _metrics(recipe: ModelRecipe, frame: pd.DataFrame) -> dict[str, Any]:
 
 
 def _write_json(path: Path, value: object) -> None:
-    path.write_text(canonical_json(value) + "\n")
+    path.write_text(canonical_json(value) + "\n", encoding="utf-8")
 
 
 def _write_benchmarks(
@@ -611,7 +611,9 @@ def _write_bundle(
         {"column_names": prepared.design.column_names, "row_semantics": recipe.inputs.rows},
     )
     resolved = serializable(recipe)
-    (directory / "resolved.yaml").write_text(yaml.safe_dump(resolved, sort_keys=True))
+    (directory / "resolved.yaml").write_text(
+        yaml.safe_dump(resolved, sort_keys=True), encoding="utf-8"
+    )
     manifest = {
         "schema_version": 1,
         "task": recipe.analysis.task,

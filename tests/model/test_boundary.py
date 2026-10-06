@@ -9,7 +9,7 @@ MODEL = pathlib.Path(__file__).parents[2] / "src" / "eegtable" / "model"
 
 
 def _imported_modules(path: pathlib.Path) -> set[str]:
-    tree = ast.parse(path.read_text())
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -31,12 +31,12 @@ def test_no_model_module_reads_toml_or_writes_files(path: pathlib.Path) -> None:
     # testable with arrays alone.
     forbidden = {"tomllib", "tomli", "logging"}
     assert not _imported_modules(path) & forbidden
-    source = path.read_text()
+    source = path.read_text(encoding="utf-8")
     assert "open(" not in source
     assert ".write_text(" not in source
 
 
 def test_top_level_eegtable_does_not_import_model() -> None:
     # Importing eegtable must not cost scikit-learn.
-    init = (MODEL.parent / "__init__.py").read_text()
+    init = (MODEL.parent / "__init__.py").read_text(encoding="utf-8")
     assert "eegtable.model" not in init

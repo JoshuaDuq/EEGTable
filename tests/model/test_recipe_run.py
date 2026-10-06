@@ -96,7 +96,7 @@ def _recipe(tmp_path, task="regression", rows="epochs"):
         "output": "results",
     }
     path = tmp_path / "model.yaml"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     return path, record
 
 
@@ -113,7 +113,7 @@ def test_model_recipe_resolves_paths_and_quality(tmp_path):
 def test_model_recipe_reads_a_minimum_support(tmp_path):
     path, record = _recipe(tmp_path)
     record["quality"]["min_support"] = 0.5
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, _ = _api()
     assert load(path).quality.min_support == 0.5
 
@@ -131,9 +131,9 @@ def test_model_recipe_refuses_invalid_settings(tmp_path, change):
         record["model"]["estimator"] = "svm"
     if change == "bad_grid":
         record["model"]["grid"] = {"regressor__alpha": []}
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     if change == "duplicate":
-        path.write_text(path.read_text() + "version: 1\n")
+        path.write_text(path.read_text(encoding="utf-8") + "version: 1\n", encoding="utf-8")
     load, _, _ = _api()
     with pytest.raises(ValueError):
         load(path)
@@ -159,7 +159,7 @@ def test_model_check_keeps_numeric_looking_groups_distinct(tmp_path, rows):
     for name, label in zip(settings["inputs"]["paths"], ["01", "1", "02", "2"], strict=True):
         source = tmp_path / name
         table = read_table(source)
-        sidecar = json.loads(source.with_suffix(".json").read_text())
+        sidecar = json.loads(source.with_suffix(".json").read_text(encoding="utf-8"))
         descriptors = pd.read_csv(source, sep="\t", usecols=sidecar["row_columns"])
         descriptors["subject_id"] = label
         write_table(table, source, rows=descriptors.drop(columns=row_key))
@@ -190,20 +190,20 @@ def test_model_check_keeps_numeric_looking_groups_distinct(tmp_path, rows):
 def test_model_run_writes_verifiable_prediction_and_quality_bundle(tmp_path, task, estimator, grid):
     path, record = _recipe(tmp_path, task)
     record["model"] = {"estimator": estimator, "grid": grid}
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, run = _api()
     result = run(load(path))
     predictions = pd.read_csv(result.output / "predictions.tsv", sep="\t")
     assert len(predictions) == 48
     assert not predictions.duplicated(["recording", "epoch", "event"]).any()
     assert predictions.y_pred.notna().all()
-    manifest = json.loads((result.output / "manifest.json").read_text())
+    manifest = json.loads((result.output / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["task"] == task
     assert manifest["provenance"]["implementation_hash"]
     assert manifest["provenance"]["software"]["scikit-learn"]
     for name, expected_hash in manifest["files"].items():
         assert hashlib.sha256((result.output / name).read_bytes()).hexdigest() == expected_hash
-    folds = json.loads((result.output / "folds.json").read_text())
+    folds = json.loads((result.output / "folds.json").read_text(encoding="utf-8"))
     assert len(folds) == 4
     for fold in folds:
         assert not set(fold["train_groups"]) & set(fold["test_groups"])
@@ -216,14 +216,14 @@ def test_model_run_writes_verifiable_prediction_and_quality_bundle(tmp_path, tas
     assert (result.output / "design_features.json").is_file()
     if task == "classification":
         np.testing.assert_allclose(predictions.probability_0 + predictions.probability_1, 1)
-    assert "overall" in json.loads((result.output / "metrics.json").read_text())
+    assert "overall" in json.loads((result.output / "metrics.json").read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize("task,estimator", [("regression", "lda"), ("classification", "svr")])
 def test_model_recipe_rejects_additional_estimators_for_the_wrong_task(tmp_path, task, estimator):
     path, record = _recipe(tmp_path, task)
     record["model"]["estimator"] = estimator
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, _ = _api()
     with pytest.raises(ValueError, match="unsupported"):
         load(path)
@@ -237,7 +237,7 @@ def test_model_check_rejects_boosting_internal_validation(tmp_path, task, early_
         "estimator": "hist_gradient_boosting",
         "grid": {"hgb__early_stopping": [early_stopping]},
     }
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, _ = _api()
     with pytest.raises(ValueError, match="early_stopping=False"):
         check(load(path))
@@ -256,7 +256,7 @@ def test_model_check_rejects_boosting_internal_validation(tmp_path, task, early_
 def test_additional_estimator_fit_errors_leave_no_completed_bundle(tmp_path, task, estimator, grid):
     path, record = _recipe(tmp_path, task)
     record["model"] = {"estimator": estimator, "grid": grid}
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, run = _api()
     with pytest.raises(ValueError, match="Fold"):
         run(load(path))
@@ -306,12 +306,12 @@ def test_model_run_supports_one_group_sample_per_participant(tmp_path):
         "output": "results",
     }
     path = tmp_path / "model.yaml"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, run = _api()
     recipe = load(path)
     assert check(recipe).n_rows == 8
     result = run(recipe)
-    metrics = json.loads((result.output / "metrics.json").read_text())
+    metrics = json.loads((result.output / "metrics.json").read_text(encoding="utf-8"))
     assert np.isfinite(metrics["overall"]["mean_absolute_error"])
     assert len(metrics["per_group"]) == 8
     assert np.isfinite(metrics["group_mean"]["mean_absolute_error"])
@@ -321,13 +321,13 @@ def test_model_recipe_svm_reports_auc_without_probabilities(tmp_path):
     path, record = _recipe(tmp_path, task="classification")
     record["model"] = {"estimator": "svm", "grid": {"svm__C": [1.0]}}
     record["validation"]["scoring"] = "roc_auc"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, run = _api()
     result = run(load(path))
     predictions = pd.read_csv(result.output / "predictions.tsv", sep="\t")
     assert "decision_score" in predictions
     assert "probability_1" not in predictions
-    metrics = json.loads((result.output / "metrics.json").read_text())
+    metrics = json.loads((result.output / "metrics.json").read_text(encoding="utf-8"))
     assert metrics["group_mean"]["auc"] > 0.9
 
 
@@ -347,9 +347,9 @@ def test_model_benchmark_uses_identical_held_out_rows_and_training_only_dummy(tm
         training_target = predictions.loc[predictions.fold != fold, "y_true"]
         expected = training_target.mean() if task == "regression" else training_target.mode()[0]
         np.testing.assert_allclose(rows.y_pred, expected)
-    folds = json.loads((result.output / "baseline_folds.json").read_text())
+    folds = json.loads((result.output / "baseline_folds.json").read_text(encoding="utf-8"))
     assert all(not fold["inner_splits"] and not fold["best_params"] for fold in folds["dummy"])
-    metrics = json.loads((result.output / "benchmark_metrics.json").read_text())
+    metrics = json.loads((result.output / "benchmark_metrics.json").read_text(encoding="utf-8"))
     if task == "regression":
         error = np.mean((dummy.y_true - dummy.y_pred) ** 2)
         assert metrics["dummy"]["overall"]["mean_squared_error"] == pytest.approx(error)
@@ -363,7 +363,7 @@ def test_model_benchmark_uses_identical_held_out_rows_and_training_only_dummy(tm
     comparison = pd.read_csv(result.output / "benchmarks.tsv", sep="\t")
     assert set(comparison.model) == {"model", "dummy"}
     assert not (result.output / "report.html").exists()
-    manifest = json.loads((result.output / "manifest.json").read_text())
+    manifest = json.loads((result.output / "manifest.json").read_text(encoding="utf-8"))
     assert {"benchmarks.tsv", "baseline_predictions.tsv"} <= set(manifest["files"])
     assert "report.html" not in manifest["files"]
 
@@ -383,7 +383,7 @@ def test_model_benchmark_includes_covariate_only_predictions(tmp_path, task, con
         )
         write_table(table, source, rows=descriptors)
     record["analysis"]["covariates"] = ["stimulus"]
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, run = _api()
     result = run(load(path))
     baselines = pd.read_csv(result.output / "baseline_predictions.tsv", sep="\t")
@@ -397,12 +397,12 @@ def test_model_recipe_accepts_training_scaled_ridge_and_subject_r(tmp_path):
     path, record = _recipe(tmp_path)
     record["model"]["estimator"] = "scaled_ridge"
     record["validation"]["scoring"] = "subject_r"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, run = _api()
     recipe = load(path)
     assert check(recipe).n_folds == 4
     result = run(recipe)
-    metrics = json.loads((result.output / "metrics.json").read_text())
+    metrics = json.loads((result.output / "metrics.json").read_text(encoding="utf-8"))
     assert np.isfinite(metrics["group_mean"]["subject_level_r"])
     assert "subject_level_r" not in metrics["overall"]
 
@@ -412,7 +412,7 @@ def test_regression_summary_weights_groups_equally_and_labels_subject_r(tmp_path
 
     path, record = _recipe(tmp_path)
     record["validation"]["scoring"] = "subject_r"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, _ = _api()
     frame = pd.DataFrame(
         {
@@ -438,7 +438,7 @@ def test_subject_r_check_refuses_constant_targets_within_a_group(tmp_path):
     descriptors["outcome"] = 1.0
     write_table(table, source, rows=descriptors)
     record["validation"]["scoring"] = "subject_r"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, _ = _api()
     with pytest.raises(ValueError, match="subject_r.*vary"):
         check(load(path))
@@ -457,7 +457,7 @@ def test_subject_r_check_requires_three_varying_targets_per_group(tmp_path, n_ro
         ].iloc[:n_rows]
         write_table(table, source, rows=descriptors)
     record["validation"]["scoring"] = "subject_r"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, _ = _api()
     if n_rows == 2:
         with pytest.raises(ValueError, match="subject_r.*three"):
@@ -471,16 +471,16 @@ def test_model_run_rejects_existing_results(tmp_path):
     load, _, run = _api()
     (tmp_path / "results").mkdir()
     sentinel = tmp_path / "results" / "sentinel.txt"
-    sentinel.write_text("preserve")
+    sentinel.write_text("preserve", encoding="utf-8")
     with pytest.raises(FileExistsError):
         run(load(path))
-    assert sentinel.read_text() == "preserve"
+    assert sentinel.read_text(encoding="utf-8") == "preserve"
 
 
 def test_model_check_rejects_insufficient_nested_training_groups(tmp_path):
     path, record = _recipe(tmp_path)
     record["validation"]["inner_splits"] = 4
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, _ = _api()
     with pytest.raises(ValueError, match="training groups"):
         check(load(path))
@@ -532,7 +532,7 @@ def test_model_cli_init_and_check(tmp_path, capsys):
 def test_model_recipe_requires_integer_version(tmp_path):
     path, record = _recipe(tmp_path)
     record["version"] = 1.0
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, _ = _api()
     with pytest.raises(ValueError, match="version"):
         load(path)
@@ -548,7 +548,7 @@ def test_external_targets_join_by_exact_sample_identity(tmp_path):
     targets.to_csv(tmp_path / "targets.tsv", sep="\t", index=False)
     record["inputs"]["targets"] = "targets.tsv"
     record["analysis"]["target"] = "external_score"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, run = _api()
     result = run(load(path))
     frame = pd.read_csv(result.output / "predictions.tsv", sep="\t")
@@ -566,7 +566,7 @@ def test_external_targets_refuse_missing_identity(tmp_path):
     )
     record["inputs"]["targets"] = "targets.tsv"
     record["analysis"]["target"] = "external_score"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, _ = _api()
     with pytest.raises(ValueError, match="exactly"):
         check(load(path))
@@ -586,7 +586,7 @@ def test_external_targets_keyed_by_another_name_show_both_sides(tmp_path):
     ).to_csv(tmp_path / "targets.tsv", sep="\t", index=False)
     record["inputs"]["targets"] = "targets.tsv"
     record["analysis"]["target"] = "external_score"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, _ = _api()
     with pytest.raises(ValueError) as error:
         check(load(path))
@@ -619,7 +619,7 @@ def test_external_group_labels_preserve_distinct_numeric_strings(tmp_path):
     targets.to_csv(tmp_path / "targets.tsv", sep="\t", index=False)
     record["inputs"]["targets"] = "targets.tsv"
     record["analysis"]["groups"] = "external_group"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, _ = _api()
     assert check(load(path)).n_groups == 4
 
@@ -627,7 +627,7 @@ def test_external_group_labels_preserve_distinct_numeric_strings(tmp_path):
 def test_model_run_leaves_no_published_bundle_after_backend_error(tmp_path):
     path, record = _recipe(tmp_path)
     record["model"]["grid"] = {"regressor__alpha": [-1.0]}
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, run = _api()
     with pytest.raises(ValueError):
         run(load(path))
@@ -637,7 +637,7 @@ def test_model_run_leaves_no_published_bundle_after_backend_error(tmp_path):
 def test_model_check_refuses_unknown_pipeline_grid_parameter(tmp_path):
     path, record = _recipe(tmp_path)
     record["model"]["grid"] = {"regressor__unknown": [1.0]}
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, _ = _api()
     with pytest.raises(ValueError, match="unknown"):
         check(load(path))
@@ -646,12 +646,12 @@ def test_model_check_refuses_unknown_pipeline_grid_parameter(tmp_path):
 def test_group_kfold_predictions_are_complete_and_reproducible(tmp_path):
     path, record = _recipe(tmp_path, task="classification")
     record["validation"].update(outer="group_kfold", outer_splits=2)
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, _, run = _api()
     first = run(load(path))
     frame = pd.read_csv(first.output / "predictions.tsv", sep="\t")
     record["output"] = "second-results"
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     second = run(load(path))
     repeated = pd.read_csv(second.output / "predictions.tsv", sep="\t")
     pd.testing.assert_frame_equal(frame, repeated)
@@ -669,7 +669,10 @@ def test_model_run_refuses_changed_provenance_during_fitting(tmp_path, monkeypat
     def mutate_after_fitting(recipe, prepared):
         predictions = predict(recipe, prepared)
         if changed == "recipe":
-            path.write_text(path.read_text() + "\n# modified during execution\n")
+            path.write_text(
+                path.read_text(encoding="utf-8") + "\n# modified during execution\n",
+                encoding="utf-8",
+            )
         elif changed == "implementation":
             monkeypatch.setattr(model_run, "implementation_hash", lambda: "modified")
         else:
@@ -686,7 +689,9 @@ def test_model_run_refuses_recipe_modified_after_loading(tmp_path):
     path, _ = _recipe(tmp_path)
     load, _, run = _api()
     recipe = load(path)
-    path.write_text(path.read_text() + "\n# modified after loading\n")
+    path.write_text(
+        path.read_text(encoding="utf-8") + "\n# modified after loading\n", encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="recipe.*changed"):
         run(recipe)
     assert not (tmp_path / "results").exists()
@@ -734,7 +739,7 @@ def test_model_bundle_preserves_canonical_identity_when_used_in_analysis(
             descriptors = descriptors.drop(columns="epoch" if rows == "epochs" else "group")
             write_table(table, source, rows=descriptors)
     record["analysis"][role] = name
-    path.write_text(yaml.safe_dump(record))
+    path.write_text(yaml.safe_dump(record), encoding="utf-8")
     load, check, run = _api()
     recipe = load(path)
     original = reader(paths)

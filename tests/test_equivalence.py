@@ -35,7 +35,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(scope="module")
 def manifest() -> dict[str, Any]:
-    return json.loads((FIXTURES / "manifest.json").read_text())
+    return json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")

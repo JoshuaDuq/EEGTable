@@ -134,11 +134,11 @@ def write(
     archive = root / "runs" / run_id
     archive.mkdir(parents=True)
     text = json.dumps(payload, indent=1) + "\n"
-    (archive / "results.json").write_text(text)
-    results.write_text(text)
-    (root / "summary.inc").write_text(_summary(payload))
-    (root / "scorecard.inc").write_text(_scorecard(merged))
-    (root / "results.inc").write_text(_results(merged))
+    (archive / "results.json").write_text(text, encoding="utf-8")
+    results.write_text(text, encoding="utf-8")
+    (root / "summary.inc").write_text(_summary(payload), encoding="utf-8")
+    (root / "scorecard.inc").write_text(_scorecard(merged), encoding="utf-8")
+    (root / "results.inc").write_text(_results(merged), encoding="utf-8")
 
 
 def _collapse(rows: Iterable[Row]) -> list[Row]:
@@ -228,7 +228,7 @@ def _scorecard(rows: list[dict[str, Any]]) -> str:
     text = "\n".join(lines) + "\n"
     if untested:
         listed = ", ".join(f"``{name}``" for name in untested)
-        text += "\n**Covered by unit tests only, not yet by a real-data check:** " f"{listed}.\n"
+        text += f"\n**Covered by unit tests only, not yet by a real-data check:** {listed}.\n"
     return text
 
 

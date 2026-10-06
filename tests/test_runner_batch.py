@@ -35,7 +35,8 @@ def test_explicit_channel_names_respect_recipe_bad_channel_exclusion(tmp_path, e
     path.write_text(
         '[inputs]\nroot = "."\npicks = ["Fz", "Cz"]\n'
         f"exclude_bads = {str(exclude_bads).lower()}\n"
-        '[output]\nroot = "out"\n' + POWER
+        '[output]\nroot = "out"\n' + POWER,
+        encoding="utf-8",
     )
 
     selected = load_epochs(source, load_recipe(path).inputs)
@@ -45,7 +46,9 @@ def test_explicit_channel_names_respect_recipe_bad_channel_exclusion(tmp_path, e
 
 def _recipe(tmp_path: Path, body: str, output: str = "out"):
     path = tmp_path / "recipe.toml"
-    path.write_text(f'[inputs]\nroot = "data"\n\n[output]\nroot = "{output}"\n\n{body}')
+    path.write_text(
+        f'[inputs]\nroot = "data"\n\n[output]\nroot = "{output}"\n\n{body}', encoding="utf-8"
+    )
     return load_recipe(path)
 
 
@@ -124,7 +127,10 @@ def test_epoch_metadata_can_be_left_out(tmp_path) -> None:
     recipe = _recipe(tmp_path, POWER)
     path = recipe.path
     path.write_text(
-        path.read_text().replace('root = "out"', 'root = "out"\nepoch_metadata = false')
+        path.read_text(encoding="utf-8").replace(
+            'root = "out"', 'root = "out"\nepoch_metadata = false'
+        ),
+        encoding="utf-8",
     )
 
     run(load_recipe(path))
@@ -149,7 +155,9 @@ def test_sidecar_records_where_the_features_came_from(tmp_path) -> None:
 
     run(recipe)
 
-    sidecar = json.loads(_features_path(tmp_path, "sub-01").with_suffix(".json").read_text())
+    sidecar = json.loads(
+        _features_path(tmp_path, "sub-01").with_suffix(".json").read_text(encoding="utf-8")
+    )
     provenance = sidecar["provenance"]
     assert provenance["input"] == str(tmp_path / "data/sub-01/eeg/sub-01_task-rest_epo.fif")
     assert provenance["recipe_sha256"] == hashlib.sha256(recipe.text.encode()).hexdigest()
@@ -161,7 +169,9 @@ def test_channels_marked_bad_are_left_out_by_default(tmp_path) -> None:
 
     run(_recipe(tmp_path, POWER))
 
-    sidecar = json.loads(_features_path(tmp_path, "sub-01").with_suffix(".json").read_text())
+    sidecar = json.loads(
+        _features_path(tmp_path, "sub-01").with_suffix(".json").read_text(encoding="utf-8")
+    )
     assert sidecar["provenance"]["channels"] == ["F3", "F4", "Cz", "Pz"]
 
 
@@ -171,7 +181,7 @@ def test_run_log_records_every_recording(tmp_path) -> None:
 
     run(recipe)
 
-    log = json.loads((tmp_path / "out/eegtable_run.json").read_text())
+    log = json.loads((tmp_path / "out/eegtable_run.json").read_text(encoding="utf-8"))
     assert log["recipe_text"] == recipe.text
     assert [(r["label"], r["success"]) for r in log["recordings"]] == [
         ("sub-01_task-rest", True),
@@ -201,7 +211,7 @@ def test_a_failing_recording_does_not_stop_the_others(tmp_path) -> None:
     assert not result.ok
     assert _features_path(tmp_path, "sub-01").exists()
     assert not _features_path(tmp_path, "sub-02").exists()
-    log = json.loads((tmp_path / "out/eegtable_run.json").read_text())
+    log = json.loads((tmp_path / "out/eegtable_run.json").read_text(encoding="utf-8"))
     assert "F3" in log["recordings"][1]["error"]
 
 
@@ -283,7 +293,8 @@ def test_inputs_that_would_share_outputs_are_rejected(tmp_path) -> None:
     save_epochs(tmp_path / "data/sub-01-epo.fif")
     recipe = tmp_path / "recipe.toml"
     recipe.write_text(
-        '[inputs]\nroot = "data"\npattern = "*epo.fif"\n\n[output]\nroot = "out"\n\n' + POWER
+        '[inputs]\nroot = "data"\npattern = "*epo.fif"\n\n[output]\nroot = "out"\n\n' + POWER,
+        encoding="utf-8",
     )
 
     with pytest.raises(RunError, match="sub-01"):
@@ -487,7 +498,8 @@ def test_comments_and_repointed_inputs_do_not_make_results_stale(tmp_path) -> No
     path = tmp_path / "recipe.toml"
     path.write_text(
         '# repointed after the move\n[inputs]\nroot = "moved"\npattern = "**/*_epo.fif"\n\n'
-        '[output]\nroot = "out"\n\n' + POWER
+        '[output]\nroot = "out"\n\n' + POWER,
+        encoding="utf-8",
     )
 
     assert set(_states(load_recipe(path)).values()) == {"done"}
@@ -554,7 +566,7 @@ def test_resume_computes_only_the_recordings_without_results(tmp_path) -> None:
     assert [r.label for r in result.recordings] == ["sub-02_task-rest"]
     assert _features_path(tmp_path, "sub-01").read_bytes() == before
     assert set(_states(recipe).values()) == {"done"}
-    log = json.loads((tmp_path / "out/eegtable_run.json").read_text())
+    log = json.loads((tmp_path / "out/eegtable_run.json").read_text(encoding="utf-8"))
     assert log["skipped"] == ["sub-01_task-rest"]
 
 
@@ -622,7 +634,7 @@ def test_workers_compute_the_same_tables_as_one_process(tmp_path) -> None:
                 read_table(tmp_path / "parallel" / name).values,
                 read_table(tmp_path / "serial" / name).values,
             )
-    log = json.loads((tmp_path / "parallel/eegtable_run.json").read_text())
+    log = json.loads((tmp_path / "parallel/eegtable_run.json").read_text(encoding="utf-8"))
     assert [r["label"] for r in log["recordings"]] == [r.label for r in serial.recordings]
 
 
@@ -665,7 +677,7 @@ def _work_or_crash(recording, *args):
     # module level, so spawned workers import it by name, and with it an unpatched batch.
     from eegtable.runner.batch import _work
 
-    with recording.source.with_suffix(".attempts").open("a") as attempts:
+    with recording.source.with_suffix(".attempts").open("a", encoding="utf-8") as attempts:
         attempts.write("attempt\n")
     if recording.label.startswith("sub-02"):
         os._exit(1)
@@ -686,7 +698,7 @@ def test_a_worker_process_that_dies_does_not_rerun_submitted_recordings(tmp_path
     assert outcome["sub-03_task-rest"].success
     attempts = list((tmp_path / "data").rglob("*.attempts"))
     assert len(attempts) == 3
-    assert all(path.read_text() == "attempt\n" for path in attempts)
+    assert all(path.read_text(encoding="utf-8") == "attempt\n" for path in attempts)
     assert not result.ok
     assert outcome["sub-02_task-rest"].recording.failure_path.exists()
 
@@ -708,13 +720,13 @@ def test_the_run_log_is_written_after_every_recording(tmp_path) -> None:
 
     class Watcher(JsonReporter):
         def recording_done(self, label, success, message):
-            log = json.loads((tmp_path / "out/eegtable_run.json").read_text())
+            log = json.loads((tmp_path / "out/eegtable_run.json").read_text(encoding="utf-8"))
             seen.append([entry["label"] for entry in log["recordings"]])
 
     run(_recipe(tmp_path, POWER), reporter=Watcher(StringIO()))
 
     assert seen == [["sub-01_task-rest"], ["sub-01_task-rest", "sub-02_task-rest"]]
-    log = json.loads((tmp_path / "out/eegtable_run.json").read_text())
+    log = json.loads((tmp_path / "out/eegtable_run.json").read_text(encoding="utf-8"))
     assert log["finished"] is True
 
 
@@ -737,7 +749,9 @@ def test_a_failure_is_kept_beside_the_recordings_results(tmp_path) -> None:
     run(recipe)
     (tmp_path / "out/eegtable_run.json").unlink()
 
-    failed = json.loads((tmp_path / "out/sub-02/eeg/sub-02_task-rest_failed.json").read_text())
+    failed = json.loads(
+        (tmp_path / "out/sub-02/eeg/sub-02_task-rest_failed.json").read_text(encoding="utf-8")
+    )
 
     assert "F3" in failed["error"] and failed["traceback"]
     assert {e.label: e.state for e in status(recipe)}["sub-02_task-rest"] == "failed"

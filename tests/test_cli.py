@@ -27,7 +27,9 @@ DB_WITHOUT_BASELINE = (
 
 def _recipe(tmp_path: Path, body: str = POWER) -> Path:
     path = tmp_path / "recipe.toml"
-    path.write_text(f'[inputs]\nroot = "data"\n\n[output]\nroot = "out"\n\n{body}')
+    path.write_text(
+        f'[inputs]\nroot = "data"\n\n[output]\nroot = "out"\n\n{body}', encoding="utf-8"
+    )
     return path
 
 
@@ -207,10 +209,10 @@ def test_init_writes_a_recipe_that_loads(tmp_path) -> None:
 
 def test_init_does_not_overwrite_an_existing_file(tmp_path, capsys) -> None:
     path = tmp_path / "recipe.toml"
-    path.write_text("# mine\n")
+    path.write_text("# mine\n", encoding="utf-8")
 
     assert main(["init", str(path)]) == 2
-    assert path.read_text() == "# mine\n"
+    assert path.read_text(encoding="utf-8") == "# mine\n"
 
 
 def test_the_package_runs_as_a_module() -> None:
@@ -358,10 +360,10 @@ def test_each_init_template_checks_cleanly_on_real_epochs(tmp_path, capsys, temp
     path = tmp_path / "recipe.toml"
 
     assert main(["init", str(path), "--template", template]) == 0
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     text = text.replace('root = "derivatives/preprocessed"', 'root = "data"', 1)
     text = text.replace('root = "derivatives/eegtable"', 'root = "out"', 1)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
 
     assert main(["check", str(path)]) == 0, capsys.readouterr()
 

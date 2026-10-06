@@ -29,7 +29,7 @@ root = "out"
 
 def features(tmp_path, body: str, epochs: mne.EpochsArray | None = None):
     path = tmp_path / "recipe.toml"
-    path.write_text(HEAD + body)
+    path.write_text(HEAD + body, encoding="utf-8")
     return compute_features(
         make_epochs() if epochs is None else epochs,
         load_recipe(path),
@@ -296,7 +296,8 @@ def test_each_entry_is_reported_as_a_step(tmp_path) -> None:
     path = tmp_path / "recipe.toml"
     path.write_text(
         HEAD
-        + '[[features]]\nmeasure = "integrated_band_power"\n\n[[features]]\nmeasure = "variance"\n'
+        + '[[features]]\nmeasure = "integrated_band_power"\n\n[[features]]\nmeasure = "variance"\n',
+        encoding="utf-8",
     )
     steps: list[tuple[str, int, int]] = []
 
@@ -375,7 +376,7 @@ def test_welch_columns_ignore_settings_only_other_methods_read(tmp_path) -> None
     # Morlet's cycles and multitaper's bandwidth never touch a Welch estimate; if they named
     # its columns, changing one of their defaults would rename every Welch feature.
     path = tmp_path / "recipe.toml"
-    path.write_text(HEAD + WELCH_ALPHA)
+    path.write_text(HEAD + WELCH_ALPHA, encoding="utf-8")
     recipe = load_recipe(path)
     others = replace(
         recipe,
@@ -691,7 +692,9 @@ def test_trial_labels_exposes_the_runner_grouping(tmp_path, grouping, expected) 
     import eegtable.runner.compute as runner_compute
 
     path = tmp_path / "recipe.toml"
-    path.write_text(HEAD + f'[trials]\n{grouping}\n[[features]]\nmeasure = "itpc"\n')
+    path.write_text(
+        HEAD + f'[trials]\n{grouping}\n[[features]]\nmeasure = "itpc"\n', encoding="utf-8"
+    )
     epochs = make_epochs(n_epochs=4)
     recipe = load_recipe(path)
     assert runner_compute.trial_labels(epochs, recipe) == expected

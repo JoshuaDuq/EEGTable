@@ -14,7 +14,7 @@ def test_quality_report_writes_cohort_feature_and_definition_evidence(tmp_path):
     path = tmp_path / "quality.html"
     result = write_quality_report(table, descriptors, path, by=("condition",))
     assert Path(result) == path
-    html = path.read_text()
+    html = path.read_text(encoding="utf-8")
     assert "Cohort quality" in html
     assert "Feature quality" in html
     assert "Feature definitions" in html
@@ -103,7 +103,7 @@ def test_quality_report_includes_recording_retention_without_mutating_evidence(t
         recording_summary=summary,
         quality=QualityPolicy(0.8),
     )
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     assert "Recording and preprocessing quality" in text
     assert "upstream_original_events" in text
     assert "artifact_decision" in text
@@ -118,13 +118,13 @@ def test_recording_quality_checks_bundle_payloads_and_saved_upstream_identity(tm
 
     path = _linked_bundle(tmp_path)
     sidecar_path = path.with_suffix(".json")
-    sidecar = json.loads(sidecar_path.read_text())
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     sidecar["provenance"]["upstream"]["provenance"]["retained"] = 1
-    sidecar_path.write_text(json.dumps(sidecar))
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
     with pytest.raises(ValueError, match="identity mismatch"):
         recording_quality([path])
     path = _linked_bundle(tmp_path)
-    path.write_text(path.read_text() + "changed")
+    path.write_text(path.read_text(encoding="utf-8") + "changed", encoding="utf-8")
     with pytest.raises(ValueError, match="checksum"):
         recording_quality([path])
 
@@ -140,9 +140,9 @@ def test_recording_quality_deduplicates_consistent_evidence_and_rejects_conflict
     other.mkdir()
     alternate = _linked_bundle(other)
     sidecar_path = alternate.with_suffix(".json")
-    sidecar = json.loads(sidecar_path.read_text())
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     sidecar["provenance"]["n_epochs"] = 4
-    sidecar_path.write_text(json.dumps(sidecar))
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
     with pytest.raises(ValueError, match="conflicting"):
         recording_quality([path, alternate])
 
@@ -154,4 +154,4 @@ def test_report_cli_includes_saved_recording_evidence(tmp_path):
     recipe, _, _ = _extract(tmp_path)
     path = tmp_path / "quality.html"
     assert main(["report", str(recipe.path), str(path), "--by", "event"]) == 0
-    assert "Recording and preprocessing quality" in path.read_text()
+    assert "Recording and preprocessing quality" in path.read_text(encoding="utf-8")

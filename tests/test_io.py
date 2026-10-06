@@ -18,9 +18,9 @@ ALPHA = Band("alpha", 8.0, 13.0)
 def _resign(path: Path) -> None:
     """Re-sign a deliberately malformed fixture to exercise schema checks."""
     sidecar_path = path.with_suffix(".json")
-    sidecar = json.loads(sidecar_path.read_text())
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     sidecar["files"] = {name: file_hash(path.parent / name) for name in sidecar["files"]}
-    sidecar_path.write_text(json.dumps(sidecar))
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
 
 
 def _meta(**overrides: object) -> FeatureMeta:
@@ -108,7 +108,10 @@ def test_read_table_accepts_the_row_id_column_written_before_the_rename(tmp_path
     path = tmp_path / "sub-01_features.tsv"
     write_table(table, path)
     for file in (path, tmp_path / "sub-01_features_coverage.tsv"):
-        file.write_text(file.read_text().replace("__eegtable_row_id", "__eegfeat_row_id", 1))
+        file.write_text(
+            file.read_text(encoding="utf-8").replace("__eegtable_row_id", "__eegfeat_row_id", 1),
+            encoding="utf-8",
+        )
     _resign(path)
 
     _assert_same_table(read_table(path), table)
@@ -178,14 +181,14 @@ def test_group_rows_are_keyed_by_their_labels(tmp_path) -> None:
 def test_missing_values_are_written_as_bids_na(tmp_path) -> None:
     write_table(_epoch_table(), tmp_path / "t.tsv")
 
-    second_row = (tmp_path / "t.tsv").read_text().splitlines()[1].split("\t")
+    second_row = (tmp_path / "t.tsv").read_text(encoding="utf-8").splitlines()[1].split("\t")
     assert second_row[-1] == "n/a"
 
 
 def test_sidecar_describes_every_column_with_its_band_bounds(tmp_path) -> None:
     write_table(_epoch_table(), tmp_path / "t.tsv", provenance={"input": "sub-01_epo.fif"})
 
-    sidecar = json.loads((tmp_path / "t.json").read_text())
+    sidecar = json.loads((tmp_path / "t.json").read_text(encoding="utf-8"))
     power, slope = sidecar["columns"]
     assert power["name"] == _meta().name
     assert power["band"] == {"name": "alpha", "fmin": 8.0, "fmax": 13.0}
@@ -196,9 +199,9 @@ def test_sidecar_describes_every_column_with_its_band_bounds(tmp_path) -> None:
 def test_reader_requires_the_descriptor_type_manifest(tmp_path) -> None:
     path = tmp_path / "features.tsv"
     write_table(_epoch_table(), path)
-    sidecar = json.loads(path.with_suffix(".json").read_text())
+    sidecar = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
     del sidecar["row_text_columns"]
-    path.with_suffix(".json").write_text(json.dumps(sidecar))
+    path.with_suffix(".json").write_text(json.dumps(sidecar), encoding="utf-8")
 
     with pytest.raises(ValueError, match="descriptor type manifest.*regenerate"):
         read_table(path)
@@ -227,9 +230,9 @@ def test_rejects_descriptor_names_that_cannot_round_trip(tmp_path, columns) -> N
 def test_read_dataset_rejects_duplicate_descriptor_names_in_sidecar(tmp_path) -> None:
     path = tmp_path / "features.tsv"
     write_table(_epoch_table(), path, rows=pd.DataFrame({"rating": [1, 2, 3]}))
-    sidecar = json.loads(path.with_suffix(".json").read_text())
+    sidecar = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
     sidecar["row_columns"].append("rating")
-    path.with_suffix(".json").write_text(json.dumps(sidecar))
+    path.with_suffix(".json").write_text(json.dumps(sidecar), encoding="utf-8")
 
     with pytest.raises(ValueError, match="descriptor columns"):
         io_module.read_dataset([path])
@@ -455,7 +458,7 @@ def test_a_macos_resource_file_is_named_instead_of_failing_to_decode(tmp_path) -
 def test_a_sidecar_that_is_not_json_is_named(tmp_path) -> None:
     path = tmp_path / "features.tsv"
     write_table(_epoch_table(), path, rows=pd.DataFrame({"event": ["left", "right", "left"]}))
-    path.with_suffix(".json").write_text("{ not json")
+    path.with_suffix(".json").write_text("{ not json", encoding="utf-8")
     with pytest.raises(ValueError, match=r"features\.json"):
         read_table(path)
 
@@ -463,25 +466,28 @@ def test_a_sidecar_that_is_not_json_is_named(tmp_path) -> None:
 def _with_inline_computations(path: Path) -> None:
     """Turn a bundle into a schema 2 one, which wrote each column's computation in full."""
     sidecar_path = path.with_suffix(".json")
-    sidecar = json.loads(sidecar_path.read_text())
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     shared = sidecar.pop("computations")
     for column in sidecar["columns"]:
         column["computation"] = shared[column["computation"]]
     sidecar["schema"] = 2
-    sidecar_path.write_text(json.dumps(sidecar))
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
 
 
 def _as_written_by_eegfeat(path: Path) -> None:
     """Turn a bundle into one eegfeat wrote: no schema, no manifests, the old names."""
     _with_inline_computations(path)
     for file in (path, path.with_name(f"{path.stem}_coverage.tsv")):
-        file.write_text(file.read_text().replace("__eegtable_row_id", "__eegfeat_row_id", 1))
+        file.write_text(
+            file.read_text(encoding="utf-8").replace("__eegtable_row_id", "__eegfeat_row_id", 1),
+            encoding="utf-8",
+        )
     sidecar_path = path.with_suffix(".json")
-    sidecar = json.loads(sidecar_path.read_text())
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     for key in ("schema", "files", "row_text_columns"):
         del sidecar[key]
     sidecar["eegfeat_version"] = sidecar.pop("eegtable_version")
-    sidecar_path.write_text(json.dumps(sidecar))
+    sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
 
 
 def test_a_bundle_written_by_eegfeat_reads_back_unchanged(tmp_path) -> None:
@@ -526,7 +532,7 @@ def test_a_computation_shared_by_many_columns_is_written_once(tmp_path) -> None:
     # Pairwise connectivity repeats one computation, channel list included, across
     # thousands of columns; written per column, a 64-channel sidecar reached 51 MB.
     write_table(_epoch_table(), tmp_path / "t.tsv")
-    sidecar = json.loads((tmp_path / "t.json").read_text())
+    sidecar = json.loads((tmp_path / "t.json").read_text(encoding="utf-8"))
     keys = {column["computation"] for column in sidecar["columns"]}
     assert len(keys) == 1 and set(sidecar["computations"]) == keys
 

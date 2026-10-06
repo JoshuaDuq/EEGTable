@@ -311,7 +311,7 @@ def test_runner_reproduces_the_api_on_real_recordings(
         # Double precision, so what the runner reads is exactly what the API saw;
         # MNE's default single precision would perturb every value at 1e-7.
         recording.epochs.save(path, fmt="double", overwrite=True, verbose="error")
-    (tmp_path / "recipe.toml").write_text(RECIPE)
+    (tmp_path / "recipe.toml").write_text(RECIPE, encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
     result = run(load_recipe(Path("recipe.toml")))

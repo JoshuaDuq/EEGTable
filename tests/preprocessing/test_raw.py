@@ -82,7 +82,7 @@ def test_montage_from_a_custom_file(raw, tmp_path):
         for name, point in (("FidNz", "nasion"), ("FidT9", "lpa"), ("FidT10", "rpa"))
     ]
     path = tmp_path / "electrodes.sfp"
-    path.write_text("\n".join(lines) + "\n")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     bare = raw.copy()
     bare.set_montage(None)
     result = prepare_channels(bare, ChannelSettings(montage=path))

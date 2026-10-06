@@ -37,7 +37,8 @@ def test_extract_computes_what_the_runner_writes(tmp_path) -> None:
         '[inputs]\nroot = "data"\n\n[output]\nroot = "out"\n\n'
         "[windows]\nbase = [-0.5, 0.0]\nstim = [0.25, 1.25]\n\n"
         '[[features]]\nmeasure = "integrated_band_power"\nbands = ["alpha"]\n\n'
-        '[[features]]\nmeasure = "erds_mean"\nbands = ["alpha"]\nbaseline = "base"\n'
+        '[[features]]\nmeasure = "erds_mean"\nbands = ["alpha"]\nbaseline = "base"\n',
+        encoding="utf-8",
     )
     recipe = load_recipe(recipe_path)
     assert run(recipe).ok

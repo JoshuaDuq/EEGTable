@@ -63,7 +63,8 @@ def erp_workflow(tmp_path_factory: pytest.TempPathFactory) -> Workflow:
         "  tmin: -0.2\n  tmax: 0.8\n  baseline: [-0.2, 0.0]\n"
         "rejection: {method: thresholds, reject: {eeg: 0.00015}}\n"
         "reference: {channels: average}\n"
-        "sampling: {method: decimate, factor: 4}\n"
+        "sampling: {method: decimate, factor: 4}\n",
+        encoding="utf-8",
     )
     workflow = open_workflow(load_config(config))
     pending = run_until(workflow)
@@ -75,7 +76,7 @@ def erp_workflow(tmp_path_factory: pytest.TempPathFactory) -> Workflow:
     )
     template["exclude"] = [int(np.argmax(np.abs(scores)))]
     decision = root / "artifact.yaml"
-    decision.write_text(json.dumps(template))
+    decision.write_text(json.dumps(template), encoding="utf-8")
     save_review(workflow, "artifact", decision)
     assert run_until(workflow).state == "completed"
     return workflow
@@ -249,7 +250,8 @@ def test_automated_tools_match_their_libraries(tmp_path: Path) -> None:
         "  random_state: 42\n"
         "filter: {l_freq: 1.0, h_freq: 40.0}\n"
         "epochs: {kind: fixed, duration: 2.0}\n"
-        "rejection: {method: autoreject, n_interpolate: [1, 4], consensus: [0.5, 1.0], cv: 4}\n"
+        "rejection: {method: autoreject, n_interpolate: [1, 4], consensus: [0.5, 1.0], cv: 4}\n",
+        encoding="utf-8",
     )
     workflow = open_workflow(load_config(config))
     assert run_until(workflow).state == "completed"

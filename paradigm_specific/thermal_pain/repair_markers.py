@@ -95,7 +95,7 @@ def rename_labels(value: Any) -> Any:
 
 
 def repair_bundle(manifest_path: Path) -> None:
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["provenance"] = rename_labels(manifest["provenance"])
     stem = manifest_path.name.removesuffix("_preprocessing.json")
     folder = manifest_path.parent
@@ -113,10 +113,10 @@ def repair_bundle(manifest_path: Path) -> None:
     settings = rename_labels(read_yaml(recipe))
     epochs.save(epochs_file, overwrite=True, fmt="double", verbose=False)
     frame.to_csv(ledger, sep="\t", index=False)
-    recipe.write_text(yaml.safe_dump(settings, sort_keys=False))
+    recipe.write_text(yaml.safe_dump(settings, sort_keys=False), encoding="utf-8")
     for name in manifest["files"]:
         manifest["files"][name] = file_hash(folder / name)
-    manifest_path.write_text(canonical_json(manifest) + "\n")
+    manifest_path.write_text(canonical_json(manifest) + "\n", encoding="utf-8")
 
 
 # Parked generations stay as they were; only bundles still carrying the generic name qualify.
@@ -126,7 +126,7 @@ def live_bundles(root: Path) -> list[Path]:
         for manifest in sorted(root.rglob("*_task-thermalactive_run-*_preprocessing.json"))
         if not any(part.startswith("_superseded") for part in manifest.relative_to(root).parts)
         and not manifest.name.startswith("._")  # exFAT AppleDouble sidecars match the glob
-        and "Stimulus/S" in manifest.read_text()
+        and "Stimulus/S" in manifest.read_text(encoding="utf-8")
     ]
 
 

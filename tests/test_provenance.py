@@ -17,7 +17,8 @@ def _extract(tmp_path, *, pattern="**/*_epo.fif"):
     recipe_path.write_text(
         f'[inputs]\nroot = "data"\npattern = "{pattern}"\n[output]\nroot = "out"\n'
         '[[features]]\nmeasure = "integrated_band_power"\n'
-        'bands = ["alpha"]\nspatial = ["global"]\n'
+        'bands = ["alpha"]\nspatial = ["global"]\n',
+        encoding="utf-8",
     )
     recipe = load_recipe(recipe_path)
     assert run(recipe).ok
@@ -27,7 +28,7 @@ def _extract(tmp_path, *, pattern="**/*_epo.fif"):
 
 def test_extraction_records_portable_identity_and_resolved_computation(tmp_path):
     _, _, output = _extract(tmp_path)
-    sidecar = json.loads(output.with_suffix(".json").read_text())
+    sidecar = json.loads(output.with_suffix(".json").read_text(encoding="utf-8"))
     provenance = sidecar["provenance"]
     assert provenance["recording"] == "sub-01/eeg/sub-01_task-rest_epo.fif"
     assert len(provenance["input_sha256"]) == 64
@@ -64,7 +65,7 @@ def test_renamed_input_is_stale_when_output_stem_and_bytes_match(tmp_path):
 
 def test_modified_output_is_rejected_and_reported_as_partial(tmp_path):
     recipe, _, output = _extract(tmp_path)
-    output.write_text(output.read_text() + "\n")
+    output.write_text(output.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="checksum"):
         read_table(output)
     entry = status(recipe)[0]
@@ -74,9 +75,9 @@ def test_modified_output_is_rejected_and_reported_as_partial(tmp_path):
 def test_missing_provenance_manifest_is_not_accepted_as_current(tmp_path):
     recipe, _, output = _extract(tmp_path)
     path = output.with_suffix(".json")
-    sidecar = json.loads(path.read_text())
+    sidecar = json.loads(path.read_text(encoding="utf-8"))
     del sidecar["provenance"]["input_sha256"]
-    path.write_text(json.dumps(sidecar))
+    path.write_text(json.dumps(sidecar), encoding="utf-8")
     assert status(recipe)[0].state == "partial"
 
 
@@ -89,7 +90,8 @@ def test_input_change_during_computation_fails_without_publishing(tmp_path, monk
     recipe_path.write_text(
         '[inputs]\nroot = "data"\n[output]\nroot = "out"\n'
         '[[features]]\nmeasure = "integrated_band_power"\n'
-        'bands = ["alpha"]\nspatial = ["global"]\n'
+        'bands = ["alpha"]\nspatial = ["global"]\n',
+        encoding="utf-8",
     )
     compute = batch.compute_features
 
@@ -123,7 +125,8 @@ def _split_recording(tmp_path, split_naming):
     recipe_path.write_text(
         f'[inputs]\nroot = "data"\npattern = "{paths[0].name}"\n'
         '[output]\nroot = "out"\n[[features]]\n'
-        'measure = "integrated_band_power"\nbands = ["alpha"]\nspatial = ["global"]\n'
+        'measure = "integrated_band_power"\nbands = ["alpha"]\nspatial = ["global"]\n',
+        encoding="utf-8",
     )
     return load_recipe(recipe_path), paths
 
@@ -148,7 +151,7 @@ def test_split_recording_manifest_is_portable(tmp_path):
     result = run(recipe)
     assert result.ok
     sidecar = result.recordings[0].recording.features_path.with_suffix(".json")
-    provenance = json.loads(sidecar.read_text())["provenance"]
+    provenance = json.loads(sidecar.read_text(encoding="utf-8"))["provenance"]
     assert provenance["input_files"] == {path.name: file_hash(path) for path in paths}
     moved = tmp_path / "moved"
     moved.mkdir()
@@ -220,7 +223,7 @@ def test_upstream_change_during_computation_fails_without_publishing(
     epochs.info["description"] = f"preprocessing=preprocessing.json; identity={identity(upstream)}"
     epochs.save(source, overwrite=True, verbose="error")
     payload = source.parent / "events.tsv"
-    payload.write_text("original_row\tretained\n0\ttrue\n")
+    payload.write_text("original_row\tretained\n0\ttrue\n", encoding="utf-8")
     manifest = source.parent / "preprocessing.json"
     manifest.write_text(
         json.dumps(
@@ -229,13 +232,15 @@ def test_upstream_change_during_computation_fails_without_publishing(
                 "provenance": upstream,
                 "files": {source.name: file_hash(source), payload.name: file_hash(payload)},
             }
-        )
+        ),
+        encoding="utf-8",
     )
     recipe_path = tmp_path / "recipe.toml"
     recipe_path.write_text(
         '[inputs]\nroot = "data"\n[output]\nroot = "out"\n'
         '[[features]]\nmeasure = "integrated_band_power"\n'
-        'bands = ["alpha"]\nspatial = ["global"]\n'
+        'bands = ["alpha"]\nspatial = ["global"]\n',
+        encoding="utf-8",
     )
     compute = batch.compute_features
 
@@ -264,7 +269,8 @@ def test_environment_change_during_computation_fails_without_publishing(
     recipe_path.write_text(
         '[inputs]\nroot = "data"\n[output]\nroot = "out"\n'
         '[[features]]\nmeasure = "integrated_band_power"\n'
-        'bands = ["alpha"]\nspatial = ["global"]\n'
+        'bands = ["alpha"]\nspatial = ["global"]\n',
+        encoding="utf-8",
     )
     original = getattr(batch, changed)
     compute = batch.compute_features

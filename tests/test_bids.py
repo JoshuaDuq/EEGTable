@@ -174,7 +174,8 @@ def test_bids_recipe_is_explicit_and_checkpointed_workflow_carries_metadata(data
         "output: {directory: out}\n"
         "workflow: {raw_review: disabled, epoch_review: disabled}\n"
         "epochs:\n  kind: events\n  tmin: 0\n  tmax: 0.5\n"
-        "  events: {source: annotations, event_id: {left: 1, right: 2}}\n"
+        "  events: {source: annotations, event_id: {left: 1, right: 2}}\n",
+        encoding="utf-8",
     )
     configs = load_recipe(recipe)
     assert len(configs) == 1
@@ -194,7 +195,8 @@ def test_bids_metadata_changes_make_checkpoint_stale(dataset, tmp_path):
     recipe.write_text(
         f"input: {{kind: bids, root: {root}, subjects: ['01']}}\n"
         "output: {directory: out}\nworkflow: {raw_review: disabled}\n"
-        "epochs: {kind: fixed, duration: 1.0}\n"
+        "epochs: {kind: fixed, duration: 1.0}\n",
+        encoding="utf-8",
     )
     workflow = open_workflow(next(iter(load_recipe(recipe).values())))
     run_until(workflow, "load")
@@ -228,7 +230,8 @@ def test_cli_check_validates_bids_sidecar_sample_alignment(dataset, tmp_path, ca
         f"input: {{kind: bids, root: {root}, subjects: ['01']}}\n"
         "output: {directory: out}\n"
         "epochs:\n  kind: events\n  tmin: 0\n  tmax: 0.5\n"
-        "  events: {source: annotations, event_id: {left: 1, right: 2}}\n"
+        "  events: {source: annotations, event_id: {left: 1, right: 2}}\n",
+        encoding="utf-8",
     )
     assert main(["preprocess", "check", str(recipe)]) == 1
     assert "sample and onset disagree" in capsys.readouterr().out
@@ -321,6 +324,9 @@ def test_simultaneous_hierarchical_bids_events_keep_the_selected_value(dataset):
 )
 def test_bids_recipe_requires_explicit_mode_and_valid_entity_labels(dataset, tmp_path, source):
     recipe = tmp_path / "invalid.yaml"
-    recipe.write_text(source + "\noutput: {directory: out}\nepochs: {kind: fixed, duration: 1.0}\n")
+    recipe.write_text(
+        source + "\noutput: {directory: out}\nepochs: {kind: fixed, duration: 1.0}\n",
+        encoding="utf-8",
+    )
     with pytest.raises((TypeError, ValueError)):
         load_recipe(recipe)

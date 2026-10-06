@@ -97,7 +97,9 @@ def _whole_and_in_blocks(monkeypatch, data):
 def test_welch_in_blocks_of_epochs_gives_the_numbers_of_one_call(monkeypatch) -> None:
     data = np.random.default_rng(0).normal(size=(6, 3, 501))
     (whole, freqs), (blocks, block_freqs) = _whole_and_in_blocks(monkeypatch, data)
-    np.testing.assert_array_equal(whole, blocks)
+    # macOS's FFT rounds the last bit differently with the batch size, so values agree to
+    # rounding there rather than bit for bit.
+    np.testing.assert_allclose(whole, blocks, rtol=1e-12, atol=0)
     np.testing.assert_array_equal(freqs, block_freqs)
 
 

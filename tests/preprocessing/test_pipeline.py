@@ -70,7 +70,7 @@ def test_checkpointed_ica_review_and_autoreject_export(mixture, tmp_path):
     assert template["exclude"] is None
     template["exclude"] = [0]
     decision = tmp_path / "artifact.yaml"
-    decision.write_text(json.dumps(template))
+    decision.write_text(json.dumps(template), encoding="utf-8")
     save_review(workflow, "artifact", decision)
     assert run_until(workflow).state == "completed"
 
@@ -82,7 +82,7 @@ def test_checkpointed_ica_review_and_autoreject_export(mixture, tmp_path):
     np.testing.assert_allclose(corrected.get_data(), expected.get_data(), rtol=0, atol=1e-18)
 
     bundle = config.output.directory
-    manifest = json.loads((bundle / "subject_preprocessing.json").read_text())
+    manifest = json.loads((bundle / "subject_preprocessing.json").read_text(encoding="utf-8"))
     assert manifest["provenance"]["artifact_decision"]["exclude"] == [0]
     assert manifest["provenance"]["artifact"]["fit_id"] == template["fit_id"]
     assert set(manifest["provenance"]["repair"]) == {"original_rows", "channels", "bad_epochs"}

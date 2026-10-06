@@ -162,7 +162,7 @@ def _pointer(workflow: Workflow, name: str) -> str | None:
     path = workflow.workspace / f"{name}.json"
     if not path.exists():
         return None
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if data.get("schema") != 1:
         raise ValueError(f"{path}: unsupported pointer schema")
     artifact_id = data.get("artifact_id")
@@ -188,14 +188,16 @@ def source_identity(workflow: Workflow) -> str | None:
     pointer = _pointer(workflow, "load")
     if pointer is None:
         return None
-    state = json.loads((workflow.workspace / "load" / pointer / "state.json").read_text())
+    state = json.loads(
+        (workflow.workspace / "load" / pointer / "state.json").read_text(encoding="utf-8")
+    )
     identity: str = state["provenance"]["input_hash"]
     return identity
 
 
 def _reset_tokens(workflow: Workflow) -> dict[str, str]:
     path = workflow.workspace / "resets.json"
-    return json.loads(path.read_text()) if path.exists() else {}
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
 def _external_file_hashes(stage: str, settings: ProcessingSettings) -> dict[str, str]:
@@ -374,7 +376,7 @@ def list_steps(workflow: Workflow) -> tuple[StepStatus, ...]:
             state = "pending" if _decided(workflow, stage.name, identities) else "needs-review"
         path = workflow.workspace / stage.name / pointer if pointer else None
         actions = {
-            "needs-review": f'review CONFIG {stage.name.removeprefix("review-")}',
+            "needs-review": f"review CONFIG {stage.name.removeprefix('review-')}",
             "stale": f"reset CONFIG --from {stage.name}",
         }
         action = actions.get(state, f"run CONFIG --until {stage.name}")
@@ -406,7 +408,7 @@ def _template(workflow: Workflow, stage: str, state: StageData, parents: dict[st
         f"# {HELP[key]}\n{yaml.safe_dump({key: value}, default_flow_style=False)}"
         for key, value in template.items()
     ]
-    pending.write_text("".join(lines))
+    pending.write_text("".join(lines), encoding="utf-8")
 
 
 def _decided(workflow: Workflow, stage: str, identities: dict[str, str]) -> bool:
@@ -519,7 +521,7 @@ def _run_locked(
                 stage,
                 "needs-review",
                 pending_path(workflow, stage),
-                f'review CONFIG {stage.removeprefix("review-")}',
+                f"review CONFIG {stage.removeprefix('review-')}",
             )
     state = execute_numeric(stage, state, workflow.config.processing, decision, n_jobs=n_jobs)
     if stage == "export":

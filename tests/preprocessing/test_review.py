@@ -57,7 +57,7 @@ def test_invalid_headless_decisions_are_rejected(raw, tmp_path, edit, match):
     decision = read_yaml(workflow.workspace / "decisions" / "review-raw.pending.yaml")
     edit(decision)
     path = tmp_path / "decision.yaml"
-    path.write_text(json.dumps(decision))
+    path.write_text(json.dumps(decision), encoding="utf-8")
     with pytest.raises(ValueError, match=match):
         save_review(workflow, "raw", path)
 
@@ -114,9 +114,12 @@ def test_suggested_artifact_review_takes_detector_union(mixture, tmp_path):
 def test_pending_file_is_commented_yaml_that_flagless_review_reads(raw, tmp_path):
     workflow = _pending_workflow(raw, tmp_path)
     pending = workflow.workspace / "decisions" / "review-raw.pending.yaml"
-    text = pending.read_text()
+    text = pending.read_text(encoding="utf-8")
     assert text.startswith("#") and "bads: null" in text and "spans: null" in text
-    pending.write_text(text.replace("bads: null", "bads: [C3]").replace("spans: null", "spans: []"))
+    pending.write_text(
+        text.replace("bads: null", "bads: [C3]").replace("spans: null", "spans: []"),
+        encoding="utf-8",
+    )
     save_review(workflow, "raw")
     assert run_until(workflow, "review-raw").state == "completed"
     assert read_checkpoint(workflow, "review-raw").state.raw.info["bads"] == ["C3"]

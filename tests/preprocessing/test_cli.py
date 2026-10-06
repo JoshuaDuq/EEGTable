@@ -50,7 +50,8 @@ def _write_config(raw, tmp_path, raw_review):
     config = tmp_path / "preprocessing.yaml"
     config.write_text(
         "input: {path: recording_raw.fif}\noutput: {directory: preprocessed, name: recording}\n"
-        f"workflow: {{raw_review: {raw_review}}}\nepochs: {{kind: fixed, duration: 2.0}}\n"
+        f"workflow: {{raw_review: {raw_review}}}\nepochs: {{kind: fixed, duration: 2.0}}\n",
+        encoding="utf-8",
     )
     return config
 
@@ -62,7 +63,8 @@ def _write_cohort(raw, tmp_path, raw_review, *labels):
     config = tmp_path / "study.yaml"
     config.write_text(
         "input: {root: raw, pattern: '**/*_raw.fif'}\noutput: {directory: preprocessed}\n"
-        f"workflow: {{raw_review: {raw_review}}}\nepochs: {{kind: fixed, duration: 2.0}}\n"
+        f"workflow: {{raw_review: {raw_review}}}\nepochs: {{kind: fixed, duration: 2.0}}\n",
+        encoding="utf-8",
     )
     return config
 
@@ -90,7 +92,9 @@ def test_export_feeds_feature_runner_and_hides_checkpoints(raw, tmp_path, capsys
     recipe.write_text(
         '[inputs]\nroot = "preprocessed"\npattern = "**/*_epo.fif"\npicks = "eeg"\n'
         '[output]\nroot = "features"\n[bands]\nalpha = [8.0, 13.0]\n'
-        '[[features]]\nmeasure = "integrated_band_power"\nbands = ["alpha"]\nspatial = ["global"]\n'
+        '[[features]]\nmeasure = "integrated_band_power"\nbands = ["alpha"]\n'
+        'spatial = ["global"]\n',
+        encoding="utf-8",
     )
     result = run(load_recipe(recipe))
     tables = sorted(path.name for path in (tmp_path / "features").rglob("*_features.tsv"))
@@ -144,13 +148,13 @@ def test_cohort_flagless_review_walks_pending_recordings(raw, tmp_path, capsys):
         pending = tmp_path / "preprocessed" / label / ".preprocessing" / label / "decisions"
         pending = pending / "review-raw.pending.yaml"
         text = (
-            pending.read_text()
+            pending.read_text(encoding="utf-8")
             .replace("bads: null", "bads: []")
             .replace("spans: null", "spans: []")
         )
-        pending.write_text(text)
+        pending.write_text(text, encoding="utf-8")
     decisions = tmp_path / "one.yaml"
-    decisions.write_text(pending.read_text())
+    decisions.write_text(pending.read_text(encoding="utf-8"), encoding="utf-8")
     assert main(["preprocess", "review", str(config), "raw", "--decisions", str(decisions)]) == 2
     assert "--recording" in capsys.readouterr().err
     assert main(["preprocess", "review", str(config), "raw"]) == 0
@@ -178,7 +182,8 @@ def test_check_applies_the_same_source_checks_as_run(raw, tmp_path, capsys):
     config = tmp_path / "preprocessing.yaml"
     config.write_text(
         "input: {path: rec_epo.fif}\noutput: {directory: ., name: rec}\n"
-        "workflow: {raw_review: disabled}\nepochs: {kind: fixed, duration: 2.0}\n"
+        "workflow: {raw_review: disabled}\nepochs: {kind: fixed, duration: 2.0}\n",
+        encoding="utf-8",
     )
     assert main(["preprocess", "check", str(config)]) == 1
     assert "collides" in capsys.readouterr().out
@@ -187,7 +192,10 @@ def test_check_applies_the_same_source_checks_as_run(raw, tmp_path, capsys):
 def test_stale_checkpoint_is_reported_as_a_command(raw, tmp_path, capsys):
     config = _write_config(raw, tmp_path, "disabled")
     assert main(["preprocess", "run", str(config)]) == 0
-    config.write_text(config.read_text().replace("duration: 2.0", "duration: 1.0"))
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("duration: 2.0", "duration: 1.0"),
+        encoding="utf-8",
+    )
     assert main(["preprocess", "run", str(config)]) == 1
     out = capsys.readouterr().out
     assert f"eegtable preprocess reset {config} --from events" in out
@@ -284,7 +292,8 @@ def _write_recipe(raw, tmp_path, body):
     config = tmp_path / "preprocessing.yaml"
     config.write_text(
         "input: {path: recording_raw.fif}\noutput: {directory: preprocessed, name: recording}\n"
-        + body
+        + body,
+        encoding="utf-8",
     )
     return config
 
@@ -327,7 +336,10 @@ def test_status_json_has_no_next_action_once_exported(raw, tmp_path, capsys):
 def test_status_json_points_a_stale_recording_at_reset(raw, tmp_path, capsys):
     config = _write_config(raw, tmp_path, "disabled")
     assert main(["preprocess", "run", str(config)]) == 0
-    config.write_text(config.read_text().replace("duration: 2.0", "duration: 1.0"))
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("duration: 2.0", "duration: 1.0"),
+        encoding="utf-8",
+    )
     capsys.readouterr()
     assert main(["preprocess", "status", str(config), "--json"]) == 0
     (entry,) = _json_output(capsys)["recordings"]
@@ -441,7 +453,9 @@ def test_review_accepts_a_json_decision_file(raw, tmp_path, capsys):
     assert main(["preprocess", "inspect", str(config), "review-raw", "--json"]) == 0
     gate = _json_output(capsys)
     decision = tmp_path / "decision.json"
-    decision.write_text(json.dumps({"parent_id": gate["parent_id"], "bads": ["C3"], "spans": []}))
+    decision.write_text(
+        json.dumps({"parent_id": gate["parent_id"], "bads": ["C3"], "spans": []}), encoding="utf-8"
+    )
     assert main(["preprocess", "review", str(config), "raw", "--decisions", str(decision)]) == 0
     assert main(["preprocess", "run", str(config)]) == 0
 

@@ -11,7 +11,7 @@ def write(tmp_path, text, *files):
         (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_bytes(b"")
     recipe = tmp_path / "study.yaml"
-    recipe.write_text(text + EPOCHS)
+    recipe.write_text(text + EPOCHS, encoding="utf-8")
     return recipe
 
 
@@ -58,7 +58,7 @@ def test_placeholders_resolve_per_recording(tmp_path):
         "  events: {source: file, path: '{parent}/{name}_events.tsv', event_id: {s: 1}}\n",
         "raw/x_raw.fif",
     )
-    recipe.write_text(recipe.read_text().removesuffix(EPOCHS))
+    recipe.write_text(recipe.read_text(encoding="utf-8").removesuffix(EPOCHS), encoding="utf-8")
     config = load_recipe(recipe)["x"]
     assert config.processing.epochs.events.path == tmp_path / "raw/x_events.tsv"
     assert config.processing.epochs.metadata == tmp_path / "meta/x.tsv"
@@ -117,7 +117,7 @@ def test_invalid_recipes(tmp_path, text, files, match):
     for folder in (f for f in files if f.endswith("/")):
         (tmp_path / folder).mkdir(exist_ok=True)
     if "metadata" in text:
-        recipe.write_text(recipe.read_text().removesuffix(EPOCHS))
+        recipe.write_text(recipe.read_text(encoding="utf-8").removesuffix(EPOCHS), encoding="utf-8")
     with pytest.raises((ValueError, TypeError), match=match):
         load_recipe(recipe)
 

@@ -55,7 +55,7 @@ def payload_files(path: Path) -> list[Path]:
 
 
 def write_json(path: Path, value: Any) -> None:
-    path.write_text(canonical_json(value) + "\n")
+    path.write_text(canonical_json(value) + "\n", encoding="utf-8")
 
 
 def write_pointer(path: Path, value: Any) -> None:
@@ -114,7 +114,7 @@ def save_state(path: Path, state: StageData) -> None:
 
 
 def load_state(path: Path) -> StageData:
-    metadata = json.loads((path / "state.json").read_text())
+    metadata = json.loads((path / "state.json").read_text(encoding="utf-8"))
     raw = (
         mne.io.read_raw_fif(path / "data_raw.fif", preload=True)
         if (path / "data_raw.fif").exists()
@@ -167,7 +167,7 @@ def load_state(path: Path) -> StageData:
 
 
 def verify_manifest(path: Path) -> dict[str, Any]:
-    manifest: dict[str, Any] = json.loads((path / "manifest.json").read_text())
+    manifest: dict[str, Any] = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("schema") != 1:
         raise ValueError(f"{path}: unsupported checkpoint schema")
     for name, expected in manifest["files"].items():
