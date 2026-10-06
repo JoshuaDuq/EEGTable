@@ -189,7 +189,14 @@ def test_tune_refuses_refit_false() -> None:
         )
 
 
-def test_tune_refuses_a_scorer_that_needs_each_rows_subject() -> None:
+@pytest.mark.parametrize(
+    ("scoring", "refit"),
+    [
+        (subject_r_scorer(), None),
+        ({"mse": "neg_mean_squared_error", "r": subject_r_scorer()}, "mse"),
+    ],
+)
+def test_tune_refuses_a_scorer_that_needs_each_rows_subject(scoring, refit) -> None:
     # GridSearchCV hands a scorer the validation rows alone, so it cannot say whose they are.
     with pytest.raises(ValueError, match="subject"):
         tune(
@@ -201,5 +208,6 @@ def test_tune_refuses_a_scorer_that_needs_each_rows_subject() -> None:
             split=BY_RUN,
             seed=0,
             fold=1,
-            scoring=subject_r_scorer(),
+            scoring=scoring,
+            refit=refit,
         )

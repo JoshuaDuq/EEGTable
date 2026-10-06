@@ -535,12 +535,14 @@ def subject_r_scorer(config: AggregationConfig = _DEFAULT_CONFIG) -> _SubjectRSc
 
 
 def _center_within(
-    values: npt.NDArray[np.float64], labels: npt.NDArray[np.object_]
+    values: npt.NDArray[np.float64], labels: npt.NDArray[np.generic]
 ) -> npt.NDArray[np.float64]:
     centered = values.copy()
     for label in pd.unique(labels):
         cell = labels == label
-        centered[cell] -= centered[cell].mean()
+        # Shift first so a constant decimal remains exactly zero in every fold.
+        shifted = values[cell] - values[cell][0]
+        centered[cell] = shifted - shifted.mean(axis=0)
     return centered
 
 

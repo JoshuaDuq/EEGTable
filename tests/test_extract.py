@@ -24,6 +24,30 @@ def test_extract_applies_a_recipe_mapping_to_epochs_in_memory() -> None:
     assert features.crosstrial is None
 
 
+def test_unused_roi_patterns_do_not_restrict_channel_extraction() -> None:
+    epochs = make_epochs()
+    features = [{"measure": "variance", "spatial": ["channels"]}]
+    expected = ef.extract(epochs, {"features": features}, recording="sub-01")
+    actual = ef.extract(
+        epochs,
+        {"rois": {"unused": {"match": ["^NOT_PRESENT$"]}}, "features": features},
+        recording="sub-01",
+    )
+    assert expected.epochs is not None and actual.epochs is not None
+    assert actual.epochs.names == expected.epochs.names
+    np.testing.assert_array_equal(actual.epochs.values, expected.epochs.values)
+
+
+@pytest.mark.parametrize("method", ["welch", "multitaper"])
+def test_extraction_psd_estimators_refuse_complex_epochs(method) -> None:
+    with pytest.raises(TypeError, match="real"):
+        ef.extract(
+            make_epochs().apply_hilbert(envelope=False),
+            {**ALPHA_GLOBAL, "spectra": {"method": method}},
+            recording="sub-01",
+        )
+
+
 def test_extract_computes_what_the_runner_writes(tmp_path) -> None:
     # The notebook path and `eegtable run` must agree, value for value and name for name,
     # or a result would depend on how it was produced.

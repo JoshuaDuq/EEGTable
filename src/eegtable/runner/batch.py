@@ -249,6 +249,32 @@ class CheckReport:
     warnings: tuple[str, ...] = ()
 
 
+def _recording_sources(sources: list[Path]) -> list[Path]:
+    # MNE reads every forward part from the first FIF; counting a continuation again
+    # would duplicate its epochs under another recording identity.
+    links: dict[Path, Path | None] = {}
+    continuations: set[Path] = set()
+    for source in sources:
+        first = source.resolve()
+        current: Path | None = first
+        seen: set[Path] = set()
+        # Missing parts remain errors for computation and stale evidence for status;
+        # discovery only needs to deduplicate the files that are present.
+        while current is not None and current.is_file():
+            current = current.resolve()
+            if current in seen:
+                raise RunError(f"Cyclic split FIF reference: {current}")
+            seen.add(current)
+            if current != first:
+                continuations.add(current)
+            if current not in links:
+                fid, tree, _ = fiff_open(current, verbose="error")
+                with fid:
+                    links[current] = _get_next_fname(fid, current, tree)
+            current = links[current]
+    return [source for source in sources if source.resolve() not in continuations]
+
+
 def discover(recipe: Recipe) -> tuple[Recording, ...]:
     """Find the recordings a recipe selects, in sorted order.
 
@@ -270,6 +296,7 @@ def discover(recipe: Recipe) -> tuple[Recording, ...]:
     )
     if not sources:
         raise RunError(f"no files match {pattern!r} under {root}.")
+    sources = _recording_sources(sources)
 
     bases = [
         recipe.output.root / source.parent.relative_to(root) / _stem(source) for source in sources

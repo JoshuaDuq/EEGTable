@@ -118,6 +118,18 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Split FIF continuations are discovered as parts of one recording, preventing
+  repeated epochs from being counted under separate recording identities.
+- Welch and multitaper constructors refuse invalid frequency bounds and complex
+  epoch samples before clipping bounds or converting data.
+- Connectivity ROI memberships must be disjoint, preventing self-connectivity
+  from entering cross-ROI averages.
+- Constant decimal features are removed by variance filtering, and constant
+  fold cells stay exactly zero after centering in observed and permutation scores.
+- Every subject-based inner scoring metric receives validation subjects,
+  including metrics that do not choose the refitted candidate.
+- Channel-only extraction leaves unused ROI patterns unresolved. Metadata trial
+  grouping refuses distinct values that would become the same text label.
 - Feature values, coverage and support retain exact floating-point precision
   when reading saved TSV bundles.
 - Permutation p-values count numerical ties inclusively in either tail, so

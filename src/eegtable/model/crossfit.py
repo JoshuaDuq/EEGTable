@@ -23,6 +23,7 @@ from eegtable.model.splits import Fold, InnerSplit, inner_cv
 from eegtable.model.transformers import MissingnessThreshold, _check_subject_missingness
 from eegtable.model.tuning import (
     FoldFitError,
+    _needs_subject_scorer,
     _validate_grouped_estimator,
     fit_untuned,
     tune,
@@ -392,9 +393,7 @@ def _fit_fold(
     if grid:
         # Inner scorers and missingness checks need subjects, which GridSearchCV passes
         # only to the splitter. A grid can introduce its own missingness step.
-        needs_groups = isinstance(
-            _chosen_scorer(scoring, refit), _SubjectRScorer
-        ) or _needs_subject_checks(pipeline, grid)
+        needs_groups = _needs_subject_scorer(scoring) or _needs_subject_checks(pipeline, grid)
         if harmonization is not None or residualize_on or needs_groups:
             best_params = _select_fold_local_params(
                 f,

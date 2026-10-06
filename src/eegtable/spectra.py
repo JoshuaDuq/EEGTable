@@ -139,6 +139,13 @@ def band_integration_weights(
     return weights
 
 
+def _read_real_epoch_data(epochs: Any) -> npt.NDArray[np.float64]:
+    data = epochs.get_data()
+    if np.iscomplexobj(data):
+        raise TypeError("PSD estimation requires real epoch samples, not analytic signals.")
+    return np.asarray(data, dtype=float)
+
+
 @dataclass(frozen=True, eq=False)
 class Spectra:
     """Power spectra over epochs, channels and time windows.
@@ -482,7 +489,7 @@ class Spectra:
         recording : str
             The identity every row carries.
         fmin, fmax : float
-            Frequency range kept, in Hz.
+            Finite frequency bounds, ``0 <= fmin < fmax <= sfreq / 2``, in Hz.
         n_fft : int, optional
             Segment length in samples, shared by every window so their grids align.
             By default two seconds, capped by the shortest window's sample count.
@@ -505,7 +512,7 @@ class Spectra:
         selected = epochs.copy().pick(picks, exclude=exclude)
         times, sfreq = np.asarray(selected.times, dtype=float), float(selected.info["sfreq"])
         resolved = tuple(_resolved(times, window) for window in (windows or (_WHOLE,)))
-        data = np.asarray(selected.get_data(), dtype=float)
+        data = _read_real_epoch_data(selected)
         masks = [_within(times, window) for window in resolved]
         shortest = min(int(mask.sum()) for mask in masks)
         segment = n_fft if n_fft is not None else default_n_fft(sfreq, shortest)
@@ -570,7 +577,7 @@ class Spectra:
         recording : str
             The identity every row carries.
         fmin, fmax : float
-            Frequency range kept, in Hz.
+            Finite frequency bounds, ``0 <= fmin < fmax <= sfreq / 2``, in Hz.
         bandwidth : float, default 2.0
             Full frequency smoothing in Hz. Fixed rather than MNE's
             ``8 / window_length``, which smooths a 1 s window over ±4 Hz, wider than
@@ -588,7 +595,7 @@ class Spectra:
         selected = epochs.copy().pick(picks, exclude=exclude)
         times, sfreq = np.asarray(selected.times, dtype=float), float(selected.info["sfreq"])
         resolved = tuple(_resolved(times, window) for window in (windows or (_WHOLE,)))
-        data = np.asarray(selected.get_data(), dtype=float)
+        data = _read_real_epoch_data(selected)
         estimates = [
             multitaper_psd(
                 data[:, :, _within(times, window)],
@@ -891,6 +898,11 @@ def default_n_fft(sfreq: float, shortest: int) -> int:
     return min(int(round(_WELCH_SEGMENT_SEC * sfreq)), int(shortest))
 
 
+def _validate_psd_bounds(fmin: float, fmax: float, sfreq: float) -> None:
+    if not np.isfinite([fmin, fmax]).all() or not 0.0 <= fmin < fmax <= sfreq / 2.0:
+        raise ValueError("PSD bounds require finite 0 <= fmin < fmax <= Nyquist (sfreq / 2).")
+
+
 def welch_psd(
     data: npt.NDArray[np.float64],
     sfreq: float,
@@ -906,6 +918,7 @@ def welch_psd(
     """Welch PSD of one window's samples, shaped (epochs, channels, freqs)."""
     from mne.time_frequency import psd_array_welch
 
+    _validate_psd_bounds(fmin, fmax, sfreq)
     if n_fft > data.shape[-1]:
         raise ValueError(
             f"n_fft = {n_fft} is longer than window {window.name!r}, which holds "
@@ -967,6 +980,7 @@ def multitaper_psd(
     """Multitaper PSD of one window's samples, density-normalized."""
     from mne.time_frequency import psd_array_multitaper
 
+    _validate_psd_bounds(fmin, fmax, sfreq)
     resolution = sfreq / data.shape[-1]
     validate_multitaper_bandwidth(
         bandwidth, sfreq, data.shape[-1], window.name, "spectra.bandwidth"

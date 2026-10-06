@@ -23,7 +23,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
 from eegtable.model._nuisance import fit_coefficients
-from eegtable.model.aggregate import AggregationConfig, _SubjectRScorer
+from eegtable.model.aggregate import AggregationConfig, _center_within, _SubjectRScorer
 from eegtable.model.crossfit import _chosen_scorer
 from eegtable.model.design import harmonize_fold
 from eegtable.model.execution import run_folds, seeded
@@ -350,10 +350,7 @@ def _subject_r(
         # A subject scored by several fold models is centred within each, as the observed is.
         labels = np.zeros(n_trials, dtype=np.intp) if folds is None else folds[cell]
         constant = (np.ptp(p, axis=0) == 0.0) | (np.ptp(t, axis=0) == 0.0)
-        for label in np.unique(labels):
-            within = labels == label
-            p[within] -= p[within].mean(axis=0)
-            t[within] -= t[within].mean(axis=0)
+        p, t = _center_within(p, labels), _center_within(t, labels)
         n_trials -= len(np.unique(labels)) - 1
         denominator = np.sqrt((p * p).sum(axis=0) * (t * t).sum(axis=0))
         with np.errstate(invalid="ignore", divide="ignore"):

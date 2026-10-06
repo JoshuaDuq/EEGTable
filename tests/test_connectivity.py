@@ -107,6 +107,14 @@ def test_channels_sharing_a_driver_correlate_and_others_do_not() -> None:
     assert abs(values["P3-P4"]) < 0.3
 
 
+@pytest.mark.parametrize("members", [("C3", "C4"), ("C3",)])
+def test_pairwise_nodes_refuse_overlapping_rois(members) -> None:
+    from eegtable.connectivity import _nodes
+
+    with pytest.raises(ValueError, match="overlap"):
+        _nodes(CHANNELS, {"a": ("C3",), "b": members})
+
+
 def test_zero_lag_coupling_is_suppressed_but_lagged_coupling_survives() -> None:
     # The two fixtures carry identical amplitude coupling on C3-C4 and differ only
     # in phase. Volume conduction is the zero-lag one, so it is the one that has to

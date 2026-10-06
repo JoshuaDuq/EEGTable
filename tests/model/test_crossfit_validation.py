@@ -3,8 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from sklearn.dummy import DummyClassifier, DummyRegressor
+from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
 
+from eegtable.model.aggregate import subject_r_scorer
 from eegtable.model.crossfit import cross_fit_classification, cross_fit_regression
 from eegtable.model.estimators import logistic_pipeline, ridge_pipeline
 from eegtable.model.splits import Fold, InnerSplit
@@ -14,6 +16,27 @@ VALUES = np.arange(16, dtype=float).reshape(8, 2)
 TARGET = np.tile([0, 1], 4)
 GROUPS = np.repeat(["s1", "s2"], 4).astype(object)
 FOLD = Fold(1, np.arange(4), np.arange(4, 8))
+
+
+def test_inner_tuning_passes_subjects_to_metrics_other_than_refit() -> None:
+    values = np.tile(np.arange(8.0), 5)
+    groups = np.repeat(list("ABCDE"), 8).astype(object)
+    result = cross_fit_regression(
+        [Fold(1, np.arange(32), np.arange(32, 40))],
+        values[:, None],
+        values,
+        groups,
+        Pipeline([("regressor", Ridge())]),
+        {"regressor__alpha": [1.0, 10.0]},
+        inner=InnerSplit("subject", n_splits=4),
+        seed=0,
+        scoring={"mse": "neg_mean_squared_error", "r": subject_r_scorer()},
+        refit="mse",
+    )
+    assert result[0].best_params == {"regressor__alpha": 1.0}
+    # Four training subjects give sum of squared centered targets 4 * 42 = 168.
+    expected = 3.5 + (values[32:] - 3.5) * 168 / 169
+    np.testing.assert_allclose(result[0].y_pred, expected)
 
 
 @pytest.mark.parametrize("task", ["regression", "classification"])

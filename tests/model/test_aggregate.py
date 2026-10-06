@@ -92,6 +92,17 @@ def test_a_subject_whose_correlation_is_undefined_raises() -> None:
         )
 
 
+@pytest.mark.parametrize("second", [1e-6, 2e-6])
+def test_constant_fold_cells_do_not_create_subject_correlations(second) -> None:
+    values = np.array([1e-6] * 10 + [second] * 3)
+    frame = pd.DataFrame(
+        {"subject_id": "s1", "fold": [1] * 10 + [2] * 3, "y_true": values, "y_pred": values}
+    )
+    with pytest.raises(ValueError, match="non-finite correlation"):
+        subject_level_r(frame)
+    assert subject_level_r(frame, undefined="zero").r == 0.0
+
+
 def test_aggregation_config_rejects_an_unknown_weighting() -> None:
     with pytest.raises(ValueError, match="subject_weighting"):
         AggregationConfig(subject_weighting="by_vibes")  # type: ignore[arg-type]

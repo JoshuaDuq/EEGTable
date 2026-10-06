@@ -128,6 +128,11 @@ def _validate_grouped_estimator(pipeline: Pipeline) -> None:
                         )
 
 
+def _needs_subject_scorer(scoring: object) -> bool:
+    metrics = scoring.values() if isinstance(scoring, Mapping) else (scoring,)
+    return any(isinstance(metric, _SubjectRScorer) for metric in metrics)
+
+
 def tune(
     pipeline: Pipeline,
     grid: Mapping[str, Sequence[object]],
@@ -192,8 +197,7 @@ def tune(
         except ValueError as exc:
             raise FoldFitError(f"Fold {fold}: inner CV failed: {exc}") from exc
         _validate_grouped_estimator(candidate)
-    chosen = scoring[refit] if isinstance(scoring, Mapping) and isinstance(refit, str) else scoring
-    if isinstance(chosen, _SubjectRScorer):
+    if _needs_subject_scorer(scoring):
         raise ValueError(
             "subject_r_scorer needs the subject of every validation row, which GridSearchCV "
             "does not pass to a scorer; tune through cross_fit_regression instead."

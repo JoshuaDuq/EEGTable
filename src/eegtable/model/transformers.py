@@ -189,6 +189,10 @@ class VarianceThreshold(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         _ = y
         x_arr = np.asarray(X, dtype=float)
         self.variances_ = np.nanvar(x_arr, axis=0)
+        if self.threshold == 0.0:
+            # A constant decimal can acquire a positive variance through mean rounding.
+            spread = np.nanmax(x_arr, axis=0) - np.nanmin(x_arr, axis=0)
+            self.variances_[spread == 0.0] = 0.0
         self.support_mask_ = self.variances_ > self.threshold
         return self
 

@@ -10,6 +10,7 @@ from dataclasses import replace
 
 import mne
 import numpy as np
+import pandas as pd
 import pytest
 
 import eegtable as ef
@@ -25,6 +26,22 @@ root = "data"
 root = "out"
 
 """
+
+
+@pytest.mark.parametrize("labels", [[1, "1", 2, "2"], [1, "1", 1.0, 1.0], [1, 1.0, 2, 2.0]])
+def test_trial_group_labels_cannot_merge_distinct_metadata_values(labels) -> None:
+    from eegtable.runner.compute import trial_labels
+
+    epochs = make_epochs(n_epochs=4)
+    epochs.metadata = pd.DataFrame({"condition": labels}, dtype=object)
+    recipe = load_recipe(
+        {
+            "trials": {"by": "metadata", "column": "condition"},
+            "features": [{"measure": "itpc", "bands": ["alpha"]}],
+        }
+    )
+    with pytest.raises(ValueError, match="distinct.*label"):
+        trial_labels(epochs, recipe)
 
 
 def features(tmp_path, body: str, epochs: mne.EpochsArray | None = None):

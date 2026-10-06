@@ -104,6 +104,32 @@ def test_an_infinite_window_is_measured_as_the_epochs_own_span() -> None:
     assert (window.name, window.tmin, window.tmax) == ("all", -0.5, 1.5)
 
 
+@pytest.mark.parametrize("method", ["welch", "multitaper"])
+@pytest.mark.parametrize(
+    ("fmin", "fmax"),
+    [
+        (np.nan, 40.0),
+        (1.0, np.nan),
+        (-np.inf, 40.0),
+        (1.0, np.inf),
+        (-0.1, 40.0),
+        (1.0, 126.0),
+        (10.1, 10.0),
+        (10.0, 10.0),
+    ],
+)
+def test_psd_constructors_refuse_invalid_frequency_bounds(method, fmin, fmax) -> None:
+    with pytest.raises(ValueError, match="fmin.*fmax"):
+        getattr(Spectra, method)(make_epochs(), recording="sub-01", fmin=fmin, fmax=fmax)
+
+
+@pytest.mark.parametrize("method", ["welch", "multitaper"])
+def test_psd_constructors_refuse_complex_epochs(method) -> None:
+    epochs = make_epochs().apply_hilbert(envelope=False)
+    with pytest.raises(TypeError, match="real"):
+        getattr(Spectra, method)(epochs, recording="sub-01")
+
+
 def _whole_and_in_blocks(monkeypatch, data):
     from eegtable import spectra as spectra_module
 

@@ -13,7 +13,7 @@ import pytest
 from eegtable.io import read_dataset, read_table
 from eegtable.runner import RunError, check, load_recipe, run, status
 from eegtable.runner.progress import JsonReporter
-from tests.synthetic import save_epochs
+from tests.synthetic import make_epochs, save_epochs
 
 POWER = '[[features]]\nmeasure = "integrated_band_power"\nbands = ["alpha"]\nspatial = ["global"]\n'
 ITPC = (
@@ -59,6 +59,35 @@ def _two_recordings(tmp_path: Path) -> None:
 
 def _features_path(tmp_path: Path, subject: str) -> Path:
     return tmp_path / f"out/{subject}/eeg/{subject}_task-rest_features.tsv"
+
+
+@pytest.mark.parametrize("naming", ["bids", "neuromag"])
+def test_split_epoch_parts_are_one_recording(tmp_path, naming) -> None:
+    from dataclasses import replace
+
+    from eegtable.runner.batch import discover, load_epochs
+
+    root = tmp_path / "data"
+    root.mkdir()
+    epochs = make_epochs(n_epochs=100)
+    epochs.save(root / "test_epo.fif", split_size="2MB", split_naming=naming, fmt="double")
+    parts = sorted(root.glob("*.fif"))
+    assert len(parts) > 1
+    recipe = _recipe(tmp_path, POWER)
+    recipe = replace(recipe, inputs=replace(recipe.inputs, pattern="**/*.fif"))
+
+    recordings = discover(recipe)
+
+    assert len(recordings) == 1
+    assert len(load_epochs(recordings[0].source, recipe.inputs)) == len(epochs)
+
+
+def test_a_standalone_split_named_file_is_a_recording(tmp_path) -> None:
+    from eegtable.runner.batch import discover
+
+    source = tmp_path / "data/test_split-02_epo.fif"
+    save_epochs(source)
+    assert [item.source for item in discover(_recipe(tmp_path, POWER))] == [source]
 
 
 # --- outputs ------------------------------------------------------------------

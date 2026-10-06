@@ -10,6 +10,7 @@ from eegtable.model.transformers import (
     PreprocessingConfig,
     ReplaceInfWithNaN,
     SpatialFeatureSelector,
+    VarianceThreshold,
     transform_feature_names,
     validate_subject_missingness,
 )
@@ -62,6 +63,22 @@ def test_all_nan_columns_are_dropped_and_the_drop_is_learned_on_fit() -> None:
     train = np.array([[1.0, np.nan], [2.0, np.nan]])
     step = DropAllNaNColumns().fit(train)
     assert step.transform(np.array([[3.0, 9.0]])).shape == (1, 1)
+
+
+@pytest.mark.parametrize("constant", [0.1, 1e-6])
+def test_variance_threshold_drops_decimal_constants_without_a_variance_floor(constant) -> None:
+    from sklearn.feature_selection import VarianceThreshold as ReferenceVarianceThreshold
+
+    variable = np.arange(10) * 1e-12
+    train = np.column_stack([np.full(10, constant), variable])
+    step = VarianceThreshold().fit(train)
+
+    np.testing.assert_array_equal(step.get_support(), [False, True])
+    np.testing.assert_array_equal(
+        step.get_support(), ReferenceVarianceThreshold().fit(train).get_support()
+    )
+    assert step.variances_[0] == 0.0
+    np.testing.assert_array_equal(step.transform([[constant + 1.0, 3e-12]]), [[3e-12]])
 
 
 def test_preprocessing_config_validates_missingness_bounds() -> None:

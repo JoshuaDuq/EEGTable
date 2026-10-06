@@ -60,7 +60,7 @@ def envelope_correlation(
         Analysis windows.
     groups : mapping of str to sequence of str, optional
         ROI name to member channels. None uses every channel as a node, which on
-        a 64-channel montage is 2016 pairs.
+        a 64-channel montage is 2016 pairs. ROI memberships must be disjoint.
     trials : sequence of str, optional
         A label per epoch. One row per distinct label; None gives a single row
         labelled ``"all"``.
@@ -195,7 +195,7 @@ def spectral_connectivity(
         Analysis windows.
     groups : mapping of str to sequence of str, optional
         ROI name to member channels. Channel-level connectivity is averaged
-        within each ROI block.
+        within each ROI block. ROI memberships must be disjoint.
     trials : sequence of str, optional
         A label per epoch. One row per distinct label.
     mode : {"multitaper", "fourier"}, default "multitaper"
@@ -316,7 +316,7 @@ def wpli(
     windows : sequence of Window
         Analysis windows.
     groups : mapping of str to sequence of str, optional
-        ROI name to member channels.
+        ROI name to member channels; memberships must be disjoint.
     trials : sequence of str, optional
         A label per epoch. One row per distinct label.
     bandwidth : float, default 2.0
@@ -440,7 +440,8 @@ def spectral_connectivity_time(
     smoothing_seconds : float, default 0.0
         Duration of the temporal Hanning smoother, at most the retained window.
     groups : mapping of str to sequence of str, optional
-        ROI name to member channels. None uses every channel as a node.
+        ROI name to member channels; memberships must be disjoint.
+        None uses every channel as a node.
 
     Returns
     -------
@@ -634,6 +635,7 @@ def _nodes(
         return _checked(ch_names, [[i] for i in range(len(ch_names))])
     lookup = {name: i for i, name in enumerate(ch_names)}
     picks = []
+    used: set[str] = set()
     for roi, members in groups.items():
         missing = [m for m in members if m not in lookup]
         if missing:
@@ -642,6 +644,12 @@ def _nodes(
             raise ValueError(f"group {roi!r} has no channels.")
         if len(set(members)) != len(members):
             raise ValueError(f"group {roi!r} contains duplicate channels.")
+        overlap = used.intersection(members)
+        if overlap:
+            raise ValueError(
+                f"connectivity groups must not overlap; group {roi!r} repeats {sorted(overlap)}."
+            )
+        used.update(members)
         picks.append([lookup[m] for m in members])
     return _checked(tuple(groups), picks)
 

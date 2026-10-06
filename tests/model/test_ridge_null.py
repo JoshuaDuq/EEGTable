@@ -21,6 +21,14 @@ GROUPS = np.repeat([f"s{i}" for i in range(6)], 12).astype(object)
 RUNS = np.tile(np.repeat(["r1", "r2", "r3"], 4), 6).astype(object)
 
 
+def test_batched_subject_correlation_is_zero_for_constant_fold_cells() -> None:
+    values = np.array([1e-6] * 10 + [2e-6] * 3)[:, None]
+    actual = _ridge_null._subject_r(
+        values, values, np.full(13, "s1"), np.array([1] * 10 + [2] * 3), AggregationConfig()
+    )
+    np.testing.assert_array_equal(actual, [0.0])
+
+
 @pytest.mark.parametrize("greater_is_better", [True, False])
 @pytest.mark.parametrize("batched", [True, False])
 def test_identity_permutations_count_as_ties(batched, greater_is_better, monkeypatch) -> None:

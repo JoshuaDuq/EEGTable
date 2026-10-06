@@ -29,6 +29,7 @@ from eegtable.signal import BandSignal, Signal, _passband
 from eegtable.spectra import (
     Spectra,
     Window,
+    _read_real_epoch_data,
     default_n_fft,
     multitaper_psd,
     psd_spectra,
@@ -142,7 +143,15 @@ def trial_labels(epochs: Any, recipe: Recipe) -> tuple[str, ...] | None:
             f"the metadata column {grouping.column!r} is empty for {missing} epochs, "
             "and every epoch needs a trial group."
         )
-    return tuple(str(label) for label in labels)
+    text = tuple(str(label) for label in labels)
+    codes, values = labels.factorize(sort=False)
+    pairs = set(zip(codes, text, strict=True))
+    if len(pairs) != len(values) or len(set(text)) != len(values):
+        raise ValueError(
+            f"distinct values in metadata column {grouping.column!r} need unique trial labels "
+            "with one label per original value."
+        )
+    return text
 
 
 class RecordingInputs:
@@ -260,7 +269,7 @@ class RecordingInputs:
 
     def _array(self) -> npt.NDArray[np.float64]:
         if self._data is None:
-            self._data = np.asarray(self.epochs.get_data(), dtype=float)
+            self._data = _read_real_epoch_data(self.epochs)
         return self._data
 
     def _window_psd(
@@ -377,7 +386,7 @@ def _compute(spec: FeatureSpec, inputs: RecordingInputs) -> FeatureTable:
     function = measure.function
     params: dict[str, Any] = dict(spec.params)
     windows = inputs.windows(spec.windows)
-    rois = inputs.rois()
+    rois = inputs.rois() if "rois" in spec.spatial else {}
     has_global = measure.takes("include_global")
 
     if measure.kind == "spectra":
