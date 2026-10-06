@@ -3,9 +3,15 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from sklearn.dummy import DummyRegressor
-from sklearn.ensemble import RandomForestRegressor, StackingRegressor
+from sklearn.ensemble import (
+    GradientBoostingClassifier,
+    GradientBoostingRegressor,
+    RandomForestRegressor,
+    StackingRegressor,
+)
 from sklearn.feature_selection import RFECV
-from sklearn.linear_model import ElasticNetCV, Ridge, RidgeCV
+from sklearn.linear_model import ElasticNetCV, Ridge, RidgeCV, SGDClassifier, SGDRegressor
+from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
 
 from eegtable.model.aggregate import subject_r_scorer
@@ -70,6 +76,72 @@ def test_grouped_tuning_refuses_a_candidate_that_introduces_internal_cv() -> Non
             seed=0,
             fold=1,
         )
+
+
+@pytest.mark.parametrize(
+    "estimator",
+    [
+        GradientBoostingRegressor(n_iter_no_change=2),
+        GradientBoostingClassifier(n_iter_no_change=2),
+        MLPRegressor(early_stopping=True, hidden_layer_sizes=(2,), tol=1.0),
+        MLPClassifier(early_stopping=True, hidden_layer_sizes=(2,), tol=1.0),
+        SGDRegressor(early_stopping=True, tol=1.0),
+        SGDClassifier(early_stopping=True, tol=1.0),
+    ],
+)
+def test_grouped_tuning_refuses_trial_wise_early_stopping(estimator) -> None:
+    values = np.random.default_rng(3).normal(size=(160, 2))
+    groups = np.repeat(["a", "b", "c", "d"], 40).astype(object)
+    with pytest.raises(ValueError, match="Grouped fitting requires.*early stopping"):
+        tune(
+            Pipeline([("model", estimator)]),
+            {},
+            values,
+            (values[:, 0] > 0).astype(int),
+            groups,
+            split=BY_SUBJECT,
+            seed=0,
+            fold=1,
+        )
+
+
+def test_grouped_tuning_refuses_a_candidate_with_trial_wise_early_stopping() -> None:
+    with pytest.raises(ValueError, match="Grouped fitting requires.*early stopping"):
+        tune(
+            Pipeline([("model", Ridge())]),
+            {"model": [GradientBoostingRegressor(n_iter_no_change=2)]},
+            X8,
+            Y8,
+            TWO_SUBJECTS,
+            split=BY_SUBJECT,
+            seed=0,
+            fold=1,
+        )
+
+
+def test_grouped_tuning_allows_mlp_without_an_active_validation_split() -> None:
+    values = np.random.default_rng(3).normal(size=(40, 2))
+    groups = np.repeat(["a", "b"], 20).astype(object)
+    fitted = tune(
+        Pipeline(
+            [
+                (
+                    "model",
+                    MLPRegressor(
+                        solver="lbfgs", early_stopping=True, hidden_layer_sizes=(2,), tol=1e-3
+                    ),
+                )
+            ]
+        ),
+        {},
+        values,
+        values[:, 0],
+        groups,
+        split=BY_SUBJECT,
+        seed=0,
+        fold=1,
+    )
+    assert np.isfinite(fitted.estimator.predict(values)).all()
 
 
 def test_tuning_refuses_a_training_fold_with_one_group() -> None:

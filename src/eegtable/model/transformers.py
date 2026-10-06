@@ -529,8 +529,8 @@ def transform_feature_names(
     """Carry input feature names through fitted pipeline steps.
 
     A step with ``get_feature_names_out`` renames or drops columns; a step with
-    only ``get_support`` drops the unsupported ones; other steps leave the names
-    unchanged.
+    only ``get_support`` drops the unsupported ones. Passthrough steps preserve
+    names; any other step without a column mapping raises.
 
     Parameters
     ----------
@@ -549,11 +549,18 @@ def transform_feature_names(
     # silently attribute values to the wrong columns.
     names = list(feature_names)
     for _name, step in steps:
+        if step is None or (isinstance(step, str) and step == "passthrough"):
+            continue
         if hasattr(step, "get_feature_names_out"):
             names = list(step.get_feature_names_out(names))
         elif hasattr(step, "get_support"):
             support = step.get_support()
             names = [f for f, keep in zip(names, support, strict=True) if keep]
+        else:
+            raise ValueError(
+                f"{type(step).__name__} must report output feature names or feature support "
+                "to map transformed columns to input features."
+            )
     return names
 
 

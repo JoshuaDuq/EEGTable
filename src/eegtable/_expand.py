@@ -290,6 +290,7 @@ def expand_signal(
     mode: Normalization,
     parameters: Mapping[str, object],
     flags_of: Callable[[Series], Mapping[str, npt.NDArray[np.bool_]]] | None = None,
+    reference_coverage_of: Callable[[Series], npt.NDArray[np.float64]] | None = None,
     row_groups: npt.NDArray[np.int_] | None = None,
     row_labels: tuple[str, ...] | None = None,
 ) -> FeatureTable:
@@ -303,6 +304,9 @@ def expand_signal(
     rather than on the measurement, such as a baseline too degenerate to anchor a
     ratio. It returns arrays shaped ``(n_epochs, n_channels)``, broadcast across
     windows, and a flag set on any member channel marks the whole spatial unit.
+
+    ``reference_coverage_of`` returns per-epoch, per-channel reference coverage.
+    Each window's coverage is limited by it before spatial or trial aggregation.
     """
     check_signals(signals, windows)
     if (row_groups is None) != (row_labels is None):
@@ -325,6 +329,9 @@ def expand_signal(
             key: np.repeat(array[:, :, np.newaxis], len(windows), axis=2)
             for key, array in (flags_of(signal) if flags_of is not None else {}).items()
         }
+        reference_coverage = (
+            None if reference_coverage_of is None else reference_coverage_of(signal)
+        )
         by_measure: dict[str, list[npt.NDArray[np.float64]]] = {}
         coverages: list[npt.NDArray[np.float64]] = []
         for window in windows:
@@ -333,6 +340,8 @@ def expand_signal(
             for name, values in measured.items():
                 by_measure.setdefault(name, []).append(values)
             per_epoch = trace_coverage[:, :, mask].mean(axis=2)
+            if reference_coverage is not None:
+                per_epoch = np.minimum(per_epoch, reference_coverage)
             coverages.append(
                 per_epoch
                 if row_groups is None

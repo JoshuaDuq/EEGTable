@@ -66,6 +66,42 @@ def _step(baseline_amp: float, active_amp: float, n: int = 201) -> BandSignal:
     return _signal(envelope)
 
 
+@pytest.mark.parametrize("function", list(ERDS_FUNCTIONS.values()))
+@pytest.mark.parametrize("missing", [np.nan, np.inf])
+def test_erds_coverage_includes_missing_baseline_samples(function, missing) -> None:
+    envelope = np.ones((1, 1, 201))
+    envelope[:, :, :90] = missing
+    envelope[:, :, 100:] = np.sqrt(2.0)
+    table = function([_signal(envelope)], baseline=BASE, windows=[STIM], include_global=False)
+    assert table.coverage.item() == pytest.approx(0.1)
+
+
+def test_erds_limits_channel_coverage_before_spatial_aggregation() -> None:
+    signal = _step(1.0, np.sqrt(2.0))
+    analytic = np.repeat(signal.analytic, 2, axis=1)
+    coverage = np.ones(analytic.shape)
+    coverage[:, 0, :100] = 0.25
+    coverage[:, 1, 100:] = 0.5
+    paired = BandSignal.from_arrays(
+        analytic=analytic,
+        times=signal.times,
+        ch_names=("C3", "C4"),
+        band=ALPHA,
+        sfreq=SFREQ,
+        row_ids=signal.row_ids,
+        coverage=coverage,
+    )
+    table = erds_mean(
+        [paired],
+        baseline=BASE,
+        windows=[STIM],
+        groups={"central": ("C3", "C4")},
+        include_global=True,
+    )
+    np.testing.assert_allclose(table.coverage, 0.375)
+    np.testing.assert_allclose(table.values, 10.0 * np.log10(2.0))
+
+
 @pytest.mark.parametrize(
     "measure", [fn for name, fn in ERDS_FUNCTIONS.items() if name != "erds_onset_latency"]
 )

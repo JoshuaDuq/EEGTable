@@ -128,6 +128,12 @@ def test_flags_must_match_the_value_shape() -> None:
         )
 
 
+@pytest.mark.parametrize("dtype", [int, float, complex, object, str])
+def test_flags_must_be_boolean(dtype) -> None:
+    with pytest.raises(TypeError, match="flag.*boolean"):
+        replace(_table(), flags={"edge_hit": np.ones((3, 2), dtype=dtype)})
+
+
 def test_concat_joins_columns_and_preserves_flags() -> None:
     identities = tuple(("recording", epoch, "event") for epoch in range(3))
     left = FeatureTable(

@@ -103,7 +103,8 @@ def write_table(
         row per table row, e.g. the event and metadata of each epoch. They are
         restored as aligned targets by :func:`read_dataset`, but are not feature
         columns returned by :func:`read_table`. The output is BIDS-style tabular
-        data, not a validated BIDS derivative dataset.
+        data, not a validated BIDS derivative dataset. Literal ``n/a`` labels are
+        refused because that token is reserved for missing values.
     provenance : mapping, optional
         JSON-serializable record of how the table was produced, stored in the
         sidecar as given.
@@ -119,13 +120,18 @@ def write_table(
 
     key, key_values = _row_key(table)
     descriptors = _descriptors(rows, table, key)
+    row_frame = pd.concat([pd.DataFrame({key: key_values}), descriptors], axis=1)
+    for column in row_frame:
+        if row_frame[column].eq(_NA).any():
+            raise ValueError(
+                f"Row descriptor {column!r} contains literal {_NA!r}, reserved for missing values."
+            )
     names = table.names
     uid_frame = pd.DataFrame({_ROW_UID: _row_uids(table.row_ids, table.row_labels, table.n_rows)})
 
     values_frame = pd.concat(
         [
-            pd.DataFrame({key: key_values}),
-            descriptors,
+            row_frame,
             uid_frame,
             pd.DataFrame(table.values, columns=names),
         ],

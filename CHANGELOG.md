@@ -121,6 +121,17 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- ERD/ERS coverage includes the baseline's finite-input coverage before spatial
+  averaging, so incomplete baselines cannot pass a full-coverage quality threshold.
+- Grouped fitting rejects active trial-wise early stopping in gradient boosting,
+  stochastic MLP and SGD estimators, including replacements in parameter grids.
+- Feature importance refuses preprocessing without an explicit output-column
+  mapping instead of attributing transformed columns to unchanged input names.
+- ICLabel fitting requires an applied common average reference over good EEG
+  channels, including when called directly outside the preprocessing pipeline.
+- Feature tables require boolean quality flags, preventing invalid flag fractions
+  and lossy serialization. TSV writing refuses literal `n/a` row labels and
+  descriptors because that token represents missing values.
 - Model feature selection preserves time-window support, so minimum-support
   exclusions apply to the selected columns. Model designs and saved bundles
   retain support, and input support files are hashed and verified before publication.

@@ -88,7 +88,9 @@ def erds_mean(
     indicate higher power. This summary alone does not test a task effect.
 
     Power is referenced to the supplied baseline separately for each epoch
-    and channel. The baseline need not be a pre-stimulus interval.
+    and channel. The baseline need not be a pre-stimulus interval. Coverage is
+    the lesser of the analysis and baseline coverage for each channel, before
+    spatial aggregation.
 
     Decibels are the default. Percent change summarizes additive changes
     relative to baseline; decibels summarize multiplicative changes. Both
@@ -643,11 +645,20 @@ def _erds_measure(
             "baseline_extreme_ratio": np.asarray(extreme, dtype=np.bool_),
         }
 
+    def reference_coverage_of(signal: BandSignal) -> npt.NDArray[np.float64]:
+        power, _, _, _ = prepared(signal)
+        mask = window_mask(signal.times, baseline)
+        coverage: npt.NDArray[np.float64] = np.where(
+            np.isfinite(power[:, :, mask]), signal.coverage[:, :, mask], 0.0
+        ).mean(axis=2)
+        return coverage
+
     return expand_signal(
         signals,
         trace_of=trace_of,
         kernel=kernel,
         flags_of=flags_of,
+        reference_coverage_of=reference_coverage_of,
         units={measure: _unit(normalize, measure)},
         windows=windows,
         groups=groups,

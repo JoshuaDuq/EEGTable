@@ -29,6 +29,21 @@ def validate_iclabel_passband(highpass: float, lowpass: float) -> None:
         )
 
 
+def _validate_iclabel_reference(raw: Any, picks: list[str]) -> None:
+    # MNE's custom-reference flag also marks electrode references. CAR instead
+    # makes the fitted EEG channels sum to zero, including with an applied projector.
+    # Allow independently rounded samples from single-precision FIF storage.
+    tolerance = 8 * np.finfo(np.float32).eps
+    for start in range(0, raw.n_times, 100_000):
+        data = raw.get_data(picks=picks, start=start, stop=min(start + 100_000, raw.n_times))
+        residual = np.abs(data.sum(axis=0))
+        amplitude = np.abs(data).sum(axis=0)
+        if np.any(residual > tolerance * amplitude):
+            raise ValueError(
+                "artifact.ica.iclabel: training EEG requires an applied common average reference"
+            )
+
+
 def fit_ica(raw: Any, settings: ICASettings) -> ArtifactModel:
     """Fit seeded ICA on a high-passed training copy and score its components.
 
@@ -42,8 +57,8 @@ def fit_ica(raw: Any, settings: ICASettings) -> ArtifactModel:
     ----------
     raw : mne.io.Raw
         Continuous recording with finite nonzero EEG positions and at least four
-        good EEG channels. ICLabel also requires the training copy to be filtered
-        to exactly 1-100 Hz.
+        good EEG channels. ICLabel also requires an applied common average reference
+        of those channels and a training copy filtered to exactly 1-100 Hz.
     settings : ICASettings
         Algorithm, components (at most the EEG rank; None uses the rank), seed,
         iteration limit, thresholds, segment length, artifact channels and
@@ -64,6 +79,8 @@ def fit_ica(raw: Any, settings: ICASettings) -> ArtifactModel:
         validate_iclabel_passband(max(raw.info["highpass"], settings.l_freq), raw.info["lowpass"])
     validate_geometry(raw)
     picks = good_eeg_names(raw)
+    if settings.iclabel is not None:
+        _validate_iclabel_reference(raw, picks)
     channels = [*settings.eog_channels, *([settings.ecg_channel] if settings.ecg_channel else [])]
     require_names(raw, channels, "artifact.ica")
     # Train on a separate high-pass copy; only add the missing high-pass, never lower one.

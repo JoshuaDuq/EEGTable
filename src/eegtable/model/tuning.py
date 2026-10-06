@@ -9,11 +9,12 @@ import numpy.typing as npt
 from sklearn.base import BaseEstimator, clone
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import (
-    HistGradientBoostingClassifier,
-    HistGradientBoostingRegressor,
+    GradientBoostingClassifier,
+    GradientBoostingRegressor,
     VotingClassifier,
 )
 from sklearn.model_selection import GridSearchCV, ParameterGrid
+from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC, NuSVC
 
@@ -84,20 +85,31 @@ def _assign_random_state(estimator: object, seed: int) -> None:
             estimator.set_params(**{key: seed for key in random_state_keys})
 
 
-def _validate_boosting_early_stopping(pipeline: Pipeline) -> None:
+def _validate_early_stopping(pipeline: Pipeline) -> None:
     for component in (pipeline, *pipeline.get_params(deep=True).values()):
-        if (
-            isinstance(component, (HistGradientBoostingRegressor, HistGradientBoostingClassifier))
-            and component.early_stopping
+        if not isinstance(component, BaseEstimator):
+            continue
+        if isinstance(component, (MLPRegressor, MLPClassifier)) and component.solver == "lbfgs":
+            continue
+        parameters = component.get_params(deep=False)
+        if parameters.get("early_stopping", False):
+            disabled = "early_stopping=False"
+        elif (
+            isinstance(component, (GradientBoostingRegressor, GradientBoostingClassifier))
+            and component.n_iter_no_change is not None
         ):
-            raise ValueError(
-                "Grouped fitting requires early_stopping=False for histogram gradient "
-                "boosting; tune max_iter through group-disjoint inner folds."
-            )
+            disabled = "n_iter_no_change=None"
+        else:
+            continue
+        raise ValueError(
+            f"Grouped fitting requires disabling early stopping with {disabled} for "
+            f"{type(component).__name__}; tune training iterations through "
+            "group-disjoint inner folds."
+        )
 
 
 def _validate_grouped_estimator(pipeline: Pipeline) -> None:
-    _validate_boosting_early_stopping(pipeline)
+    _validate_early_stopping(pipeline)
     components = (pipeline, *pipeline.get_params(deep=True).values())
     if any(isinstance(component, CalibratedClassifierCV) for component in components):
         raise ValueError(

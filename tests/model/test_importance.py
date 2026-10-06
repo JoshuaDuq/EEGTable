@@ -15,7 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import make_scorer
 from sklearn.pipeline import FeatureUnion, Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
 from eegtable.model.estimators import ridge_pipeline
 from eegtable.model.importance import (
@@ -340,6 +340,45 @@ def test_shap_importance_refuses_columns_that_are_not_input_features() -> None:
     pipe = ridge_pipeline(PreprocessingConfig(pca_enabled=True), seed=0).fit(X, X[:, 0])
     with _shap_stand_in(), pytest.raises(ValueError, match="input feature"):
         shap_importance(pipe, X, ["f0", "f1", "f2"])
+
+
+def test_shap_importance_refuses_a_transformer_with_unknown_column_mapping() -> None:
+    values = np.random.default_rng(12).normal(size=(40, 2))
+    model = Pipeline(
+        [
+            ("reverse", FunctionTransformer(lambda data: data[:, ::-1])),
+            ("model", LinearRegression()),
+        ]
+    ).fit(values, values[:, 0])
+    np.testing.assert_allclose(model.predict(values), values[:, 0], atol=1e-12)
+
+    with _shap_stand_in(), pytest.raises(ValueError, match="output feature names"):
+        shap_importance(model, values, ["a", "b"])
+
+
+def test_shap_importance_uses_explicit_transformer_column_mapping() -> None:
+    values = np.random.default_rng(12).normal(size=(40, 2))
+    model = Pipeline(
+        [
+            (
+                "reverse",
+                FunctionTransformer(
+                    lambda data: data[:, ::-1],
+                    feature_names_out=lambda transformer, names: names[::-1],
+                ),
+            ),
+            ("identity", "passthrough"),
+            ("model", LinearRegression()),
+        ]
+    ).fit(values, values[:, 0])
+
+    with _shap_stand_in():
+        importance = shap_importance(model, values, ["a", "b"])
+    np.testing.assert_allclose(
+        importance.values,
+        [np.abs(values[:, 0] - values[:, 0].mean()).mean(), 0.0],
+        atol=1e-12,
+    )
 
 
 @pytest.mark.parametrize("container", ["direct", "pipeline", "columns", "union"])

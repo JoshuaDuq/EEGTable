@@ -316,6 +316,8 @@ class FeatureTable:
                 f"meta has {len(self.meta)} records but values has {self.values.shape[1]} columns."
             )
         for key, array in self.flags.items():
+            if array.dtype != np.bool_:
+                raise TypeError(f"flag {key!r} must contain boolean values.")
             if array.shape != self.values.shape:
                 raise ValueError(
                     f"flag {key!r} shape {array.shape} does not match values {self.values.shape}."

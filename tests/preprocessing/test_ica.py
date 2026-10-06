@@ -177,3 +177,61 @@ def test_iclabel_rejects_an_actual_training_band_outside_one_to_one_hundred_hz(r
     settings = ICASettings(method="infomax", l_freq=highpass, iclabel=ICLabelSettings())
     with pytest.raises(ValueError, match="1-100 Hz"):
         fit_ica(filtered, settings)
+
+
+@pytest.mark.parametrize("reference", [None, ("C3",), "inactive-average"])
+def test_iclabel_rejects_training_without_common_average_reference(mixture, reference):
+    pytest.importorskip("mne_icalabel")
+    from eegtable.preprocessing.config import FilterSettings, ICLabelSettings
+    from eegtable.preprocessing.ica import fit_ica
+    from eegtable.preprocessing.raw import filter_raw
+
+    training = filter_raw(mixture, FilterSettings(l_freq=1.0, h_freq=100.0))
+    if reference == "inactive-average":
+        training.set_eeg_reference("average", projection=True)
+    elif reference is not None:
+        training.set_eeg_reference(list(reference), projection=False)
+    settings = ICASettings(
+        method="infomax", n_components=4, max_iter=2000, iclabel=ICLabelSettings()
+    )
+    with pytest.raises(ValueError, match="common average reference"):
+        fit_ica(training, settings)
+
+
+def test_iclabel_accepts_an_applied_average_projector_with_bad_channels(mixture):
+    pytest.importorskip("mne_icalabel")
+    from eegtable.preprocessing.config import FilterSettings, ICLabelSettings
+    from eegtable.preprocessing.ica import fit_ica
+    from eegtable.preprocessing.raw import filter_raw
+
+    training = filter_raw(mixture, FilterSettings(l_freq=1.0, h_freq=100.0))
+    training.info["bads"] = ["O2"]
+    training.set_eeg_reference("average", projection=True).apply_proj()
+    settings = ICASettings(
+        method="infomax", n_components=4, max_iter=2000, iclabel=ICLabelSettings()
+    )
+    # ICLabel's metadata check cannot recognize MNE's applied average projector.
+    with pytest.warns(RuntimeWarning, match="referenced to a common average"):
+        model = fit_ica(training, settings)
+    assert model.model.ch_names == [name for name in mixture.ch_names[:8] if name != "O2"]
+    assert model.evidence["iclabel"]["probabilities"].shape == (4, 7)
+
+
+def test_iclabel_accepts_average_reference_after_single_precision_storage(mixture, tmp_path):
+    import mne
+
+    pytest.importorskip("mne_icalabel")
+    from eegtable.preprocessing.config import FilterSettings, ICLabelSettings
+    from eegtable.preprocessing.ica import fit_ica
+    from eegtable.preprocessing.raw import filter_raw
+
+    training = filter_raw(mixture, FilterSettings(l_freq=1.0, h_freq=100.0))
+    training.set_eeg_reference("average", projection=False)
+    path = tmp_path / "referenced_raw.fif"
+    training.save(path, fmt="single", verbose=False)
+    restored = mne.io.read_raw_fif(path, preload=True, verbose=False)
+    settings = ICASettings(
+        method="infomax", n_components=4, max_iter=2000, iclabel=ICLabelSettings()
+    )
+    model = fit_ica(restored, settings)
+    assert model.evidence["iclabel"]["probabilities"].shape == (4, 7)

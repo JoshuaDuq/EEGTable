@@ -195,6 +195,27 @@ def test_missing_values_are_written_as_bids_na(tmp_path) -> None:
     assert second_row[-1] == "n/a"
 
 
+@pytest.mark.parametrize("dtype", [object, "string", "category"])
+def test_writer_rejects_text_descriptors_that_collide_with_missing_marker(tmp_path, dtype) -> None:
+    path = tmp_path / "features.tsv"
+    rows = pd.DataFrame({"subject_id": pd.Series(["01", "n/a", None], dtype=dtype)})
+
+    with pytest.raises(ValueError, match="subject_id.*n/a.*missing"):
+        write_table(_epoch_table(), path, rows=rows)
+
+    assert not list(tmp_path.iterdir())
+
+
+def test_writer_rejects_group_labels_that_collide_with_missing_marker(tmp_path) -> None:
+    path = tmp_path / "features.tsv"
+    table = replace(_group_table(), row_labels=("n/a", "right"))
+
+    with pytest.raises(ValueError, match="group.*n/a.*missing"):
+        write_table(table, path)
+
+    assert not list(tmp_path.iterdir())
+
+
 def test_sidecar_describes_every_column_with_its_band_bounds(tmp_path) -> None:
     write_table(_epoch_table(), tmp_path / "t.tsv", provenance={"input": "sub-01_epo.fif"})
 
