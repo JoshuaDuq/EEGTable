@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 )
 
 type Client struct {
@@ -133,8 +132,7 @@ func (c Client) Run(recording string) (Runner, error) {
 	args = append(args, "--progress-json")
 	cmd := exec.Command(c.Binary, args...)
 	cmd.Env = append(os.Environ(), "NO_COLOR=1", "PYTHONUNBUFFERED=1")
-	// Its own process group, so Stop reaches the workers Python may spawn.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	newGroup(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -236,6 +234,6 @@ func lines(reader io.Reader) <-chan string {
 
 func (p *Process) Stop() {
 	if p.cmd != nil && p.cmd.Process != nil {
-		syscall.Kill(-p.cmd.Process.Pid, syscall.SIGTERM)
+		stopGroup(p.cmd)
 	}
 }

@@ -125,9 +125,13 @@ not alter the core feature definitions. Combine related extras, for example
    * - ``[dev]``
      - ``pytest``, ``ruff``, ``black``, ``mypy``, type stubs
      - Tests, type checking, and linting.
+   * - ``[references]``
+     - ``antropy>=0.2.1``
+     - Third-party implementations the tests check EEGTable's numbers against.
    * - ``[docs]``
      - ``sphinx``, ``furo``, ``myst-parser``, ``sphinx-copybutton``,
-       ``sphinx-design``, ``sphinx-notfound-page``, ``scikit-learn``
+       ``sphinx-design``, ``sphinx-notfound-page``, ``sphinx-gallery``,
+       ``scikit-learn``
      - This documentation, including the modeling API pages.
 
 For development with the scientific integrations and documentation:

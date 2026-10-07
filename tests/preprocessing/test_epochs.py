@@ -38,6 +38,57 @@ def test_threshold_rejection_matches_mne(raw):
     assert actual.drop_log == expected.drop_log
 
 
+def _three_events(spikes=(), sfreq=250.0):
+    # Events at 4, 8 and 12 s; each spike adds 1 mV to every channel at that time.
+    data = np.random.default_rng(0).normal(scale=1e-6, size=(3, round(20 * sfreq)))
+    for time in spikes:
+        data[:, round(time * sfreq)] += 1e-3
+    raw = mne.io.RawArray(data, mne.create_info(["Cz", "Pz", "Oz"], sfreq, "eeg"), verbose=False)
+    raw.set_annotations(mne.Annotations([4.0, 8.0, 12.0], 0.0, "stim"))
+    settings = EventSettings("annotations", {"stim": 1})
+    return raw, resolve_events(raw, settings), settings
+
+
+@pytest.mark.parametrize(
+    "padding,rejection,bad",
+    [
+        # Padding only: 4 s - 0.2 s - 1 s = 2.8 s to 3.8 s.
+        (1.0, None, 3.0),
+        # Analysis window, outside the threshold window.
+        (0.0, ThresholdSettings(reject={"eeg": 1.0}, tmin=0.0), 3.85),
+    ],
+)
+def test_bad_span_anywhere_in_the_cut_epoch_drops_it(padding, rejection, bad):
+    raw, events, event_settings = _three_events()
+    raw.annotations.append(bad, 0.1, "BAD_manual")
+    settings = EventEpochSettings(event_settings, -0.2, 0.8, padding=padding)
+    epochs = make_epochs(raw, events, settings, rejection)
+    assert epochs.drop_log == (("BAD_manual",), (), ())
+
+
+def test_threshold_window_survives_storage(tmp_path):
+    from eegtable.preprocessing.rejection import reject_epochs
+
+    # A spike before the threshold window (event 1) and one inside it (event 2).
+    raw, events, event_settings = _three_events(spikes=(3.95, 8.5))
+    settings = EventEpochSettings(event_settings, -0.2, 0.8, padding=1.0)
+    rejection = ThresholdSettings(reject={"eeg": 5e-4}, tmin=0.0)
+    make_epochs(raw, events, settings, rejection).save(tmp_path / "x_epo.fif", verbose=False)
+    restored = mne.read_epochs(tmp_path / "x_epo.fif", preload=True, verbose=False)
+    assert reject_epochs(restored, rejection).drop_log == ((), ("Cz", "Pz", "Oz"), ())
+
+
+def test_a_threshold_window_off_the_sample_grid_survives_storage(tmp_path):
+    # At 1024 Hz no sample falls at 0.8 s; a window bound past the last sample is
+    # refused when the epochs are read back.
+    raw, events, event_settings = _three_events(sfreq=1024.0)
+    settings = EventEpochSettings(event_settings, -0.2, 0.8)
+    epochs = make_epochs(raw, events, settings, ThresholdSettings(reject={"eeg": 5e-4}))
+    epochs.save(tmp_path / "x_epo.fif", verbose=False)
+    restored = mne.read_epochs(tmp_path / "x_epo.fif", preload=True, verbose=False)
+    assert (restored.reject_tmin, restored.reject_tmax) == (epochs.tmin, epochs.tmax)
+
+
 def test_reference_preserves_auxiliary(raw):
     actual = reference_epochs(raw, ReferenceSettings("average"))
     np.testing.assert_allclose(actual.get_data(picks="eeg").sum(axis=0), 0, atol=1e-18)

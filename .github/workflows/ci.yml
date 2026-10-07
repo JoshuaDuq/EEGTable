@@ -82,7 +82,7 @@ jobs:
           tests/test_runner_compute.py tests/test_complexity.py tests/test_higuchi.py
           tests/test_spectral_model.py tests/test_irasa.py tests/test_cycles.py
           tests/test_extended_complexity.py
-          tests/test_phase.py tests/test_bids.py
+          tests/test_phase.py tests/test_bids.py tests/test_recipe.py tests/test_passband.py
           tests/model tests/paradigm_specific -ra
 
   # The Go front end is optional for users; its own tests still run here.
@@ -93,7 +93,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: tui/go.mod
+          cache-dependency-path: tui/go.sum
       - run: cd tui && test -z "$(gofmt -l .)" && go vet ./... && go test ./...
+      # Process groups differ on Windows; build there too so that path cannot rot.
+      - run: cd tui && GOOS=windows go vet ./... && GOOS=windows go build ./...
 
   package:
     runs-on: ubuntu-latest

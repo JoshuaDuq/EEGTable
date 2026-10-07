@@ -63,9 +63,9 @@ def make_epochs(
     """Cut padded epochs around the resolved events.
 
     Epochs span the analysis window widened by ``settings.padding`` on each side,
-    with no baseline, projection, decimation or detrending. Epochs overlapping a
-    BAD annotation are dropped; no thresholds are applied here. At least one epoch
-    must remain, with finite samples and a good EEG channel.
+    with no baseline, projection, decimation or detrending. Epochs whose padded span
+    overlaps a BAD annotation are dropped; no thresholds are applied here. At least
+    one epoch must remain, with finite samples and a good EEG channel.
 
     Parameters
     ----------
@@ -92,6 +92,8 @@ def make_epochs(
     reject_tmax = tmax if rejection is None or rejection.tmax is None else rejection.tmax
     if not tmin <= reject_tmin <= reject_tmax <= tmax:
         raise ValueError("rejection: window must be inside the analysis interval")
+    # MNE also narrows reject_by_annotation to reject_tmin/reject_tmax, so BAD spans are
+    # checked over the whole padded epoch first and the threshold window is set afterwards.
     epochs = mne.Epochs(
         raw,
         events.events,
@@ -105,13 +107,21 @@ def make_epochs(
         flat=None,
         proj=False,
         decim=1,
-        reject_tmin=reject_tmin,
-        reject_tmax=reject_tmax,
+        reject_tmin=None,
+        reject_tmax=None,
         detrend=None,
         on_missing="raise",
         reject_by_annotation=True,
         metadata=events.metadata,
         event_repeated="error",
+    )
+    # Snapped as the constructor snaps them: a bound at the epoch's edge becomes its first or
+    # last sample, since one past the data, such as 0.8 s at 1024 Hz, cannot be read back.
+    epochs.reject_tmin = (
+        epochs.tmin if np.isclose(reject_tmin, tmin - settings.padding) else reject_tmin
+    )
+    epochs.reject_tmax = (
+        epochs.tmax if np.isclose(reject_tmax, tmax + settings.padding) else reject_tmax
     )
     validate_epochs(epochs)
     return epochs

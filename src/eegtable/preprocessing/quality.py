@@ -39,8 +39,8 @@ def detect_annotations(
 ) -> QualityCandidates:
     """Candidate BAD spans and bad channels from the configured annotation detectors.
 
-    Runs MNE's amplitude detector on the good EEG channels, its break detector
-    around ``events`` and its muscle z-score detector, each only when configured.
+    Runs MNE's amplitude and muscle z-score detectors on the good EEG channels and
+    its break detector around ``events``, each only when configured.
     Nothing is applied to ``raw``, and manual ``bad_spans`` are not included; see
     :func:`~eegtable.preprocessing.raw.annotate_raw`.
 
@@ -100,8 +100,10 @@ def detect_annotations(
             raise ValueError(
                 "annotations.muscle.filter_freq: diagnostic band outside source passband"
             )
+        # MNE scores every EEG channel, bads included, and one flat channel makes every
+        # z-score NaN; like the amplitude detector, use only the good EEG channels.
         spans, scores = mne.preprocessing.annotate_muscle_zscore(
-            raw,
+            raw.copy().pick(good_eeg_names(raw)),
             ch_type="eeg",
             filter_freq=muscle.filter_freq,
             threshold=muscle.threshold,

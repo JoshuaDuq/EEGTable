@@ -26,8 +26,10 @@ epoch_metadata = true               # copy each epoch's metadata into its row
 
 # Time windows in seconds from the epoch origin. Leave the section out to
 # measure the whole epoch. The name "all" is reserved for the whole epoch.
+# Spectra need windows of about a second: a 0.5 s window resolves only 2 Hz,
+# too coarse for peak_frequency in the alpha band.
 # [windows]
-# baseline = [-0.5, 0.0]
+# baseline = [-1.0, 0.0]
 # stimulus = [0.0, 1.0]
 
 # Regions of interest, used by entries whose spatial list includes "rois".

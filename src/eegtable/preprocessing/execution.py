@@ -22,6 +22,7 @@ from .config import (
     ICASettings,
     PreprocessingConfig,
     ProcessingSettings,
+    ThresholdSettings,
     WorkflowSettings,
     read_yaml,
 )
@@ -251,6 +252,26 @@ def _scientific_packages(stage: str, settings: ProcessingSettings) -> tuple[str,
     return ()
 
 
+def _implementation(stage: str, settings: ProcessingSettings) -> int:
+    # A correction that changes what a stage computes advances it only in the recipes it
+    # affects: their checkpoints, and the reviews after them, go stale; the rest are kept.
+    artifact = settings.artifact.settings if settings.artifact is not None else None
+    rejection = settings.rejection
+    corrected = {
+        # The muscle detector stopped scoring bad channels.
+        "annotate": settings.annotations.muscle is not None,
+        # ICLabel stopped reading BAD spans.
+        "fit-artifact": isinstance(artifact, ICASettings) and artifact.iclabel is not None,
+        # BAD spans in the padding, or outside the threshold window, now drop the epoch.
+        "epoch": settings.epochs.padding > 0
+        or (
+            isinstance(rejection, ThresholdSettings)
+            and (rejection.tmin is not None or rejection.tmax is not None)
+        ),
+    }
+    return 3 if corrected.get(stage, False) else 2
+
+
 def stage_identities(workflow: Workflow, source_id: str) -> dict[str, str]:
     reset = _reset_tokens(workflow)
     resolved: dict[str, str] = {}
@@ -291,7 +312,7 @@ def stage_identities(workflow: Workflow, source_id: str) -> dict[str, str]:
         decision = read_yaml(path) if stage.review and path.exists() else None
         resolved[stage.name] = identity(
             {
-                "implementation": 2,
+                "implementation": _implementation(stage.name, workflow.config.processing),
                 "stage": stage.name,
                 "source": source_id if stage.name == "load" else None,
                 "parents": parents,

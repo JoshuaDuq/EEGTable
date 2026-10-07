@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // Theme: Monochrome Research Terminal.
@@ -53,7 +54,8 @@ var noColorOnce sync.Once
 func ApplyNoColorProfile() {
 	noColorOnce.Do(func() {
 		if v := os.Getenv("NO_COLOR"); v != "" {
-			lipgloss.SetColorProfile(0) // 0 == termenv.Ascii (monochrome)
+			// termenv numbers its profiles from TrueColor, so a literal 0 forced full colour.
+			lipgloss.SetColorProfile(termenv.Ascii)
 		}
 	})
 }

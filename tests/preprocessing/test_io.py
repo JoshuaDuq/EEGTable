@@ -19,6 +19,31 @@ def test_export_bundle(raw, tmp_path):
         write_result(result, output)
 
 
+def test_overwrite_removes_files_the_new_bundle_lacks(raw, tmp_path):
+    import json
+    from dataclasses import replace
+
+    import pandas as pd
+
+    from eegtable.preprocessing.io import write_result
+
+    result = preprocess(raw, ProcessingSettings(FixedEpochSettings(2)))
+    output = OutputSettings(tmp_path, "subject")
+    write_result(replace(result, repairs=pd.DataFrame({"epoch": [0]})), output)
+    # A split left by an earlier, larger export, and files of other bundles or the user.
+    for name in ("subject_epo-1.fif", "subject_notes.txt", "subject_epo-x_epo.fif"):
+        (tmp_path / name).write_bytes(b"")
+    manifest = write_result(result, output, overwrite=True)
+    published = set(json.loads(manifest.read_text(encoding="utf-8"))["files"])
+    assert published == {"subject_epo.fif", "subject_events.tsv", "subject_report.html"}
+    assert {path.name for path in tmp_path.iterdir() if not path.name.startswith(".")} == {
+        *published,
+        manifest.name,
+        "subject_notes.txt",
+        "subject_epo-x_epo.fif",
+    }
+
+
 def test_export_rejects_sampling_rate_loss_before_publication(tmp_path):
     from eegtable.preprocessing.io import write_result
 

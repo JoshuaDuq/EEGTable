@@ -49,7 +49,7 @@ On Windows PowerShell, activate with `.\.venv\Scripts\Activate.ps1`. The core pa
 | `preprocessing` | Raw-to-epochs workflow; requires MNE ≥ 1.13.2 |
 | `preprocessing-auto` | PyPREP, ICLabel, Picard, and autoreject integrations |
 | `preprocessing-gui` | MNE Qt viewers for interactive review |
-| `docs`, `dev` | Documentation build; tests, typing, and lint |
+| `docs`, `dev`, `references` | Documentation build; tests, typing, and lint; reference implementations the tests compare against |
 
 Combine extras for the intended workflow, for example `python -m pip install -e ".[preprocessing,preprocessing-auto,model]"`. See [Installation](https://joshuaduq.github.io/EEGTable/install.html) for complete dependencies and platform instructions.
 

@@ -108,6 +108,19 @@ def test_integer_window_bounds_round_trip(tmp_path) -> None:
     _assert_same_table(read_table(path), table)
 
 
+def test_a_computation_parameter_named_method_round_trips(tmp_path) -> None:
+    original = _epoch_table()
+    computation = ComputationSpec.create("custom", method="welch")
+    table = replace(
+        original,
+        meta=(replace(original.meta[0], computation=computation), *original.meta[1:]),
+    )
+    path = tmp_path / "features.tsv"
+    write_table(table, path)
+
+    _assert_same_table(read_table(path), table)
+
+
 @pytest.mark.parametrize("field", ["values", "coverage", "support"])
 def test_feature_matrices_preserve_float_precision(tmp_path, field) -> None:
     numbers = np.random.default_rng(42).uniform(size=(3, 2))

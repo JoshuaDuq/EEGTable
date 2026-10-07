@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from importlib import resources, util
 from pathlib import Path
@@ -50,7 +51,7 @@ def handle(args: argparse.Namespace) -> int:
                 stream.write(template)
             print(
                 f"Wrote {args.recipe}. Set inputs, target and output, then run: "
-                f"eegtable model check {args.recipe}"
+                f"eegtable model check {shlex.quote(str(args.recipe))}"
             )
             return 0
         _require_dependencies()

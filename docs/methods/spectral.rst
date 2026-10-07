@@ -152,9 +152,10 @@ Wavelet Support Restriction
 ---------------------------
 
 Only Morlet coefficients whose full wavelet support lies inside the analysis
-window and the available TFR time range enter the window mean. Requested bounds
-outside that range, including infinite whole-segment bounds, are intersected
-with the available range before restricting wavelet support. Keep any padding
+window and the available TFR time range enter the window mean. Infinite
+whole-segment bounds are intersected with the available range before restricting
+wavelet support; a finite bound reaching more than one sample beyond it is
+refused. Keep any padding
 in the TFR passed to ``Spectra.from_tfr``; cropped-away padding cannot establish
 support for the remaining coefficients.
 

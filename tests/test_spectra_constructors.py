@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 import eegtable as ef
+from eegtable import spectra as spectra_module
 from eegtable.spectra import Spectra, Window
 from tests.synthetic import make_epochs
 
@@ -258,28 +259,23 @@ def test_tfr_conversion_refuses_complex_cycle_counts() -> None:
         )
 
 
+_WELCH_ARGUMENTS = {
+    "sfreq": 250.0,
+    "window": Window("all", 0.0, 2.0),
+    "fmin": 1.0,
+    "fmax": 40.0,
+    "n_fft": 250,
+    "n_overlap": None,
+    "statistic": "mean",
+    "n_jobs": 1,
+}
+
+
 def _whole_and_in_blocks(monkeypatch, data):
-    from eegtable import spectra as spectra_module
-
-    window = Window("all", 0.0, 2.0)
-
-    def estimate():
-        return spectra_module.welch_psd(
-            data,
-            250.0,
-            window=window,
-            fmin=1.0,
-            fmax=40.0,
-            n_fft=250,
-            n_overlap=None,
-            statistic="mean",
-            n_jobs=1,
-        )
-
-    whole = estimate()
+    whole = spectra_module.welch_psd(data, **_WELCH_ARGUMENTS)
     # One epoch per call, as a large recording would be cut, to keep MNE off its slow path.
     monkeypatch.setattr(spectra_module, "_WELCH_BLOCK_BYTES", data[0].nbytes)
-    return whole, estimate()
+    return whole, spectra_module.welch_psd(data, **_WELCH_ARGUMENTS)
 
 
 def test_welch_in_blocks_of_epochs_gives_the_numbers_of_one_call(monkeypatch) -> None:
@@ -291,30 +287,16 @@ def test_welch_in_blocks_of_epochs_gives_the_numbers_of_one_call(monkeypatch) ->
     np.testing.assert_array_equal(freqs, block_freqs)
 
 
-def _mne_estimates_rows_with_nan_apart() -> bool:
-    # Older MNE releases, 1.10 among them, accept NaN only at the same samples in every
-    # row and stop on an assertion otherwise; there is then no row semantics to preserve.
-    from mne.time_frequency import psd_array_welch
-
-    data = np.ones((2, 64))
-    data[0, 10:20] = np.nan
-    try:
-        psd_array_welch(data, 64.0, n_fft=32, verbose=False)
-    except AssertionError:
-        return False
-    return True
-
-
-@pytest.mark.skipif(
-    not _mne_estimates_rows_with_nan_apart(),
-    reason="this MNE refuses NaN that differs between rows",
-)
-def test_input_with_nan_is_estimated_whole(monkeypatch) -> None:
-    # MNE reads NaN at the same samples in every row as rejected spans, and NaN in only some
-    # rows as broken channels. A block holding just the first epoch would see its NaN as
-    # aligned and estimate around them, where the whole input marks them broken.
+@pytest.mark.parametrize("missing", [np.nan, np.inf])
+def test_a_channel_with_missing_samples_is_missing_whatever_else_is_estimated(
+    monkeypatch, missing
+) -> None:
+    # MNE estimates around NaN that every row of a call shares, so an epoch's estimate
+    # used to depend on the epochs estimated with it, and an infinity was not missing.
     data = np.random.default_rng(1).normal(size=(4, 3, 501))
-    data[0, :, 100:150] = np.nan
+    data[0, :, 100:150] = missing
     (whole, _), (blocks, _) = _whole_and_in_blocks(monkeypatch, data)
-    np.testing.assert_array_equal(np.isnan(whole), np.isnan(blocks))
-    np.testing.assert_allclose(whole[1:], blocks[1:])
+    alone, _ = spectra_module.welch_psd(data[:1], **_WELCH_ARGUMENTS)
+    assert np.isnan(whole[0]).all() and np.isnan(alone).all()
+    np.testing.assert_allclose(whole[1:], blocks[1:], rtol=1e-12, atol=0)
+    assert np.isfinite(whole[1:]).all()

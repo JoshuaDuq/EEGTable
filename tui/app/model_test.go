@@ -5,13 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/JoshuaDuq/EEGTable/tui/eegtable"
+	"github.com/JoshuaDuq/EEGTable/tui/styles"
 )
 
 type fakeRunner struct {
@@ -370,16 +373,56 @@ func TestRunStreamsIntoTheStagePane(t *testing.T) {
 	}
 }
 
-func TestFailedRunShowsTheStderrTail(t *testing.T) {
+// A recipe that stops loading before any recording starts reports on stderr alone.
+func TestFailedRunWithoutAnErrorEventShowsTheStderrTail(t *testing.T) {
 	backend := &fakeBackend{status: statusFixture()}
 	m := home(t, backend)
 	m, cmd := update(t, m, key('r'))
 	m = settle(t, m, cmd)
 	close(backend.runner.events)
-	backend.runner.done <- eegtable.Result{Code: 1, Stderr: "ValueError: artifact.ica.max_iter: ICA did not converge"}
+	backend.runner.done <- eegtable.Result{Code: 2, Stderr: "eegtable preprocess: inputs.root: no such directory"}
 	m = settle(t, m, m.wait())
-	if !strings.Contains(m.View(), "did not converge") {
+	if !strings.Contains(m.View(), "no such directory") {
 		t.Fatalf("view = %s", m.View())
+	}
+}
+
+// The real --progress-json failure: Python sends the cause as an error-level log
+// event on stdout, and stderr ends on whatever MNE narrated last.
+func TestFailedRunShowsPythonsErrorEventOverMNENarration(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(0) // termenv.TrueColor, so the failure style shows in the text
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	narration := "Reading 0 ... 4999  =      0.000 ...    19.996 secs..."
+	cause := "Could not find any of the events you specified."
+	run := func(t *testing.T, result eegtable.Result) Model {
+		backend := &fakeBackend{status: statusFixture()}
+		m := startRun(t, backend, 40)
+		m = feed(t, m, backend,
+			eegtable.Event{Event: "stderr", Message: narration},
+			eegtable.Event{Event: "log", Level: "error", Subject: "sub-01", Message: cause},
+			eegtable.Event{Event: "subject_done", Subject: "sub-01"},
+			eegtable.Event{Event: "log", Level: "warning", Message: "✗ 1 of 1 recordings failed: sub-01"},
+			eegtable.Event{Event: "complete"},
+			eegtable.Event{Event: "stderr", Message: narration})
+		close(backend.runner.events)
+		backend.runner.done <- result
+		return settle(t, m, m.wait())
+	}
+	m := run(t, eegtable.Result{Code: 1, Stderr: narration})
+	if m.failure != cause || !strings.Contains(m.View(), cause) {
+		t.Fatalf("failure = %q", m.failure)
+	}
+	if !slices.Contains(m.log.lines, styles.Fail.Render(cause)) {
+		t.Fatalf("the cause must be styled as a failure in the log:\n%q", m.log.lines)
+	}
+	if slices.Contains(m.log.lines, styles.Fail.Render(narration)) {
+		t.Fatalf("MNE's narration is not a failure:\n%q", m.log.lines)
+	}
+	// A signal ended the run, not the recording that failed before it.
+	m = run(t, eegtable.Result{Code: -1, Stderr: narration + "\nsignal: terminated"})
+	if m.failure != "signal: terminated" {
+		t.Fatalf("failure = %q", m.failure)
 	}
 }
 

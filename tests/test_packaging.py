@@ -56,6 +56,8 @@ def test_ci_covers_supported_endpoints_optional_integrations_and_the_wheel() -> 
         "tests/test_irasa.py",
         "tests/test_cycles.py",
         "tests/test_bids.py",
+        "tests/test_recipe.py",
+        "tests/test_passband.py",
     ):
         assert suite in workflow
     assert "python -m build" in workflow

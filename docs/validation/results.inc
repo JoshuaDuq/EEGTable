@@ -139,7 +139,7 @@ PhysioNet motor movement
      - pass
    * - Microstates last tens of milliseconds (``microstate_duration``)
      - median duration of every state between 30 and 150 ms
-     - median durations 68 to 96 ms
+     - median durations 67 to 103 ms
      - pass
    * - In MNE's CSP decoding pipeline, eegtable's CSP separates movement from rest about as well as mne.decoding.CSP (``CommonSpatialPattern``)
      - mean accuracy over 20 subjects within 0.05 of MNE's, on the same splits

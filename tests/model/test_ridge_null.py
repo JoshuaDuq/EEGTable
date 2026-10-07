@@ -29,6 +29,14 @@ def test_batched_subject_correlation_is_zero_for_constant_fold_cells() -> None:
     np.testing.assert_array_equal(actual, [0.0])
 
 
+def test_batched_subject_correlation_refuses_two_points_left_by_fold_centring() -> None:
+    values = np.array([[0.3], [1.9], [0.7]])
+    with pytest.raises(ValueError, match="at least 3"):
+        _ridge_null._subject_r(
+            values, values[::-1], np.full(3, "s1"), np.array([1, 1, 2]), AggregationConfig()
+        )
+
+
 @pytest.mark.parametrize("greater_is_better", [True, False])
 @pytest.mark.parametrize("batched", [True, False])
 def test_identity_permutations_count_as_ties(batched, greater_is_better, monkeypatch) -> None:

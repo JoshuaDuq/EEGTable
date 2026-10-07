@@ -139,6 +139,8 @@ A later ``run`` reuses a checkpoint whose recipe and parents still match.
 - **Scientific packages**: PyPREP, autoreject, scikit-learn, Picard, ICLabel, and ONNX Runtime
   versions enter the identities of the enabled stages that use them. Upgrading
   one of these packages makes that stage and its dependent checkpoints stale.
+- **Corrections**: an eegtable fix that changes what a stage computes makes
+  that stage and its dependent checkpoints stale in the recipes it affects.
 - **Missing acquisition reference**: ``reference.add_channels`` belongs to
   ``artifact-reference`` when artifact fitting re-references the data, so
   changing those electrodes also invalidates that reference and its fitted
@@ -185,9 +187,12 @@ command and flag has ``--help``.
      - No recording failed and at least one awaits a review.
 
 - ``--n-jobs``: passed to filtering and resampling.
-- ``--overwrite``: republishes an export that already matches the recipe. A
-  deleted bundle is republished without it. A stale checkpoint is removed with
-  ``reset``, not with ``--overwrite``.
+- ``--overwrite``: lets ``export`` replace an existing bundle and remove its
+  files the new one lacks. It is needed to republish an export that already
+  matches the recipe, and to export after a recipe change and ``reset``, since
+  the previous bundle is still in place. A deleted bundle is republished
+  without it. A stale checkpoint is removed with ``reset``, not with
+  ``--overwrite``.
 - ``--progress-json``: writes one JSON event per line in the feature runner's
   format, with each recording as a subject.
 
@@ -370,10 +375,8 @@ Sections
        zeros before the first re-reference, including ``artifact.reference``.
        The configured montage is reapplied to locate the restored electrodes.
        Sources already marked as custom referenced cannot restore missing
-       acquisition electrodes. MNE also sets that flag when creating a bipolar
-       channel from an EEG anode. For that combination, restore the acquisition
-       reference on the original recording before bipolar preparation, save
-       the restored channels, and omit ``add_channels`` from the recipe.
+       acquisition electrodes. Bipolar channels from ``channels.bipolar`` do
+       not set that flag.
        ``null`` leaves the reference unchanged.
    * - ``sampling``
      - - ``method: decimate`` with integer ``factor``, which requires
@@ -390,7 +393,8 @@ Detector Settings
   ``t_start_after_previous``, and ``t_stop_before_next``, and requires event
   epochs.
 - ``annotations.muscle`` takes ``filter_freq``, ``threshold``, and
-  ``min_length_good``.
+  ``min_length_good``. Like the amplitude detector, it scores only the good
+  EEG channels.
 
 Artifact Settings
 ~~~~~~~~~~~~~~~~~
@@ -402,11 +406,14 @@ Artifact Settings
 - ``l_freq``: default 1 Hz, on a copy.
 - ``n_components``, ``random_state``, ``max_iter``, ``reject``, ``flat``,
   ``tstep``, ``eog_channels``, ``ecg_channel``, and ``iclabel``.
+- ``max_iter``: a ``fastica`` or ``picard`` fit that reaches it fails as
+  unconverged. MNE's ``infomax`` reports the limit whether or not it converged,
+  so an ``infomax`` fit is not checked.
 
 **ICLabel**: ``iclabel`` takes ``threshold`` (default 0.8) and ``keep``
-(default ``[brain, other]``). It runs ICLabel on the training copy using
-the ONNX backend installed by ``preprocessing-auto`` and
-requires:
+(default ``[brain, other]``). It runs ICLabel on the training copy, without
+the BAD spans the fit skipped, using the ONNX backend installed by
+``preprocessing-auto`` and requires:
 
 - ``infomax`` or ``picard``.
 - ``artifact.reference: average``.
@@ -474,7 +481,8 @@ previous enabled parent. ``apply-artifact`` waits for both ``epoch`` and
        exclude, the projectors to apply, or whether to apply the regression.
    * - ``epoch``
      - ``mne.Epochs`` with ``baseline=None``, ``proj=False``, and ``decim=1``.
-       BAD annotations drop epochs. Padding lies outside the analysis window.
+       A BAD annotation anywhere in the padded epoch drops it. Padding lies
+       outside the analysis window.
        From here on a checkpoint holds epochs, not the continuous data.
    * - ``apply-artifact``
      - Apply the reviewed operator. The fit is not repeated.

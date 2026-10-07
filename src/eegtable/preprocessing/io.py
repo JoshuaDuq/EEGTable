@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -34,9 +35,22 @@ def validate_bundle(manifest_path: Path) -> dict[str, Any]:
     return manifest
 
 
+def bundle_files(output: OutputSettings) -> list[Path]:
+    # MNE names epoch splits <name>_epo-1.fif, <name>_epo-2.fif, ...; a looser pattern
+    # would also match another bundle's files, such as <name>_epo-x_epo.fif.
+    split = re.compile(rf"{re.escape(output.name)}_epo-\d+\.fif")
+    names = {f"{output.name}{suffix}" for suffix in BUNDLE_SUFFIXES}
+    if not output.directory.is_dir():
+        return []
+    return sorted(
+        path
+        for path in output.directory.iterdir()
+        if path.is_file() and (path.name in names or split.fullmatch(path.name))
+    )
+
+
 def check_destinations(output: OutputSettings, *, overwrite: bool = False) -> None:
-    patterns = (f"{output.name}_epo-*.fif", *(f"{output.name}{s}" for s in BUNDLE_SUFFIXES))
-    existing = [path for pattern in patterns for path in output.directory.glob(pattern)]
+    existing = bundle_files(output)
     if existing and not overwrite:
         raise FileExistsError(f"output: bundle already exists: {existing[0]}; use --overwrite")
 
@@ -59,7 +73,8 @@ def write_result(
     output : OutputSettings
         Output directory and file name stem.
     overwrite : bool, default False
-        Replace an existing bundle; otherwise an existing bundle raises.
+        Replace an existing bundle, removing its files the new one lacks; otherwise
+        an existing bundle raises.
 
     Returns
     -------
@@ -103,6 +118,11 @@ def write_result(
         # Removing the old completion marker makes a partial overwrite visibly incomplete.
         if manifest_path.exists():
             manifest_path.unlink()
+        # Old files the new bundle lacks (repairs, epoch splits) would outlive its manifest.
+        published = {path.name for path in payload_files(staged)}
+        for path in bundle_files(output):
+            if path.name not in published:
+                path.unlink()
         for path in payload_files(staged):
             if path.name != manifest_name:
                 os.replace(path, output.directory / path.name)

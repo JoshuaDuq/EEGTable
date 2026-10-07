@@ -16,6 +16,9 @@ from eegtable.signal import Signal
 from eegtable.spectra import Window
 from eegtable.table import ComputationSpec, FeatureMeta, FeatureTable, RowId
 
+# Random starts tried after the k-means one; Pycrostates' default is more, at more cost.
+_RANDOM_STARTS = 20
+
 
 @dataclass(frozen=True, eq=False)
 class MicrostateSegmentation:
@@ -215,9 +218,16 @@ class MicrostateModel:
             )
         kmeans_model = kmeans(n_clusters=n_states, n_init=20, random_state=random_state)
         kmeans_model.fit(_normalize_rows(stacked))
-        templates = _modified_kmeans(
-            stacked, np.asarray(kmeans_model.cluster_centers_, dtype=float)
-        )
+        # Modified k-means only reaches the optimum nearest its start, and Euclidean k-means
+        # on sign-flipped maps can even return a centre no map is closest to. Peak maps drawn
+        # at random give further starts, and the most variance explained decides, as in
+        # Pascual-Marqui et al. (1995) and Murray et al. (2008).
+        rng = np.random.default_rng(random_state)
+        starts = [np.asarray(kmeans_model.cluster_centers_, dtype=float)] + [
+            stacked[rng.choice(stacked.shape[0], n_states, replace=False)]
+            for _ in range(_RANDOM_STARTS)
+        ]
+        templates = _best_fit(stacked, starts)
         return cls(
             templates=templates,
             ch_names=signal.ch_names,
@@ -231,6 +241,8 @@ class MicrostateModel:
                 n_states=n_states,
                 random_state=random_state,
                 n_init=20,
+                random_starts=_RANDOM_STARTS,
+                start_selection="peak_explained_variance",
                 template_weighting="gfp_squared",
                 min_peak_distance_ms=min_peak_distance_ms,
                 max_peaks_per_epoch=max_peaks_per_epoch,
@@ -619,12 +631,34 @@ def _normalize_rows(matrix: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
     return out
 
 
+def _best_fit(
+    maps: npt.NDArray[np.float64], starts: list[npt.NDArray[np.float64]]
+) -> npt.NDArray[np.float64]:
+    best, best_variance = None, 0.0
+    for seeds in starts:
+        templates = _modified_kmeans(maps, seeds)
+        if templates is None:
+            continue
+        # Explained variance at the peaks; each map keeps its amplitude, so weighs by GFP².
+        variance = float(np.sum(np.max((maps @ templates.T) ** 2, axis=1)))
+        # The same partition reached from another start lists its states in another order;
+        # only a real gain may replace the earlier one.
+        if best is None or variance > best_variance * (1.0 + 1e-9):
+            best, best_variance = templates, variance
+    if best is None:
+        raise ValueError(
+            "Fitting produced an empty microstate cluster from every start; use fewer states "
+            "or provide more distinct topographies."
+        )
+    return best
+
+
 def _modified_kmeans(
     maps: npt.NDArray[np.float64],
     seeds: npt.NDArray[np.float64],
     *,
     max_iterations: int = 300,
-) -> npt.NDArray[np.float64]:
+) -> npt.NDArray[np.float64] | None:
     """Polarity-invariant clustering, after Pascual-Marqui et al. (1995).
 
     Assignment is by absolute correlation and each template is the principal
@@ -637,19 +671,14 @@ def _modified_kmeans(
     noise decides the orientation and one state's maps are canonicalized in
     opposite directions and split across clusters.
 
-    The converged k-means centres (k-means++ initialization, best of the
-    restarts) are the starting point, rather than a random draw. The
-    refinement below is what decides the templates.
+    Returns None when a cluster empties, which leaves that start without a fit.
     """
     templates = _unit_rows(seeds)
     previous: npt.NDArray[np.int_] | None = None
     for _ in range(max_iterations):
         labels = np.asarray(np.argmax(np.abs(maps @ templates.T), axis=1), dtype=int)
         if np.unique(labels).size != templates.shape[0]:
-            raise ValueError(
-                "Fitting produced an empty microstate cluster; use fewer states "
-                "or provide more distinct topographies."
-            )
+            return None
         if previous is not None and np.array_equal(labels, previous):
             break
         previous = labels

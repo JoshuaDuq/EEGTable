@@ -53,6 +53,7 @@ from eegtable.runner.compute import (
 from eegtable.runner.measures import SUPPLIED, get
 from eegtable.runner.progress import NullReporter, Reporter
 from eegtable.runner.recipe import Inputs, Recipe, RoiPattern
+from eegtable.table import _ROW_ID_FIELDS
 
 RUN_LOG = "eegtable_run.json"
 """Name of the run log written to the output root."""
@@ -198,7 +199,7 @@ class RecordingStatus:
 
     ``done``: complete, and written by this computation from the current input.
     ``missing``: no results. ``failed``: no results, and the last run failed on
-    it. ``stale``: results of a different computation, or older than the input.
+    it. ``stale``: results of a different computation, or of different input content.
     ``partial``: files of a run are gone. ``reason`` says why, in a sentence.
     """
 
@@ -268,11 +269,25 @@ def _recording_sources(sources: list[Path]) -> list[Path]:
             if current != first:
                 continuations.add(current)
             if current not in links:
-                fid, tree, _ = fiff_open(current, verbose="error")
-                with fid:
-                    links[current] = _get_next_fname(fid, current, tree)
+                try:
+                    links[current] = _next_part(current)
+                except ValueError:
+                    # Kept as a recording of its own, so the run records its failure.
+                    links[current] = None
             current = links[current]
     return [source for source in sources if source.resolve() not in continuations]
+
+
+def _next_part(path: Path) -> Path | None:
+    """The split FIF part MNE reads after this one, if any."""
+    try:
+        fid, tree, _ = fiff_open(path, verbose="error")
+        with fid:
+            return _get_next_fname(fid, path, tree)  # type: ignore[no-any-return]
+    except Exception as exc:  # noqa: BLE001 - on a bad file MNE raises whatever its parser trips on
+        raise ValueError(
+            f"{path.name} is not a readable FIF file ({_describe_error(exc)})"
+        ) from exc
 
 
 def discover(recipe: Recipe) -> tuple[Recording, ...]:
@@ -281,19 +296,24 @@ def discover(recipe: Recipe) -> tuple[Recording, ...]:
     Raises
     ------
     RunError
-        When the input root is missing, nothing matches, or two inputs would
-        write to the same outputs.
+        When the input root is missing, glob cannot use the pattern, nothing
+        matches, or two inputs would write to the same outputs.
     """
     root, pattern = recipe.inputs.root, recipe.inputs.pattern
     if not root.is_dir():
         raise RunError(f"inputs.root {root} is not a directory.")
     # Hidden paths are skipped: macOS leaves "._" AppleDouble files beside every file
     # on an external drive, and pathlib's glob matches them where a shell would not.
-    sources = sorted(
-        path
-        for path in root.glob(pattern)
-        if path.is_file() and not any(part.startswith(".") for part in path.relative_to(root).parts)
-    )
+    try:
+        sources = sorted(
+            path
+            for path in root.glob(pattern)
+            if path.is_file()
+            and not any(part.startswith(".") for part in path.relative_to(root).parts)
+        )
+    except (ValueError, NotImplementedError, IndexError) as exc:
+        # What glob refuses differs between Python versions; IndexError is 3.11's answer to ".".
+        raise RunError(f"inputs.pattern {pattern!r} is not a usable glob pattern ({exc}).") from exc
     if not sources:
         raise RunError(f"no files match {pattern!r} under {root}.")
     sources = _recording_sources(sources)
@@ -579,8 +599,9 @@ def status(recipe: Recipe) -> tuple[RecordingStatus, ...]:
 
     Results count as current when their sidecars record the same computation,
     whatever the recipe says about where its inputs and outputs live: repointing
-    ``inputs.root`` after moving the data leaves them current. Results older than
-    their input file are stale. Failures come from the run log in the output root.
+    ``inputs.root`` after moving the data leaves them current. Results whose input
+    content changed are stale; a newer timestamp alone does not make them so. Failures
+    come from the run log in the output root.
 
     Raises
     ------
@@ -623,7 +644,7 @@ def _statuses(recipe: Recipe, recordings: tuple[Recording, ...]) -> tuple[Record
     logged = _last_failures(recipe.output.root)
     current = {
         "settings_sha256": settings_sha256(recipe),
-        "software": software_versions(),
+        "software": _software(recipe),
         "code_sha256": implementation_hash(),
     }
     return tuple(
@@ -759,14 +780,14 @@ def check(recipe: Recipe, *, n_jobs: int = 1, quick: bool = False) -> CheckRepor
         When computing the first recording fails.
     """
     recordings = discover(recipe)
-    headers = _headers(recipe, recordings) if _reads_headers(recipe) else {}
+    headers, unreadable = _headers(recipe, recordings) if _reads_headers(recipe) else ({}, ())
     missing = _missing_channels(recipe, headers)
     report = CheckReport(
         recordings=recordings,
         existing=_existing(recordings),
         trial=None,
         missing_channels=missing,
-        warnings=_membership_warnings(recipe, headers),
+        warnings=(*unreadable, *_membership_warnings(recipe, headers)),
     )
     first = recordings[0]
     if first.label in missing:
@@ -809,15 +830,24 @@ class _Header:
     kept: tuple[str, ...]
 
 
-def _headers(recipe: Recipe, recordings: tuple[Recording, ...]) -> dict[str, _Header]:
-    headers = {}
+def _headers(
+    recipe: Recipe, recordings: tuple[Recording, ...]
+) -> tuple[dict[str, _Header], tuple[str, ...]]:
+    """Each readable recording's header, and a warning for each recording without one."""
+    headers, unreadable = {}, []
     for recording in recordings:
+        try:
+            info = mne.io.read_info(recording.source, verbose="error")
+        except Exception as exc:  # noqa: BLE001 - a run fails only this recording; say so now
+            unreadable.append(
+                f"{recording.label} cannot be read ({_describe_error(exc)}); a run would fail it."
+            )
+            continue
         # Picking needs loaded data, so pick on a one-sample stand-in with the
         # recording's own info: the same selection load_epochs makes, without reading data.
-        info = mne.io.read_info(recording.source, verbose="error")
         stand_in = mne.EpochsArray(np.zeros((1, info["nchan"], 1)), info, verbose="error")
         headers[recording.label] = _Header(info, tuple(_pick(stand_in, recipe.inputs).ch_names))
-    return headers
+    return headers, tuple(unreadable)
 
 
 def _reads_headers(recipe: Recipe) -> bool:
@@ -924,7 +954,9 @@ def epoch_rows(epochs: Any, include_metadata: bool) -> pd.DataFrame:
     metadata = epochs.metadata
     if not include_metadata or metadata is None:
         return rows
-    clashes = sorted({"epoch", *rows.columns} & set(metadata.columns))
+    # Readers restore the row identity's columns from the sidecar and refuse a table whose
+    # descriptors disagree with it.
+    clashes = sorted({*_ROW_ID_FIELDS, *rows.columns} & set(metadata.columns))
     if clashes:
         raise ValueError(
             f"epoch metadata has columns {clashes}, which the feature table uses itself; "
@@ -991,10 +1023,10 @@ def _stage_and_publish(
             label=recording.label,
             base=staging / recording.base.name,
         )
-        _verify_captured_provenance(recording.source, epochs, provenance)
+        _verify_captured_provenance(recording.source, epochs, recipe, provenance)
         staged_outputs = _write(staged, features, epochs, recipe, provenance=provenance)
         _validate_staged_tables(staged_outputs)
-        _verify_captured_provenance(recording.source, epochs, provenance)
+        _verify_captured_provenance(recording.source, epochs, recipe, provenance)
         final_outputs = tuple(destination / path.name for path in staged_outputs)
         _publish(
             staged_outputs,
@@ -1058,9 +1090,7 @@ def _source_hashes(source: Path) -> dict[str, str]:
         if name in hashes:
             raise ValueError(f"Cyclic split FIF reference: {current}")
         hashes[name] = file_hash(current)
-        fid, tree, _ = fiff_open(current, verbose="error")
-        with fid:
-            current = _get_next_fname(fid, current, tree)
+        current = _next_part(current)
     return hashes
 
 
@@ -1077,12 +1107,25 @@ def _capture_provenance(recording: Recording, recipe: Recipe) -> dict[str, Any]:
         "input_sha256": source_files[recording.source.resolve().name],
         "input_files": source_files,
         "resolved_settings": resolved_settings(recipe),
-        "software": software_versions(),
+        "software": _software(recipe),
         "code_sha256": implementation_hash(),
     }
 
 
-def _verify_captured_provenance(source: Path, epochs: Any, captured: Mapping[str, Any]) -> None:
+def _software(recipe: Recipe) -> dict[str, str]:
+    # software_versions lists a fixed set of packages; a plugin measure's own distribution
+    # has to join it, or upgrading the plugin would leave its results current.
+    versions = software_versions()
+    for spec in recipe.features:
+        provider = get(spec.measure).provider
+        if provider is not None:
+            versions[provider[0]] = provider[1]
+    return versions
+
+
+def _verify_captured_provenance(
+    source: Path, epochs: Any, recipe: Recipe, captured: Mapping[str, Any]
+) -> None:
     source_files = _source_hashes(source)
     if (
         source_files[source.resolve().name] != captured["input_sha256"]
@@ -1090,7 +1133,7 @@ def _verify_captured_provenance(source: Path, epochs: Any, captured: Mapping[str
     ):
         raise ValueError("Input changed during extraction; results were not published.")
     if (
-        software_versions() != captured["software"]
+        _software(recipe) != captured["software"]
         or implementation_hash() != captured["code_sha256"]
     ):
         raise ValueError(

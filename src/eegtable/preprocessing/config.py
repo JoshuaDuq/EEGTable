@@ -667,7 +667,8 @@ class ICASettings:
     random_state : int, default 42
         Seed.
     max_iter : int, default 1000
-        Iteration limit; not converging within it raises.
+        Iteration limit. FastICA or Picard reaching it raises as unconverged; MNE's
+        infomax reports no convergence, so an infomax fit stops there without raising.
     reject, flat : mapping of str to float, optional
         Peak-to-peak limits in volts, by channel type, for the training segments.
     tstep : float, default 2.0

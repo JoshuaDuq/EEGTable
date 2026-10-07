@@ -609,6 +609,21 @@ def test_pac_surrogates_refuses_nonfinite_samples() -> None:
         phase_methods.pac_surrogates(slow, replace(fast, analytic=analytic), windows=[WINDOW])
 
 
+def test_pac_surrogates_take_numpy_integers_under_the_same_identity() -> None:
+    pytest.importorskip("tensorpac")
+    import eegtable.phase as phase_methods
+
+    slow, fast = _irregular_coupling()
+    tables = [
+        phase_methods.pac_surrogates(
+            slow, fast, windows=[WINDOW], n_surrogates=kind(4), random_state=kind(1)
+        )
+        for kind in (int, np.int64)
+    ]
+    assert tables[0].names == tables[1].names
+    np.testing.assert_array_equal(tables[0].values, tables[1].values)
+
+
 @pytest.mark.parametrize("correction", ["none", "fdr", "maxstat"])
 def test_pac_adjustment_matches_the_prespecified_family(correction) -> None:
     pytest.importorskip("tensorpac")

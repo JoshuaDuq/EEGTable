@@ -244,6 +244,103 @@ def test_a_failing_recording_does_not_stop_the_others(tmp_path) -> None:
     assert "F3" in log["recordings"][1]["error"]
 
 
+def _unreadable(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+
+
+def test_an_unreadable_input_fails_on_its_own_and_the_others_run(tmp_path) -> None:
+    # An empty or truncated file is one bad recording, not a reason to stop the batch.
+    save_epochs(tmp_path / "data/sub-01/eeg/sub-01_task-rest_epo.fif")
+    _unreadable(tmp_path / "data/sub-02/eeg/sub-02_task-rest_epo.fif")
+    recipe = _recipe(tmp_path, POWER)
+
+    result = run(recipe)
+
+    assert [(r.label, r.success) for r in result.recordings] == [
+        ("sub-01_task-rest", True),
+        ("sub-02_task-rest", False),
+    ]
+    assert _states(recipe) == {"sub-01_task-rest": "done", "sub-02_task-rest": "failed"}
+
+    _unreadable(tmp_path / "data/sub-01/eeg/sub-01_task-rest_epo.fif")
+    first, _ = status(recipe)
+    assert first.state == "stale" and "cannot be verified" in first.reason
+
+
+def test_check_warns_about_a_recording_it_cannot_read(tmp_path) -> None:
+    # Global means make check read every recording's header.
+    save_epochs(tmp_path / "data/sub-01/eeg/sub-01_task-rest_epo.fif")
+    _unreadable(tmp_path / "data/sub-02/eeg/sub-02_task-rest_epo.fif")
+
+    report = check(_recipe(tmp_path, POWER))
+
+    assert report.trial is not None
+    assert any("sub-02_task-rest" in w and "cannot be read" in w for w in report.warnings)
+
+
+@pytest.mark.parametrize("pattern", [".", "sub-01/**epo.fif"])
+def test_a_pattern_glob_cannot_use_is_a_run_error(tmp_path, pattern) -> None:
+    from dataclasses import replace
+
+    _two_recordings(tmp_path)
+    recipe = _recipe(tmp_path, POWER)
+
+    with pytest.raises(RunError):
+        run(replace(recipe, inputs=replace(recipe.inputs, pattern=pattern)))
+
+
+@pytest.mark.parametrize("column", ["recording", "epoch", "event"])
+def test_epoch_metadata_may_not_name_a_row_identity_column(column) -> None:
+    # Readers restore these columns from each row's identity, which the metadata would contradict.
+    from eegtable.runner.batch import epoch_rows
+
+    epochs = make_epochs()
+    epochs.metadata = pd.DataFrame({column: ["x"] * len(epochs)})
+
+    with pytest.raises(ValueError, match=column):
+        epoch_rows(epochs, include_metadata=True)
+
+
+@pytest.fixture
+def plugin_variance(monkeypatch):
+    # A package declaring [project.entry-points."eegtable.measures"] plugin_variance = "...".
+    import importlib.metadata
+    from types import SimpleNamespace
+
+    import eegtable as ef
+    from eegtable.runner.measures import MEASURES
+
+    installed = SimpleNamespace(name="eegtable-demo-plugin", version="1.0")
+
+    def entry_points(*, group, name):
+        if group == "eegtable.measures" and name == "plugin_variance":
+            return [SimpleNamespace(name=name, load=lambda: ef.variance, dist=installed)]
+        return []
+
+    monkeypatch.setattr(importlib.metadata, "entry_points", entry_points)
+    yield installed
+    MEASURES.pop("plugin_variance", None)
+
+
+def test_upgrading_a_plugin_measure_makes_its_results_stale(tmp_path, plugin_variance) -> None:
+    from eegtable.runner.measures import MEASURES
+
+    save_epochs(tmp_path / "data/sub-01/eeg/sub-01_task-rest_epo.fif")
+    path = _recipe(tmp_path, '[[features]]\nmeasure = "plugin_variance"\n').path
+    assert run(load_recipe(path)).ok
+    sidecar = json.loads(
+        _features_path(tmp_path, "sub-01").with_suffix(".json").read_text(encoding="utf-8")
+    )
+    assert sidecar["provenance"]["software"]["eegtable-demo-plugin"] == "1.0"
+
+    plugin_variance.version = "1.1"
+    MEASURES.pop("plugin_variance")  # as a new process would, looking it up again
+
+    (entry,) = status(load_recipe(path))
+    assert entry.state == "stale" and "software" in entry.reason
+
+
 def test_existing_results_are_not_overwritten_by_default(tmp_path) -> None:
     _two_recordings(tmp_path)
     run(_recipe(tmp_path, POWER))

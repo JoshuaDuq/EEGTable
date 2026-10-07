@@ -108,9 +108,13 @@ def _bids_path(path: Any, root: Path | None = None) -> Any:
     return resolved
 
 
-def _read_tsv(path: Path) -> pd.DataFrame:
+def _read_tsv(path: Path, numeric: tuple[str, ...] = ()) -> pd.DataFrame:
     frame = pd.read_csv(path, sep="\t", dtype=str, keep_default_na=False, na_values=["n/a"])
-    for column in ("onset", "duration", "sample", "reaction_time", "age"):
+    return _parse_numeric(frame, numeric)
+
+
+def _parse_numeric(frame: pd.DataFrame, columns: tuple[str, ...]) -> pd.DataFrame:
+    for column in columns:
         if column in frame:
             frame[column] = pd.to_numeric(frame[column], errors="raise")
     return frame
@@ -147,13 +151,16 @@ def read_bids_metadata(
     events = None
     if events_path is not None:
         events_path = Path(events_path)
-        events = _read_tsv(events_path)
+        events = _read_tsv(events_path, ("onset", "duration", "sample", "response_time"))
         if not {"onset", "duration"} <= set(events):
             raise ValueError("BIDS events.tsv requires onset and duration columns.")
-        onset = pd.to_numeric(events["onset"], errors="raise").to_numpy(dtype=float)
-        duration = pd.to_numeric(events["duration"], errors="raise").to_numpy(dtype=float)
-        if not np.isfinite(onset).all() or not np.isfinite(duration).all() or np.any(duration < 0):
-            raise ValueError("BIDS events need finite onset and nonnegative finite duration.")
+        onset = events["onset"].to_numpy(dtype=float)
+        duration = events["duration"].to_numpy(dtype=float)
+        # BIDS allows n/a for an unavailable duration, which stays missing.
+        if not np.isfinite(onset).all() or np.isinf(duration).any() or np.any(duration < 0):
+            raise ValueError(
+                "BIDS events need finite onsets and nonnegative finite or n/a durations."
+            )
         sidecars.append(events_path)
     participant = None
     participants_path = root / "participants.tsv"
@@ -167,7 +174,8 @@ def read_bids_metadata(
             raise ValueError(
                 "BIDS participants.tsv must identify the recording subject exactly once."
             )
-        participant = _records(selected)[0]
+        # Parsed for this subject only, so another row's unparsable age cannot block it.
+        participant = _records(_parse_numeric(selected.copy(), ("age",)))[0]
         sidecars.append(participants_path)
     for suffix, extension in (
         ("events", ".json"),

@@ -102,9 +102,12 @@ def test_aperiodic_ratio_has_no_dimensionless_dc_value() -> None:
     assert (ratio.coverage[..., WELCH_FREQS == 0] == 0.0).all()
 
 
-def test_fit_range_outside_the_axis_raises() -> None:
-    with pytest.raises(ValueError, match="no frequencies"):
-        aperiodic(_spectra(10.0 * FREQS**-1.7), fit_range=(100.0, 200.0), include_global=False)
+@pytest.mark.parametrize("measure", [aperiodic, aperiodic_ratio])
+@pytest.mark.parametrize("fit_range", [(100.0, 200.0), (2.0, 100.0)])
+def test_fit_range_reaching_outside_the_axis_raises(measure, fit_range) -> None:
+    # Fitting only the bins that exist would record a fit_range the fit never used.
+    with pytest.raises(ValueError, match="outside the frequency axis"):
+        measure(_spectra(10.0 * FREQS**-1.7), fit_range=fit_range)
 
 
 @pytest.mark.parametrize("peak_rejection_z", [0.0, -1.0, np.nan, np.inf, True])

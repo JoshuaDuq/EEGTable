@@ -170,7 +170,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirm = nil
 		switch {
 		case msg.result.Failed():
-			m.fail("run exited " + itoa(msg.result.Code) + "\n" + msg.result.Stderr)
+			// stderr ends on whatever MNE narrated last, so a failure Python
+			// reported is the cause; a signal (-1) explains itself in stderr.
+			cause := msg.result.Stderr
+			if m.run.failure != "" && msg.result.Code > 0 {
+				cause = m.run.failure
+			}
+			m.fail("run exited " + itoa(msg.result.Code) + "\n" + cause)
 		case msg.result.Code == 3:
 			m.notice = "Run paused at a review gate"
 			m.log.mark(m.notice)

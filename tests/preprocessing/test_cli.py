@@ -247,7 +247,8 @@ def test_only_unexpected_failures_keep_a_traceback(
     monkeypatch.setattr(execution, "run_until", boom)
     assert main(["preprocess", "run", str(config)]) == 1
     captured = capsys.readouterr()
-    assert "✗ boom" in captured.out
+    # An unexpected failure names its type, which a front end shows without the trace.
+    assert ("✗ RuntimeError: boom" if traced else "✗ boom") in captured.out
     assert ("Traceback" in captured.err) is traced
 
 

@@ -578,11 +578,16 @@ def fit_staged_residual_preprocessor(
     instead is accepted silently -- the signature cannot tell the two apart --
     and makes the held-out rows contribute to their own preprocessing.
 
-    Use it when a fold needs the feature-side and target-side adjustments kept in
-    step, as the staged permutation null does. For ordinary cross-fitting, pass
-    ``covariates`` and ``residualize_on`` to
-    :func:`~eegtable.model.cross_fit_regression`, which does the same thing per
-    fold without the caller holding the contract.
+    Use it in a fold loop of your own that needs the feature-side and target-side
+    adjustments kept in step; the permutation nulls do not call it.
+    :func:`~eegtable.model.cross_fit_regression` with ``residualize_on`` does not
+    do the same per fold: its default pooled model residualizes only the target,
+    leaves the features untouched, and applies no Yeo-Johnson transform. Features
+    lose their nuisance response there only with ``residualize_within="subject"``,
+    which fits each subject's own model, or with a pipeline built from
+    ``PreprocessingConfig(deconfound=True)`` and ``n_covariates``, which regresses
+    the trailing covariate columns of ``X`` out of the features on each training
+    split.
 
     Parameters
     ----------

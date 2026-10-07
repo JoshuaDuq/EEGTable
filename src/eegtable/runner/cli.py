@@ -10,8 +10,10 @@ state the recordings are in.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
+import shlex
 import sys
 from collections.abc import Sequence
 from importlib import resources
@@ -41,6 +43,11 @@ _SLOWEST = 5
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line and return its exit status."""
+    for stream in (sys.stdout, sys.stderr):
+        # Windows gives redirected output its ANSI code page, often cp1252, which cannot
+        # encode the arrows and check marks in reports; degrade them instead of failing.
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="replace")
     args = _parser().parse_args(argv)
     status: int = args.handler(args)
     return status
@@ -277,7 +284,7 @@ def _status(args: argparse.Namespace) -> int:
     if after is None:
         print(f"{CHECK} Every recording is up to date.")
     else:
-        print("Next: eegtable " + " ".join(after))
+        print("Next: eegtable " + shlex.join(after))
     return 0
 
 
@@ -302,12 +309,19 @@ def _status_record(entry: RecordingStatus) -> dict[str, object]:
 
 def _init(args: argparse.Namespace) -> int:
     path: Path = args.path
-    if path.exists():
+    template = resources.files("eegtable.runner").joinpath(_TEMPLATES[args.template])
+    try:
+        with path.open("x", encoding="utf-8") as stream:
+            stream.write(template.read_text(encoding="utf-8"))
+    except FileExistsError:
         print(f"eegtable: error: {path} already exists; choose another path.", file=sys.stderr)
         return 2
-    template = resources.files("eegtable.runner").joinpath(_TEMPLATES[args.template])
-    path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
-    print(f"Wrote {path}. Set inputs.root and output.root, then run: eegtable check {path}")
+    except OSError as exc:
+        return _fail(exc, None)
+    print(
+        f"Wrote {path}. Set inputs.root and output.root, then run: "
+        f"eegtable check {shlex.quote(str(path))}"
+    )
     return 0
 
 
@@ -359,7 +373,7 @@ def _check_lines(
     n = len(report.recordings)
     existing = (
         f"{len(report.existing)} result files already there; "
-        f"eegtable status {recipe_path} shows which are current"
+        f"eegtable status {shlex.quote(str(recipe_path))} shows which are current"
         if report.existing
         else "no earlier results"
     )
@@ -396,5 +410,5 @@ def _check_lines(
             lines.extend(f"  {label}: {problem}" for problem in problems)
         return lines
     lines.extend(f"! {warning}" for warning in report.warnings)
-    lines.append(f"{CHECK} Ready: eegtable run {recipe_path}")
+    lines.append(f"{CHECK} Ready: eegtable run {shlex.quote(str(recipe_path))}")
     return lines

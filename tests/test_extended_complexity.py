@@ -111,6 +111,16 @@ def test_extended_complexity_rejects_unsupported_windows(name, values):
         _measure(name, values)
 
 
+def test_dfa_refuses_windows_too_short_for_two_block_sizes():
+    # Below 58 samples AntroPy fits a single block size and returns a slope of exactly 0.
+    pytest.importorskip("antropy")
+    values = np.cumsum(np.random.default_rng(3).normal(size=58))
+    for n_samples in (50, 57):
+        with pytest.raises(ValueError, match="at least 58 samples"):
+            _measure("detrended_fluctuation", values[:n_samples])
+    assert _measure("detrended_fluctuation", values).values.item() > 0.5
+
+
 def test_dfa_accepts_multichannel_windows_with_noncontiguous_storage():
     pytest.importorskip("antropy")
     import antropy

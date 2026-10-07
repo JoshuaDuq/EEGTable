@@ -38,7 +38,7 @@ class ComputationSpec:
             raise ValueError("parameters_json must use canonical JSON serialization.")
 
     @classmethod
-    def create(cls, method: str, **parameters: object) -> ComputationSpec:
+    def create(cls, method: str, /, **parameters: object) -> ComputationSpec:
         canonical = json.dumps(
             _json_value(parameters), sort_keys=True, separators=(",", ":"), allow_nan=False
         )

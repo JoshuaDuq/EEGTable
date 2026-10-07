@@ -140,8 +140,8 @@ def detrended_fluctuation(
     """DFA scaling exponent using AntroPy's linear detrending implementation.
 
     Nonoverlapping block sizes span 4 to 10 percent of the window length,
-    geometrically spaced by 1.2. At least 50 samples are required to support
-    two distinct block sizes. Constant windows raise ``ValueError``.
+    geometrically spaced by 1.2. At least 58 samples are required to support
+    two distinct block sizes (4 and 5). Constant windows raise ``ValueError``.
     """
     import antropy
 
@@ -158,7 +158,8 @@ def detrended_fluctuation(
         windows,
         measure,
         "dfa_exponent",
-        50,
+        # Fewer samples leave one block size, whose slope AntroPy returns as exactly 0.
+        58,
         {"detrending_order": 1, "minimum_block": 4, "maximum_fraction": 0.1, "factor": 1.2},
         groups,
         include_global,

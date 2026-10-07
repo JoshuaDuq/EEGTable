@@ -49,9 +49,9 @@ def fit_ica(raw: Any, settings: ICASettings) -> ArtifactModel:
 
     The copy is high-passed at ``settings.l_freq`` only when the recording's
     stored highpass is lower. ICA is fitted on the good EEG channels, skipping BAD
-    annotations and segments beyond the thresholds, and must converge within
-    ``max_iter``. MNE's EOG and ECG detectors and, when configured, ICLabel score
-    the components; nothing is excluded.
+    annotations and segments beyond the thresholds; FastICA and Picard must converge
+    within ``max_iter``. MNE's EOG and ECG detectors and, when configured, ICLabel
+    (on the copy without its BAD spans) score the components; nothing is excluded.
 
     Parameters
     ----------
@@ -109,7 +109,9 @@ def fit_ica(raw: Any, settings: ICASettings) -> ArtifactModel:
         tstep=settings.tstep,
         reject_by_annotation=True,
     )
-    if model.n_iter_ >= settings.max_iter:
+    # MNE's infomax reports max_iter both when its weight change converges and when it runs
+    # out of iterations, so only FastICA and Picard can be held to the limit.
+    if settings.method != "infomax" and model.n_iter_ >= settings.max_iter:
         raise ValueError("artifact.ica.max_iter: ICA did not converge")
     # Scores and detector verdicts are evidence for review; nothing is excluded here.
     scores: dict[str, Any] = {}
@@ -145,9 +147,13 @@ def _label_components(training: Any, model: Any, settings: ICASettings) -> dict[
     )
 
     assert settings.iclabel is not None
+    # ICLabel reads every sample; BAD spans were left out of the fit and are left unfiltered.
+    labelled = mne.io.RawArray(
+        training.get_data(reject_by_annotation="omit"), training.info, verbose=False
+    )
     # inplace=False keeps the classifier's verdict out of the saved ICA object.
     probabilities = np.asarray(
-        iclabel_label_components(training, model.copy(), inplace=False, backend="onnx"), dtype=float
+        iclabel_label_components(labelled, model.copy(), inplace=False, backend="onnx"), dtype=float
     )
     if probabilities.shape != (model.n_components_, len(ICLABEL_CLASSES)):
         raise ValueError("artifact.ica.iclabel: unexpected classifier output shape")

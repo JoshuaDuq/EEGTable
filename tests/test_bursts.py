@@ -325,6 +325,17 @@ def test_the_threshold_is_calibrated_on_the_baseline_when_one_is_given() -> None
     assert on_active.select(measure="count").values.item() == 0.0
 
 
+def test_coverage_is_limited_by_the_samples_the_threshold_was_calibrated_on() -> None:
+    # A quantile taken from a quarter of the baseline cannot stand behind full coverage.
+    envelope = np.abs(_stimulus_response().analytic)
+    envelope[:, :, :72] = np.nan  # 72 of the 96 baseline samples
+    kwargs = {"windows": [ACTIVE], "baseline": BASELINE, "include_global": False}
+    calibrated = burst_features([_signal(envelope)], threshold=0.75, **kwargs)
+    absolute = burst_features([_signal(envelope)], threshold=np.array([[2.0]]), **kwargs)
+    np.testing.assert_allclose(calibrated.coverage, 0.25)
+    np.testing.assert_allclose(absolute.coverage, 1.0)
+
+
 def test_the_calibration_window_is_recorded_in_the_unit() -> None:
     signal = _stimulus_response()
     with_baseline = burst_features(
@@ -334,8 +345,8 @@ def test_the_calibration_window_is_recorded_in_the_unit() -> None:
     absolute = burst_features(
         [signal], windows=[ACTIVE], threshold=np.array([[2.0]]), include_global=False
     )
-    assert with_baseline.meta[0].unit.endswith("(percentile 0.75 of baseline)")
-    assert without.meta[0].unit.endswith("(percentile 0.75 of analysis windows)")
+    assert with_baseline.meta[0].unit.endswith("(quantile 0.75 of baseline)")
+    assert without.meta[0].unit.endswith("(quantile 0.75 of analysis windows)")
     assert absolute.meta[0].unit.endswith("(absolute)")
 
 

@@ -93,9 +93,10 @@ A recipe is a TOML file.
    * - Section
      - Keys and defaults
    * - ``[inputs]``
-     - ``root`` (required); ``pattern`` = ``"**/*_epo.fif"``; ``picks`` = ``"eeg"`` (a
-       channel type or a list of names); ``exclude_bads`` = ``true``. Hidden files are
-       skipped, including the ``._`` files macOS leaves on external drives.
+     - ``root`` (required); ``pattern`` = ``"**/*_epo.fif"``, relative to ``root`` and
+       staying under it; ``picks`` = ``"eeg"`` (a channel type or a list of names);
+       ``exclude_bads`` = ``true``. Hidden files are skipped, including the ``._`` files
+       macOS leaves on external drives.
    * - ``[output]``
      - ``root`` (required); ``epoch_metadata`` = ``true`` copies each epoch's metadata
        into its row.
@@ -111,7 +112,10 @@ A recipe is a TOML file.
        ``check`` names it. ``global`` is reserved.
    * - ``[spectra]``
      - ``method`` = ``"welch"``, ``"multitaper"`` or ``"morlet"``; ``fmin``/``fmax``
-       default to the span of the bands. See below.
+       default to the span of the bands, widened to cover the ``fit_range`` of every
+       aperiodic fit (``aperiodic``, ``periodic_power``, adjusted ``peak_frequency``,
+       ``spectral_parameterization``). An explicit ``fmin`` or ``fmax`` that leaves part of
+       a ``fit_range`` out is a recipe error. See below.
    * - ``[band_signal]``
      - ``pad_sec`` = 0.5, ``pad_cycles`` = 3.0, passed to :meth:`eegtable.BandSignal.from_epochs`.
    * - ``[trials]``
@@ -460,7 +464,9 @@ Overwriting and Failures
 
 - A run refuses to write over earlier results unless given ``--overwrite``, which also removes
   result files the new recipe no longer produces.
-- A recording that fails is logged with its error and traceback, and the run moves on.
+- A recording that fails is logged with its error and traceback, and the run moves on. An
+  input file that cannot be read, such as an empty or truncated one, fails only its own
+  recording.
 - Each recording's results are staged and read back before publication. A
   computation or validation failure during an overwrite retains its previous
   complete results and records the new failure.
@@ -477,7 +483,9 @@ each recording in one of five states:
 
 ``done``
    Every table is complete, passes its payload checksums, and matches the current input,
-   resolved recipe, software environment and Python source identity.
+   resolved recipe, software environment and Python source identity. The software
+   environment includes the version of each installed package providing a plugin measure
+   the recipe names.
 ``missing``
    No results.
 ``failed``

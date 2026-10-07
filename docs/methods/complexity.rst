@@ -167,9 +167,9 @@ with the feature. See `AntroPy Lempel--Ziv complexity
 ``detrended_fluctuation`` reports ``dfa_exponent``. AntroPy cumulatively sums
 the demeaned signal, linearly detrends nonoverlapping blocks, and estimates
 scaling from log fluctuation versus log block size. Its block sizes start at
-four samples, grow by 1.2, and reach ten percent of the window. At least 50
-samples are required to support two distinct block sizes; constant windows
-raise an error. Fifty samples is a computational minimum, not evidence of
+four samples, grow by 1.2, and reach ten percent of the window. At least 58
+samples are required to support two distinct block sizes (4 and 5); constant
+windows raise an error. This is a computational minimum, not evidence of
 reliable long-range scaling. The exponent is interpretable only across a
 suitable scaling range. See `AntroPy DFA
 <https://raphaelvallat.com/antropy/generated/antropy.detrended_fluctuation.html>`__.
@@ -207,13 +207,16 @@ correlation.
    give each map a weight proportional to GFP squared, matching the global
    explained-variance objective. Unit-normalizing members before this update
    would instead give every peak equal weight.
-   An empty cluster raises an error because the data do not support that fit's
-   requested number of states.
 
 **Start**
-   The start is scikit-learn :math:`k`-means run to convergence on the
-   sign-normalized peak maps (k-means++ initialisation, best of ``n_init=20``
-   restarts by inertia).
+   Modified :math:`k`-means is run from several starts and the templates that
+   explain the most GFP-weighted variance at the peaks are kept (Pascual-Marqui
+   et al., 1995; Murray et al., 2008). The first start is scikit-learn
+   :math:`k`-means run to convergence on the sign-normalized peak maps
+   (k-means++ initialisation, best of ``n_init=20`` restarts by inertia); 20
+   more are peak maps drawn with ``random_state``. A start that leaves a cluster
+   empty is discarded, and the fit raises an error only when every start does,
+   because the data then do not support the requested number of states.
 
 **Notes**
    Ordinary :math:`k`-means on sign-normalized maps is a different procedure.
@@ -381,6 +384,9 @@ References
   and Clinical Neurophysiology, 67(3), 271--288.
   `doi:10.1016/0013-4694(87)90025-3
   <https://doi.org/10.1016/0013-4694(87)90025-3>`__.
+* Murray, M. M., Brunet, D., & Michel, C. M. (2008). *Topographic ERP
+  analyses: A step-by-step tutorial review*. Brain Topography, 20(4), 249--264.
+  `doi:10.1007/s10548-008-0054-5 <https://doi.org/10.1007/s10548-008-0054-5>`__.
 * Pascual-Marqui, R. D., Michel, C. M., & Lehmann, D. (1995). *Segmentation of
   brain electrical activity into microstates: Model estimation and
   validation*. IEEE Transactions on Biomedical Engineering, 42(7), 658--665.

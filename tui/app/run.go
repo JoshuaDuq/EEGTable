@@ -16,6 +16,9 @@ type liveRun struct {
 	recording       string
 	activeRecording string
 	completed       map[string]map[string]bool
+	// failure is the last recording failure Python reported. It arrives as an
+	// error-level log event, while stderr carries MNE's narration, not the cause.
+	failure string
 }
 
 func (r *liveRun) apply(event eegtable.Event) {
@@ -31,6 +34,10 @@ func (r *liveRun) apply(event eegtable.Event) {
 			r.completed[event.Subject] = map[string]bool{}
 		}
 		r.completed[event.Subject][event.Step] = true
+	case "log":
+		if event.Level == "error" {
+			r.failure = event.Message
+		}
 	}
 }
 
@@ -44,8 +51,14 @@ func (r *liveRun) record(log *logView, event eegtable.Event) {
 		if r.recording == "" {
 			log.mark(event.Subject)
 		}
-	case "stderr", "stdout", "log":
+	case "stderr", "stdout":
 		log.add(event.Message)
+	case "log":
+		if event.Level == "error" {
+			log.add(styles.Fail.Render(event.Message))
+		} else {
+			log.add(event.Message)
+		}
 	case "error":
 		log.add(styles.Fail.Render(event.Message))
 	}

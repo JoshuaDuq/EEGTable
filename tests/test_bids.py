@@ -37,11 +37,11 @@ def dataset(tmp_path):
             event_metadata=pd.DataFrame(
                 {
                     "trial_type": ["left", "right", "left", "right"],
-                    "reaction_time": [0.2, 0.3, 0.4, 0.5],
+                    "response_time": [0.2, 0.3, 0.4, 0.5],
                 }
             ),
             extra_columns_descriptions={
-                "reaction_time": "Reaction time in seconds",
+                "response_time": "Response time in seconds",
                 "trial_type": "Movement direction",
             },
             format="BrainVision",
@@ -75,7 +75,7 @@ def test_bids_read_keeps_entities_participants_events_channels_and_provenance(da
     assert result.participant["participant_id"] == "sub-01"
     assert result.participant["age"] == 31
     assert result.participant["site"] == "A"
-    assert list(result.events["reaction_time"]) == [0.2, 0.3, 0.4, 0.5]
+    assert list(result.events["response_time"]) == [0.2, 0.3, 0.4, 0.5]
     assert result.event_id == {"left": 1, "right": 2}
     assert list(result.channels["name"]) == result.raw.ch_names
     assert result.provenance["reader"] == "mne_bids.read_raw_bids"
@@ -136,7 +136,7 @@ def test_bids_hierarchical_event_names_keep_original_event_metadata(dataset):
         ),
     )
 
-    assert result.epochs.metadata["reaction_time"].tolist() == [0.2, 0.4]
+    assert result.epochs.metadata["response_time"].tolist() == [0.2, 0.4]
 
 
 def test_canonical_channels_reorder_explicitly_and_missing_channels_fail(dataset):
@@ -157,12 +157,12 @@ def test_bids_preprocessing_aligns_selected_event_metadata(dataset):
     )
     result = bids.preprocess_bids(recording, settings)
     assert len(result.epochs) == 2
-    assert list(result.epochs.metadata["reaction_time"]) == [0.2, 0.4]
+    assert list(result.epochs.metadata["response_time"]) == [0.2, 0.4]
     assert set(result.epochs.metadata["subject_id"]) == {"sub-01"}
     assert set(result.epochs.metadata["run"]) == {"01"}
     assert set(result.epochs.metadata["participant_age"]) == {31}
     assert result.provenance["bids"]["entities"]["subject"] == "01"
-    assert list(result.events["reaction_time"]) == [0.2, 0.4]
+    assert list(result.events["response_time"]) == [0.2, 0.4]
 
 
 def test_bids_recipe_is_explicit_and_checkpointed_workflow_carries_metadata(dataset, tmp_path):
@@ -185,7 +185,7 @@ def test_bids_recipe_is_explicit_and_checkpointed_workflow_carries_metadata(data
     assert run_until(workflow, "crop-epochs").state == "completed"
     state = read_checkpoint(workflow, "crop-epochs").state
     assert len(state.epochs) == 4
-    assert list(state.epochs.metadata["reaction_time"]) == [0.2, 0.3, 0.4, 0.5]
+    assert list(state.epochs.metadata["response_time"]) == [0.2, 0.3, 0.4, 0.5]
     assert state.provenance["bids"]["entities"]["subject"] == "01"
 
 
@@ -246,7 +246,7 @@ def test_fixed_epochs_carry_descriptors_without_inventing_event_matches(dataset)
     )
     assert set(result.epochs.metadata["subject_id"]) == {"sub-01"}
     assert set(result.epochs.metadata["participant_age"]) == {31}
-    assert "reaction_time" not in result.epochs.metadata
+    assert "response_time" not in result.epochs.metadata
 
 
 def test_missing_event_sidecar_is_supported_for_fixed_epochs(dataset):
@@ -284,13 +284,13 @@ def test_simultaneous_unselected_bids_event_does_not_replace_selected_metadata(d
     cue = events.iloc[:1].copy()
     cue["trial_type"] = "cue"
     cue["value"] = 3
-    cue["reaction_time"] = 9.0
+    cue["response_time"] = 9.0
     pd.concat([events, cue]).sort_values("onset").to_csv(events_path, sep="\t", index=False)
     result = bids.preprocess_bids(
         bids.read_bids(paths[0]),
         ProcessingSettings(EventEpochSettings(EventSettings("annotations", {"left": 1}), 0, 0.5)),
     )
-    assert list(result.epochs.metadata["reaction_time"]) == [0.2, 0.4]
+    assert list(result.epochs.metadata["response_time"]) == [0.2, 0.4]
 
 
 @pytest.mark.parametrize("trial_type", ["absent", "missing"])
@@ -302,7 +302,7 @@ def test_simultaneous_value_only_bids_events_keep_selected_metadata(dataset, tri
         events["trial_type"] = "n/a"
     cue = events.iloc[:1].copy()
     cue["value"] = 3
-    cue["reaction_time"] = 9.0
+    cue["response_time"] = 9.0
     pd.concat([events, cue]).sort_values("onset").to_csv(events_path, sep="\t", index=False)
 
     result = bids.preprocess_bids(
@@ -310,7 +310,7 @@ def test_simultaneous_value_only_bids_events_keep_selected_metadata(dataset, tri
         ProcessingSettings(EventEpochSettings(EventSettings("annotations", {"1": 1}), 0, 0.5)),
     )
 
-    assert result.epochs.metadata["reaction_time"].tolist() == [0.2, 0.4]
+    assert result.epochs.metadata["response_time"].tolist() == [0.2, 0.4]
 
 
 def test_simultaneous_hierarchical_bids_events_keep_the_selected_value(dataset):
@@ -320,7 +320,7 @@ def test_simultaneous_hierarchical_bids_events_keep_the_selected_value(dataset):
     events["trial_type"] = "movement"
     other = events.iloc[:1].copy()
     other["value"] = 2
-    other["reaction_time"] = 9.0
+    other["response_time"] = 9.0
     pd.concat([events, other]).sort_values("onset").to_csv(events_path, sep="\t", index=False)
 
     result = bids.preprocess_bids(
@@ -330,7 +330,7 @@ def test_simultaneous_hierarchical_bids_events_keep_the_selected_value(dataset):
         ),
     )
 
-    assert result.epochs.metadata["reaction_time"].tolist() == [0.2, 0.4]
+    assert result.epochs.metadata["response_time"].tolist() == [0.2, 0.4]
 
 
 @pytest.mark.parametrize(
@@ -350,3 +350,25 @@ def test_bids_recipe_requires_explicit_mode_and_valid_entity_labels(dataset, tmp
     )
     with pytest.raises((TypeError, ValueError)):
         load_recipe(recipe)
+
+
+def test_bids_unavailable_event_durations_stay_missing(dataset):
+    # BIDS allows n/a for a duration that is unavailable; MNE-BIDS reads it too.
+    _, paths = dataset
+    events_path = paths[0].find_matching_sidecar(suffix="events", extension=".tsv")
+    events = pd.read_csv(events_path, sep="\t")
+    events["duration"] = events["duration"].astype(object)
+    events.loc[1, "duration"] = "n/a"
+    events.to_csv(events_path, sep="\t", index=False)
+    durations = bids.read_bids(paths[0]).events["duration"].to_numpy(dtype=float)
+    assert np.isnan(durations[1]) and np.isfinite(np.delete(durations, 1)).all()
+
+
+def test_bids_another_participants_unparsed_age_does_not_block_reading(dataset):
+    root, paths = dataset
+    participants = pd.read_csv(root / "participants.tsv", sep="\t", dtype=str)
+    participants.loc[participants.participant_id == "sub-02", "age"] = "89+"
+    participants.to_csv(root / "participants.tsv", sep="\t", index=False)
+    assert bids.read_bids(paths[0]).participant["age"] == 31
+    with pytest.raises(ValueError, match="89"):
+        bids.read_bids(paths[1])

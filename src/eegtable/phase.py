@@ -330,11 +330,19 @@ def _validate_pac_inference(
     min_shift_seconds: float,
     correction: str,
 ) -> None:
-    if isinstance(n_surrogates, bool) or not isinstance(n_surrogates, int) or n_surrogates < 2:
+    if (
+        isinstance(n_surrogates, bool)
+        or not isinstance(n_surrogates, (int, np.integer))
+        or n_surrogates < 2
+    ):
         raise ValueError("n_surrogates must be an integer of at least 2.")
     if surrogate not in ("blocks", "circular"):
         raise ValueError("surrogate must be 'blocks' or 'circular'.")
-    if isinstance(random_state, bool) or not isinstance(random_state, int) or random_state < 0:
+    if (
+        isinstance(random_state, bool)
+        or not isinstance(random_state, (int, np.integer))
+        or random_state < 0
+    ):
         raise ValueError("random_state must be a non-negative integer.")
     if not np.isfinite(min_shift_seconds) or min_shift_seconds < 0:
         raise ValueError("min_shift_seconds must be finite and non-negative.")
@@ -535,6 +543,8 @@ def pac_surrogates(
         NaN and flagged ``degenerate_null``.
     """
     _validate_pac_inference(n_surrogates, surrogate, random_state, min_shift_seconds, correction)
+    # Plain ints, so NumPy integers record the same computation identity.
+    n_surrogates, random_state = int(n_surrogates), int(random_state)
     observed = pac(
         phase_signal,
         amplitude_signal,

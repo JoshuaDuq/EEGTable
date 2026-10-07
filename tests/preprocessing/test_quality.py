@@ -52,6 +52,25 @@ def test_muscle_scores_preserve_excluded_samples_in_checkpoint(raw, tmp_path):
     np.testing.assert_array_equal(checkpoint.state.raw.get_data(), raw.get_data())
 
 
+def test_muscle_detector_ignores_a_flat_bad_channel(raw):
+    from eegtable.preprocessing.config import MuscleSettings
+    from eegtable.preprocessing.quality import detect_annotations
+
+    # A 1 s broadband burst on every EEG channel from 10 s, and a flat O2.
+    data = raw.get_data()
+    data[:8, 2500:2750] += np.random.default_rng(0).normal(scale=5e-5, size=(8, 250))
+    data[raw.ch_names.index("O2")] = 0.0
+    burst = mne.io.RawArray(data, raw.info, first_samp=raw.first_samp, verbose=False)
+    burst.info["bads"] = ["O2"]
+    settings = AnnotationSettings(muscle=MuscleSettings((30.0, 70.0), 4.0, 0.2))
+    actual = detect_annotations(burst, settings)
+    expected = detect_annotations(burst.copy().drop_channels(["O2"]), settings)
+    assert len(expected.annotations[0])
+    np.testing.assert_array_equal(actual.annotations[0].onset, expected.annotations[0].onset)
+    np.testing.assert_array_equal(actual.annotations[0].duration, expected.annotations[0].duration)
+    assert actual.evidence == expected.evidence
+
+
 def test_stimulation_agrees(raw):
     from eegtable.preprocessing.quality import repair_stimulation
 

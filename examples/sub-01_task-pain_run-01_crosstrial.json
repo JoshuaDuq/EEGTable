@@ -418,7 +418,7 @@
     "recipe": "recipe.toml",
     "recipe_sha256": "41a025253a37f85eb14a2a9e2b1919d5bf4cad4357b27daab5ad436e5f17964f",
     "mne_version": "1.13.2",
-    "settings_sha256": "0e28fa8bb21db37a0333f0ce80f867a105bf62fc8d4e1b26947d1227d9f8efbd",
+    "settings_sha256": "6a3ef549ed7860cc07895abcb3535df00336774a9b37a6b73f3d90858d19e3f4",
     "recording": "sub-01/eeg/sub-01_task-pain_run-01_epo.fif",
     "input_sha256": "f8d63b56eeca0402ffd58a9e13712624dd74fde91e8263e619d841e71b0c9b22",
     "input_files": {
@@ -474,8 +474,8 @@
       },
       "spectra": {
         "method": "welch",
-        "fmin": 4.0,
-        "fmax": 30.0,
+        "fmin": 2.0,
+        "fmax": 40.0,
         "n_fft": null,
         "n_overlap": null,
         "bandwidth": 2.0,
@@ -690,7 +690,7 @@
       "onnxruntime": "1.30.0",
       "python-picard": "0.8.2"
     },
-    "code_sha256": "68990447c679179d2327b2793fbf3f46c897d9817caf7d6422521bf7ffbf112e",
+    "code_sha256": "fc56d30d93772108aa7af7612de022b7372cf26aebd403ea481af1a768d33980",
     "upstream": null,
     "channels": [
       "F3",
@@ -708,7 +708,7 @@
       "features",
       "crosstrial"
     ],
-    "created": "2026-10-06T02:17:21+00:00"
+    "created": "2026-10-07T01:44:04+00:00"
   },
   "row_text_columns": [
     "group",

@@ -34,7 +34,9 @@ Spectral kernels
        groups={"central": ["C3", "Cz", "C4"]},
    )
 
-The kernel receives a band's bins and their widths in Hz. It returns values
+The kernel receives a band's bins and their trapezoid-rule weights in Hz, half a
+spacing at each end bin, so ``np.nansum(power * weights, axis=-1)`` integrates
+from the first bin to the last. It returns values
 shaped ``(epochs, channels, windows)``, or ``(values, flags)`` with boolean flags
 of that shape. ``baseline`` and ``normalize`` work as they do for
 :func:`~eegtable.integrated_band_power`.
@@ -66,7 +68,8 @@ Identity
 The measure label is yours to choose. The kernel's qualified name and the
 ``parameters`` you pass enter every column's identity. Two different kernels, or
 one kernel with two settings, therefore never share a column. Pass a named
-function rather than a lambda, and put every setting that changes a value in
+function rather than a lambda; a ``functools.partial`` or callable object is
+refused because it has no stable name. Put every setting that changes a value in
 ``parameters``. Settings that only change how a computation runs must stay out;
 otherwise one feature splits into a column per setting.
 

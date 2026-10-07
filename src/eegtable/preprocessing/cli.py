@@ -51,7 +51,9 @@ def register(commands: Any) -> None:
         p.add_argument(
             "--n-jobs", type=int, default=1, metavar="N", help="parallel jobs for filtering"
         )
-        p.add_argument("--overwrite", action="store_true", help="republish a matching export")
+        p.add_argument(
+            "--overwrite", action="store_true", help="let export replace an existing bundle"
+        )
 
     p = command("init", "write a commented recipe to start from")
     p.add_argument(
@@ -429,9 +431,12 @@ def _run_one(
         )
     except Exception as exc:  # one recording's failure must not stop the others
         failed.append(label)
+        reason = str(exc)
         if not isinstance(exc, (*RECIPE_ERRORS, OSError)):
             traceback.print_exc(file=sys.stderr)  # anything else is a bug; keep its trace
-        reporter.recording_done(label, False, ctx.render(str(exc) or type(exc).__name__, label))
+            # A KeyError's message alone would read as just the missing key.
+            reason = f"{type(exc).__name__}: {exc}".rstrip(": ")
+        reporter.recording_done(label, False, ctx.render(reason or type(exc).__name__, label))
         return
     message = ctx.render(outcome.next_action, label)
     if outcome.state == "needs-review":

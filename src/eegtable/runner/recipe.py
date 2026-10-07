@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import inspect
 import json
 import math
 import os
@@ -17,10 +18,11 @@ import re
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any, Literal, TypeVar
 
 from eegtable.bands import BANDS_STANDARD, Band
+from eegtable.descriptors import default_fit_range
 from eegtable.runner.measures import (
     GRAPH,
     REQUIRES,
@@ -268,7 +270,8 @@ class _Parser:
         bands = self.bands(data)
         windows = self.windows(self.table(data, "windows"))
         rois = self.rois(self.table(data, "rois"))
-        spectra = self.spectra(self.table(data, "spectra"), bands)
+        spectra_table = self.table(data, "spectra")
+        spectra = self.spectra(spectra_table, bands)
         band_signal = self.band_signal(self.table(data, "band_signal"))
         trials = self.trials(self.table(data, "trials"))
         microstates = self.microstates(self.table(data, "microstates"))
@@ -281,6 +284,7 @@ class _Parser:
         )
         context = replace(context, defaults=self.defaults(self.table(data, "defaults"), context))
         features = self.features(data.get("features"), context)
+        spectra = self.cover_fit_ranges(spectra_table, spectra, features)
 
         if self.problems:
             raise RecipeError(self.path, self.problems)
@@ -306,6 +310,14 @@ class _Parser:
         self.only("inputs", table, ("root", "pattern", "picks", "exclude_bads"))
         root = self.value("inputs", table, "root", str, "a string", required=True)
         pattern = self.value("inputs", table, "pattern", str, "a string", default="**/*_epo.fif")
+        if not pattern:
+            self.problem("inputs: pattern must not be empty")
+        elif PurePath(pattern).anchor or ".." in PurePath(pattern).parts:
+            # Results mirror each input's path below root, so an input must lie below it.
+            self.problem(
+                f"inputs: pattern {pattern!r} must be relative to root and stay under it; "
+                "move the folder into root"
+            )
         picks: str | tuple[str, ...] = "eeg"
         if "picks" in table:
             raw = table["picks"]
@@ -437,6 +449,33 @@ class _Parser:
             decim=self.integer("spectra", table, "decim", defaults.decim, minimum=1)
             or defaults.decim,
             window_statistic=statistic,
+        )
+
+    def cover_fit_ranges(
+        self, table: dict[str, Any], spectra: SpectraSettings, features: tuple[FeatureSpec, ...]
+    ) -> SpectraSettings:
+        # Every entry reads one spectrum, and an aperiodic fit needs all of its fit_range,
+        # which reaches past the bands measured: a default range widens to cover it, and an
+        # explicit one that does not is refused rather than fitted on part of it.
+        fmin, fmax = spectra.fmin, spectra.fmax
+        for spec in features:
+            for low, high in dict.fromkeys(_fit_ranges(spec)):
+                fixes = []
+                if "fmin" in table and low < spectra.fmin:
+                    fixes.append(f"lower [spectra] fmin to {low}")
+                if "fmax" in table and high > spectra.fmax:
+                    fixes.append(f"raise [spectra] fmax to {high}")
+                if fixes:
+                    self.problem(
+                        f"features[{spec.entry}] ({spec.measure}): fit_range ({low}, {high}) "
+                        f"reaches outside the spectrum's {spectra.fmin}-{spectra.fmax} Hz; "
+                        f"{' and '.join(fixes)}, or narrow fit_range"
+                    )
+                fmin, fmax = min(fmin, low), max(fmax, high)
+        return replace(
+            spectra,
+            fmin=spectra.fmin if "fmin" in table else fmin,
+            fmax=spectra.fmax if "fmax" in table else fmax,
         )
 
     def band_signal(self, table: dict[str, Any]) -> BandSignalSettings:
@@ -923,6 +962,28 @@ def _spatial_levels(measure: Measure) -> tuple[tuple[str, ...], tuple[str, ...]]
     if measure.takes("include_global"):
         return _SPATIAL_LEVELS, ("channels", "global")
     return ("channels", "rois"), ("channels",)
+
+
+def _fit_ranges(spec: FeatureSpec) -> tuple[tuple[float, float], ...]:
+    """The aperiodic fit ranges an entry's measure needs its spectrum to span."""
+    measure = lookup(spec.measure)
+    if measure is None or measure.kind != "spectra" or not measure.takes("fit_range"):
+        return ()
+    params = {
+        **{
+            name: parameter.default
+            for name, parameter in measure.parameters.items()
+            if parameter.default is not inspect.Parameter.empty
+        },
+        **spec.params,
+    }
+    fit_range = params.get("fit_range")
+    if fit_range is None and spec.measure == "peak_frequency" and params["aperiodic_adjusted"]:
+        # peak_frequency's own default, which reaches past the band it searches.
+        return tuple(default_fit_range(band) for band in spec.bands)
+    if isinstance(fit_range, tuple) and len(fit_range) == 2:
+        return ((float(fit_range[0]), float(fit_range[1])),)
+    return ()
 
 
 def _entry_keys(measure: Measure) -> set[str]:

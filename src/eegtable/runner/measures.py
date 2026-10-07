@@ -62,10 +62,15 @@ _NOUNS: dict[object, str] = {bool: "booleans", int: "integers", float: "numbers"
 
 @dataclass(frozen=True, eq=False)
 class Measure:
-    """A library function a recipe can name."""
+    """A library function a recipe can name.
+
+    ``provider`` is the name and version of the installed distribution that registered
+    it, None for a built-in measure.
+    """
 
     name: str
     function: Callable[..., Any]
+    provider: tuple[str, str] | None = None
 
     @property
     def parameters(self) -> Mapping[str, inspect.Parameter]:
@@ -206,7 +211,8 @@ def lookup(name: str) -> Measure | None:
     # Read from installed packages on first use, not at import: a broken plugin then
     # affects only the recipes that name it. Every worker process repeats this lookup.
     for entry in importlib.metadata.entry_points(group=_PLUGINS, name=name):
-        found = Measure(name, entry.load())
+        dist = getattr(entry, "dist", None)
+        found = Measure(name, entry.load(), None if dist is None else (dist.name, dist.version))
         first = next(iter(found.parameters), None)
         if first not in _KINDS:
             raise ValueError(

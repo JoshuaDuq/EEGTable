@@ -78,6 +78,43 @@ behaviour, and every such change is listed here.
 - The `spectral-model` extra accepts specparam's 2.0 releases from `2.0.0rc7`,
   instead of pinning that release candidate exactly.
 
+- `aperiodic`, `aperiodic_ratio`, `periodic_power` and adjusted `peak_frequency`
+  refuse a spectrum whose frequency axis does not span the whole `fit_range`. They
+  used to fit only the bins present while recording the requested range: on a
+  recipe with only an alpha band, the "2–40 Hz" fit ran on 7.5–13.5 Hz.
+- A recipe's default `[spectra]` `fmin`/`fmax` also spans the `fit_range` of every
+  aperiodic fit (`aperiodic`, `periodic_power`, adjusted `peak_frequency`,
+  `spectral_parameterization`), not only the bands. Recipes whose bands are
+  narrower get a wider spectrum and new spectral column names. An explicit
+  `fmin`/`fmax` that leaves part of a fit range out is a recipe error.
+- Welch spectra treat a channel with any non-finite sample in a window as missing
+  in every epoch, as multitaper and Morlet do. MNE estimated around NaN that every
+  epoch in the call shared, so one epoch's value depended on the others estimated
+  with it, an infinity was not missing, and MNE 1.10–1.12 raised instead.
+- Microstate templates come from the best of several modified k-means starts (the
+  k-means centres and 20 random peak maps), by variance explained at the peaks. A
+  start that leaves a cluster empty is discarded instead of ending the fit. Fitted
+  templates, and so microstate columns, can change.
+- Burst units name the threshold as a quantile (`quantile 0.75 of baseline`), not a
+  percentile, which read as the 0.75th percentile. Burst columns are renamed.
+- IRASA band powers no longer repeat their band among the shared computation
+  parameters, so `band_ratio` pairs them; their columns are renamed.
+- `detrended_fluctuation` needs at least 58 samples per window. Between 50 and 57,
+  AntroPy fits a single block size and returns an exponent of exactly 0.
+- Custom measures refuse a kernel without a qualified name, such as a
+  `functools.partial` or a callable object. Its repr carried a memory address into
+  the column identity, so the same feature had a new name in every process.
+- Kernel SHAP runs without shap's default lasso, which left all but about 10
+  features per row at exactly 0, and with shap's automatic sample count. It scores
+  every feature and is about 20 times slower.
+- BIDS events parse the standard `response_time` column as a number; the
+  non-standard `reaction_time` is left as text like other custom columns.
+
+- Preprocessing checkpoints go stale only where a correction below changes them:
+  `annotate` with `annotations.muscle`, `fit-artifact` with ICLabel, and `epoch` with
+  `epochs.padding` above 0 or a threshold `rejection.tmin`/`tmax`. Reset from that
+  stage and review again; other recipes keep their checkpoints.
+
 ### Added
 
 - `eegtable.extract(epochs, recipe, recording=...)` applies a recipe to epochs in
@@ -135,6 +172,54 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- The preprocessing `epoch` stage drops an epoch whose padding, or the part of its
+  window outside `rejection.tmin`/`tmax`, overlaps a BAD span; MNE also narrows its
+  annotation check to the threshold window it is given.
+- `artifact.ica.method: infomax` no longer reports "ICA did not converge" for a fit
+  that converged: MNE's infomax returns `max_iter` when its weight change
+  converges, so only FastICA and Picard are held to the limit.
+- ICLabel labels components on the recording without its BAD spans, which were left
+  unfiltered and out of the ICA fit.
+- The muscle detector scores only good EEG channels; one flat bad channel made
+  every z-score NaN and silently disabled it.
+- An `--overwrite` export removes the old bundle's files that the new one lacks,
+  such as `_repairs.tsv` or split `_epo-N.fif` parts, and the existing-bundle check
+  no longer matches other bundles whose names begin with `<name>_epo-`.
+- An unexpected preprocessing failure reports its exception type, so a `KeyError`
+  no longer reads as just the missing key.
+- Subject-level r refuses a subject left with fewer than 3 trials once its folds are
+  centred; three trials over two folds correlated at exactly ±1 whatever the data.
+- Burst coverage is limited by the coverage of the samples a quantile threshold is
+  calibrated on, as ERD/ERS coverage is by its baseline.
+- `pac_surrogates` accepts NumPy integers for `n_surrogates` and `random_state`.
+- BIDS events accept `n/a` durations, which the specification allows, and another
+  participant's unparsable age (such as `89+`) no longer blocks every recording.
+- A feature whose computation has a parameter named `method` can be read back.
+- A zero-byte or corrupt `_epo.fif` no longer stops discovery: the run records that
+  recording as failed and finishes the others, `status` reports it, and `check`
+  warns about headers it cannot read.
+- Upgrading the package that provides a plugin measure makes its results stale; its
+  name and version are recorded with the software versions.
+- The CLI no longer fails with `UnicodeEncodeError` when output goes to a legacy
+  code page such as Windows cp1252.
+- Epoch metadata with a `recording` column is refused when the table is written,
+  instead of producing tables that `read_dataset`, `report` and `model` reject.
+- An empty, absolute or `..` `inputs.pattern` is a recipe error instead of a
+  traceback.
+- `eegtable init` into a missing folder exits 2 with an error, and suggested
+  commands are shell-quoted so paths with spaces can be pasted.
+- The basic template's commented `[windows]` suggestion uses a 1 s baseline; the
+  0.5 s one failed `check` on the template's own `peak_frequency` entry.
+- Factory pipelines with covariates can be pickled, and the package's transformers
+  follow scikit-learn's transformer contract: `get_feature_names_out()` works
+  without arguments and `set_output(transform="pandas")` keeps column names.
+- The TUI headlines a failed run with Python's error instead of MNE's last log
+  line, builds on Windows, and honours `NO_COLOR`, which turned colour fully on.
+- CI runs the recipe and passband tests that need optional packages, and a pull
+  request's docs build can no longer cancel a pending Pages deployment.
+- Documentation: custom spectral kernels receive trapezoid-rule weights, not bin
+  widths; out-of-range finite TFR window bounds are refused, not intersected; and
+  `fit_staged_residual_preprocessor` does not match what pooled cross-fitting does.
 - Identity permutations reuse the observed fit's statistic, preserving exact ties
   across single-target and batched Ridge computations on different BLAS platforms.
 - CI tests verify ICLabel classification without requiring a version-specific

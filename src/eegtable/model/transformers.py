@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, cast
 
 import numpy as np
@@ -116,11 +117,33 @@ def validate_subject_missingness(
             )
 
 
-class ReplaceInfWithNaN(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+def _record_inputs(transformer: BaseEstimator, X: Any) -> None:
+    # What scikit-learn's own transformers record in fit, so get_feature_names_out() can
+    # fall back to the fitted column names, or x0..x{n-1} after a plain array. Written here
+    # because scikit-learn's helpers for it are private.
+    transformer.n_features_in_ = np.shape(X)[1]
+    columns = getattr(X, "columns", None)
+    if columns is not None and all(isinstance(name, str) for name in columns):
+        transformer.feature_names_in_ = np.asarray(columns, dtype=object)
+    else:
+        vars(transformer).pop("feature_names_in_", None)
+
+
+def _names_in(transformer: BaseEstimator, input_features: Sequence[str] | None) -> list[str]:
+    if input_features is not None:
+        return list(input_features)
+    fitted = getattr(transformer, "feature_names_in_", None)
+    if fitted is not None:
+        return list(fitted)
+    return [f"x{index}" for index in range(transformer.n_features_in_)]
+
+
+class ReplaceInfWithNaN(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """Turn infinite values into NaN, so later steps treat them as missing. Stateless."""
 
     def fit(self, X: Any, y: Any = None) -> ReplaceInfWithNaN:
-        _ = (X, y)
+        _ = y
+        _record_inputs(self, X)
         return self
 
     def transform(self, X: Any) -> npt.NDArray[np.float64]:
@@ -129,12 +152,11 @@ class ReplaceInfWithNaN(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         return out
 
     def get_feature_names_out(self, input_features: Sequence[str] | None = None) -> list[str]:
-        if input_features is None:
-            raise ValueError("input_features is required for get_feature_names_out.")
+        input_features = _names_in(self, input_features)
         return list(input_features)
 
 
-class DropAllNaNColumns(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+class DropAllNaNColumns(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """Drop columns with fewer than ``min_finite`` finite values in the fitting rows.
 
     Parameters
@@ -149,6 +171,7 @@ class DropAllNaNColumns(BaseEstimator, TransformerMixin):  # type: ignore[misc]
 
     def fit(self, X: Any, y: Any = None) -> DropAllNaNColumns:
         _ = y
+        _record_inputs(self, X)
         x_arr = np.asarray(X, dtype=float)
         finite_counts = np.sum(np.isfinite(x_arr), axis=0)
         self.support_mask_ = finite_counts >= self.min_finite
@@ -164,12 +187,11 @@ class DropAllNaNColumns(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         return cast(npt.NDArray[np.bool_], self.support_mask_)
 
     def get_feature_names_out(self, input_features: Sequence[str] | None = None) -> list[str]:
-        if input_features is None:
-            raise ValueError("input_features is required for get_feature_names_out.")
+        input_features = _names_in(self, input_features)
         return [f for f, keep in zip(input_features, self.support_mask_, strict=True) if keep]
 
 
-class VarianceThreshold(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+class VarianceThreshold(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """Drop columns whose variance in the fitting rows, ignoring NaN, is not above a threshold.
 
     A column without any finite value is dropped as well.
@@ -187,6 +209,7 @@ class VarianceThreshold(BaseEstimator, TransformerMixin):  # type: ignore[misc]
 
     def fit(self, X: Any, y: Any = None) -> VarianceThreshold:
         _ = y
+        _record_inputs(self, X)
         x_arr = np.asarray(X, dtype=float)
         self.variances_ = np.nanvar(x_arr, axis=0)
         if self.threshold == 0.0:
@@ -206,12 +229,11 @@ class VarianceThreshold(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         return cast(npt.NDArray[np.bool_], self.support_mask_)
 
     def get_feature_names_out(self, input_features: Sequence[str] | None = None) -> list[str]:
-        if input_features is None:
-            raise ValueError("input_features is required for get_feature_names_out.")
+        input_features = _names_in(self, input_features)
         return [f for f, keep in zip(input_features, self.support_mask_, strict=True) if keep]
 
 
-class MissingnessThreshold(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+class MissingnessThreshold(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """Keep the features whose NaN fraction in the fitting rows is within a limit.
 
     Parameters
@@ -234,6 +256,7 @@ class MissingnessThreshold(BaseEstimator, TransformerMixin):  # type: ignore[mis
 
     def fit(self, X: Any, y: Any = None, groups: Any = None) -> MissingnessThreshold:
         _ = y
+        _record_inputs(self, X)
         x_arr = np.asarray(X, dtype=float)
         feat_missingness = np.isnan(x_arr).mean(axis=0)
         self.support_mask_ = feat_missingness <= self.max_feature_missingness
@@ -255,12 +278,11 @@ class MissingnessThreshold(BaseEstimator, TransformerMixin):  # type: ignore[mis
         return cast(npt.NDArray[np.bool_], self.support_mask_)
 
     def get_feature_names_out(self, input_features: Sequence[str] | None = None) -> list[str]:
-        if input_features is None:
-            raise ValueError("input_features is required for get_feature_names_out.")
+        input_features = _names_in(self, input_features)
         return [f for f, keep in zip(input_features, self.support_mask_, strict=True) if keep]
 
 
-class SpatialFeatureSelector(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+class SpatialFeatureSelector(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """Keep the features whose names contain any of the given region tokens.
 
     Matching is a case-insensitive substring test on the feature name, so a short
@@ -287,6 +309,7 @@ class SpatialFeatureSelector(BaseEstimator, TransformerMixin):  # type: ignore[m
 
     def fit(self, X: Any, y: Any = None) -> SpatialFeatureSelector:
         _ = y
+        _record_inputs(self, X)
         x_arr = np.asarray(X, dtype=float)
         n_features = x_arr.shape[1]
 
@@ -324,12 +347,11 @@ class SpatialFeatureSelector(BaseEstimator, TransformerMixin):  # type: ignore[m
         return cast(npt.NDArray[np.bool_], self.support_mask_)
 
     def get_feature_names_out(self, input_features: Sequence[str] | None = None) -> list[str]:
-        if input_features is None:
-            raise ValueError("input_features is required for get_feature_names_out.")
+        input_features = _names_in(self, input_features)
         return [f for f, keep in zip(input_features, self.support_mask_, strict=True) if keep]
 
 
-class Deconfounder(BaseEstimator, TransformerMixin):  # type: ignore[misc]
+class Deconfounder(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     """Replace features by their residuals on the trailing covariate columns.
 
     ``fit`` regresses every feature column on an intercept and the last
@@ -349,6 +371,7 @@ class Deconfounder(BaseEstimator, TransformerMixin):  # type: ignore[misc]
 
     def fit(self, X: Any, y: Any = None) -> Deconfounder:
         _ = y
+        _record_inputs(self, X)
         if self.n_covariates <= 0:
             return self
 
@@ -380,8 +403,7 @@ class Deconfounder(BaseEstimator, TransformerMixin):  # type: ignore[misc]
         return residuals
 
     def get_feature_names_out(self, input_features: Sequence[str] | None = None) -> list[str]:
-        if input_features is None:
-            raise ValueError("input_features is required for get_feature_names_out.")
+        input_features = _names_in(self, input_features)
         if self.n_covariates <= 0:
             return list(input_features)
         n_features = len(input_features) - self.n_covariates
@@ -399,6 +421,14 @@ class _CovariateImputer(SimpleImputer):  # type: ignore[misc]
             )
         super().fit(X, y)
         return self
+
+
+def _leading_columns(n_covariates: int, X: npt.NDArray[Any]) -> list[int]:
+    return list(range(X.shape[1] - n_covariates))
+
+
+def _trailing_columns(n_covariates: int, X: npt.NDArray[Any]) -> list[int]:
+    return list(range(X.shape[1] - n_covariates, X.shape[1]))
 
 
 def base_preprocessing_steps(
@@ -500,16 +530,13 @@ def base_preprocessing_steps(
                 )
             )
 
-        def feature_idx(X: npt.NDArray[Any]) -> list[int]:
-            return list(range(X.shape[1] - n_covariates))
-
-        def cov_idx(X: npt.NDArray[Any]) -> list[int]:
-            return list(range(X.shape[1] - n_covariates, X.shape[1]))
-
+        # Module-level selectors, which plain pickle (joblib.dump of a fitted model) can
+        # serialize where closures cannot; index lists, not slices, so a model of
+        # covariates alone still skips the empty feature branch.
         preprocessor = ColumnTransformer(
             transformers=[
-                ("eeg", Pipeline(feature_steps), feature_idx),
-                ("cov", Pipeline(cov_steps), cov_idx),
+                ("eeg", Pipeline(feature_steps), partial(_leading_columns, n_covariates)),
+                ("cov", Pipeline(cov_steps), partial(_trailing_columns, n_covariates)),
             ],
             remainder="drop",
             verbose_feature_names_out=False,

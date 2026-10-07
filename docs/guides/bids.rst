@@ -54,8 +54,10 @@ read with an explicit root: ``read_bids(path, root=Path("/data/study"))``.
 
 Channel names, event categories and custom descriptors retain their text,
 including leading zeros. Standard numeric fields (onset, duration, sample,
-reaction time and age) are parsed explicitly. Convert other measured quantities
-to numbers when using them; model design builders convert numeric targets.
+response time and age) are parsed explicitly; ``n/a`` becomes missing, which an
+event's duration and response time may be but its onset may not. Convert other
+measured quantities to numbers when using them; model design builders convert
+numeric targets.
 
 Channel correspondence
 ----------------------

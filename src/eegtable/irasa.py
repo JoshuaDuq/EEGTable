@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 from importlib.metadata import version
 from numbers import Real
 
@@ -242,7 +242,9 @@ def irasa(
             groups=groups,
             include_global=include_global,
             mode="raw",
-            parameters={**parameters, "band": None if band is None else asdict(band)},
+            # The band enters each column's identity through its metadata, not here, so
+            # columns of different bands still share one computation and can be paired.
+            parameters=parameters,
         )
         return replace(table, meta=tuple(replace(meta, band=band) for meta in table.meta))
 

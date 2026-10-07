@@ -8,12 +8,16 @@ import pytest
 
 from eegtable.preprocessing import list_steps, open_workflow, run_step, run_until
 from eegtable.preprocessing.config import (
+    AnnotationSettings,
     ArtifactSettings,
     AutoRejectSettings,
     BadChannelSettings,
     FilterSettings,
+    FixedEpochSettings,
     ICASettings,
     ICLabelSettings,
+    MuscleSettings,
+    ThresholdSettings,
 )
 
 from .test_execution import config_for
@@ -154,6 +158,46 @@ def test_scientific_package_change_invalidates_owning_stage(
     assert before["load"] == after["load"]
     assert before[stage] != after[stage]
     assert before["export"] != after["export"]
+
+
+@pytest.mark.parametrize(
+    "stage,field,value",
+    [
+        (
+            "annotate",
+            "annotations",
+            AnnotationSettings(muscle=MuscleSettings((30.0, 70.0), 4.0, 0.2)),
+        ),
+        (
+            "fit-artifact",
+            "artifact",
+            ArtifactSettings(
+                "ica", ICASettings(method="picard", iclabel=ICLabelSettings()), "average"
+            ),
+        ),
+        ("epoch", "epochs", FixedEpochSettings(2, padding=0.5)),
+        ("epoch", "rejection", ThresholdSettings(reject={"eeg": 1e-4}, tmax=1.0)),
+    ],
+)
+def test_corrected_stages_are_stale_only_in_recipes_they_affect(
+    raw, tmp_path, monkeypatch, stage, field, value
+):
+    from eegtable.preprocessing import execution
+
+    base = config_for(raw, tmp_path)
+    workflows = [
+        open_workflow(base),
+        open_workflow(replace(base, processing=replace(base.processing, **{field: value}))),
+    ]
+    current = [execution.stage_identities(workflow, "source") for workflow in workflows]
+    # Identities as recorded before these corrections.
+    monkeypatch.setattr(execution, "_implementation", lambda stage, settings: 2)
+    before = [execution.stage_identities(workflow, "source") for workflow in workflows]
+
+    assert before[0] == current[0]
+    assert before[1]["load"] == current[1]["load"]
+    assert before[1][stage] != current[1][stage]
+    assert before[1]["export"] != current[1]["export"]
 
 
 def test_disabled_filter_change_does_not_invalidate_events(raw, tmp_path):

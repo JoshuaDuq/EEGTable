@@ -1,6 +1,9 @@
 """The ``eegtable`` command line: exit codes, output, and the progress stream."""
 
+import io
 import json
+import re
+import shlex
 import subprocess
 import sys
 from importlib import util
@@ -215,6 +218,38 @@ def test_init_does_not_overwrite_an_existing_file(tmp_path, capsys) -> None:
     assert path.read_text(encoding="utf-8") == "# mine\n"
 
 
+def test_init_into_a_missing_folder_exits_two(tmp_path, capsys) -> None:
+    assert main(["init", str(tmp_path / "nope/recipe.toml")]) == 2
+    assert "nope" in capsys.readouterr().err
+
+
+def test_suggested_commands_can_be_pasted_into_a_shell(tmp_path, capsys) -> None:
+    folder = tmp_path / "my study"
+    folder.mkdir()
+    new = str(folder / "new recipe.toml")
+    assert main(["init", new]) == 0
+    assert f"eegtable check {shlex.quote(new)}" in capsys.readouterr().out
+    _recording(folder, "sub-01")
+    recipe = str(_recipe(folder))
+
+    main(["status", recipe])
+    assert f"Next: eegtable run {shlex.quote(recipe)} --resume" in capsys.readouterr().out
+    main(["check", recipe])
+    assert f"Ready: eegtable run {shlex.quote(recipe)}" in capsys.readouterr().out
+
+
+def test_text_output_survives_a_legacy_code_page(tmp_path, monkeypatch) -> None:
+    # Windows gives redirected output its ANSI code page, often cp1252, which has no arrows.
+    _recording(tmp_path, "sub-01")
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout)
+
+    assert main(["status", str(_recipe(tmp_path))]) == 0
+
+    stdout.flush()
+    assert "sub-01_task-rest" in stdout.buffer.getvalue().decode("cp1252")
+
+
 def test_the_package_runs_as_a_module() -> None:
     completed = subprocess.run(
         [sys.executable, "-m", "eegtable", "--version"], capture_output=True, text=True
@@ -361,6 +396,31 @@ def test_each_init_template_checks_cleanly_on_real_epochs(tmp_path, capsys, temp
 
     assert main(["init", str(path), "--template", template]) == 0
     text = path.read_text(encoding="utf-8")
+    text = text.replace('root = "derivatives/preprocessed"', 'root = "data"', 1)
+    text = text.replace('root = "derivatives/eegtable"', 'root = "out"', 1)
+    path.write_text(text, encoding="utf-8")
+
+    assert main(["check", str(path)]) == 0, capsys.readouterr()
+
+
+def _uncommented(text: str) -> str:
+    # Uncomments each commented-out section and its keys, leaving prose and lone options.
+    lines, inside = [], False
+    for line in text.splitlines():
+        if re.fullmatch(r"# \[\[?\w+\]\]?", line):
+            inside = True
+        elif not re.match(r"# \w+ = ", line):
+            inside = False
+        lines.append(line[2:] if inside else line)
+    return "\n".join(lines) + "\n"
+
+
+def test_the_basic_templates_commented_sections_check_cleanly(tmp_path, capsys) -> None:
+    _recording(tmp_path, "sub-01", tmin=-1.0, seconds=2.5)
+    path = tmp_path / "recipe.toml"
+    assert main(["init", str(path)]) == 0
+    text = _uncommented(path.read_text(encoding="utf-8"))
+    assert "\n[windows]\n" in text and "\n[bands]\n" in text and 'measure = "itpc"' in text
     text = text.replace('root = "derivatives/preprocessed"', 'root = "data"', 1)
     text = text.replace('root = "derivatives/eegtable"', 'root = "out"', 1)
     path.write_text(text, encoding="utf-8")

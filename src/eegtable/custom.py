@@ -52,8 +52,10 @@ def spectral_measure(
         ``kernel(power, freqs, weights)`` returning ``values``, or
         ``(values, flags)``. ``power`` has shape ``(epochs, channels, windows,
         freqs)`` restricted to one band's bins, with non-finite bins as NaN;
-        ``weights`` are those bins' widths in Hz. ``values`` has shape ``(epochs,
-        channels, windows)``; ``flags`` maps names to boolean arrays of that shape.
+        ``weights`` are those bins' trapezoid-rule weights in Hz, half a spacing at
+        each end bin, so ``nansum(power * weights)`` integrates from the first bin to
+        the last. ``values`` has shape ``(epochs, channels, windows)``; ``flags`` maps
+        names to boolean arrays of that shape.
     measure : str
         The label columns carry and :meth:`FeatureTable.select` matches.
     unit : str
@@ -183,5 +185,12 @@ def _identity(
         raise ValueError("parameters cannot override the kernel identity.")
     # The label is the user's choice; the kernel's own name keeps two different
     # computations under one label from being stacked as one feature.
-    name = f"{getattr(kernel, '__module__', '?')}.{getattr(kernel, '__qualname__', repr(kernel))}"
-    return {"kernel": name, **dict(parameters or {})}
+    qualname = getattr(kernel, "__qualname__", None)
+    if not isinstance(qualname, str):
+        # A partial or callable instance would be named by its repr, whose memory address
+        # gives the same feature a different column in every process.
+        raise TypeError(
+            f"kernel {kernel!r} has no qualified name; pass a named function and give its "
+            "settings through parameters."
+        )
+    return {"kernel": f"{getattr(kernel, '__module__', '?')}.{qualname}", **dict(parameters or {})}

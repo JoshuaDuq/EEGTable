@@ -102,8 +102,8 @@ def reject_epochs(epochs: Any, settings: ThresholdSettings) -> Any:
     present = set(epochs.get_channel_types())
     if not set(settings.reject or {}) | set(settings.flat or {}) <= present:
         raise ValueError("rejection: threshold names absent channel type")
-    # The decision window was fixed at construction (reject_tmin/reject_tmax) and
-    # survives FIF round trips, so it is not restated here.
+    # make_epochs fixed the decision window (reject_tmin/reject_tmax), which survives
+    # FIF round trips, so it is not restated here.
     working = epochs.copy().drop_bad(reject=settings.reject, flat=settings.flat)
     validate_epochs(working)
     return working

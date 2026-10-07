@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import pickle
+
 import numpy as np
+import pandas as pd
 import pytest
+from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
@@ -34,6 +38,61 @@ def test_feature_names_follow_the_columns_through_a_covariate_pipeline() -> None
     pipe.fit(with_covariate, rng.normal(size=60))
     names = transform_feature_names(pipe.steps[:-1], ["f0", "f1", "f2", "f3", "f4", "age"])
     assert names == ["f0", "f1", "f3", "f4"]
+
+
+@pytest.mark.parametrize("deconfound", [False, True])
+def test_a_fitted_covariate_pipeline_survives_pickling(deconfound) -> None:
+    # joblib.dump of a fitted model pickles the ColumnTransformer's column selectors too.
+    rng = np.random.default_rng(4)
+    values = rng.normal(size=(30, 5))
+    pipe = ridge_pipeline(PreprocessingConfig(deconfound=deconfound), seed=0, n_covariates=2)
+    pipe.fit(values, rng.normal(size=30))
+    restored = pickle.loads(pickle.dumps(pipe))
+    np.testing.assert_array_equal(restored.predict(values), pipe.predict(values))
+
+
+CUSTOM_TRANSFORMERS = [
+    ReplaceInfWithNaN(),
+    DropAllNaNColumns(),
+    VarianceThreshold(),
+    MissingnessThreshold(),
+    SpatialFeatureSelector(),
+    Deconfounder(n_covariates=1),
+]
+
+
+@pytest.mark.parametrize("transformer", CUSTOM_TRANSFORMERS, ids=lambda t: type(t).__name__)
+def test_custom_transformers_are_tagged_as_transformers(transformer) -> None:
+    from sklearn.utils import get_tags
+
+    assert get_tags(transformer).transformer_tags is not None
+
+
+@pytest.mark.parametrize("columns", [None, ["a", "b", "c"]])
+@pytest.mark.parametrize("transformer", CUSTOM_TRANSFORMERS, ids=lambda t: type(t).__name__)
+def test_custom_transformers_default_to_the_fitted_input_names(transformer, columns) -> None:
+    # scikit-learn's contract: without input_features, use the names seen in fit, or
+    # x0..x{n-1} when fit saw a plain array.
+    values = pd.DataFrame(np.random.default_rng(5).normal(size=(10, 3)), columns=columns)
+    fitted = clone(transformer).fit(values if columns else values.to_numpy())
+    seen = columns or ["x0", "x1", "x2"]
+    assert list(fitted.get_feature_names_out()) == list(fitted.get_feature_names_out(seen))
+
+
+@pytest.mark.parametrize("n_covariates", [0, 1])
+def test_factory_preprocessing_names_its_outputs_and_emits_pandas(n_covariates) -> None:
+    rng = np.random.default_rng(6)
+    frame = pd.DataFrame(rng.normal(size=(30, 3)), columns=["a", "b", "c"])
+    target = rng.normal(size=30)
+    config = PreprocessingConfig(deconfound=True)
+    kept = ["a", "b", "c"][: 3 - n_covariates]
+
+    fitted = ridge_pipeline(config, seed=0, n_covariates=n_covariates).fit(frame.to_numpy(), target)
+    assert list(fitted[:-1].get_feature_names_out()) == [f"x{i}" for i in range(len(kept))]
+
+    pandas_pipe = ridge_pipeline(config, seed=0, n_covariates=n_covariates)
+    pandas_pipe.set_output(transform="pandas").fit(frame, target)
+    assert list(pandas_pipe[:-1].transform(frame).columns) == kept
 
 
 @pytest.mark.parametrize("deconfound", [False, True])

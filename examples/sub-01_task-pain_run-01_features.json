@@ -99,7 +99,7 @@
   "coverage": "sub-01_task-pain_run-01_features_coverage.tsv",
   "columns": [
     {
-      "name": "eeg_band-power_theta_f3_baseline_log10_pdb46ae812980",
+      "name": "eeg_band-power_theta_f3_baseline_log10_p48d08c95b18c",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -120,11 +120,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "db46ae812980383f7fa90958cc70e540aae72c3023152b062544e61cafe20ad8"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "48d08c95b18cfb45a187517cd8c9e97199be27c9841b21bfce2b6eaf43e72663"
     },
     {
-      "name": "eeg_band-power_theta_f3_stimulus_log10_p8d63d6850adc",
+      "name": "eeg_band-power_theta_f3_stimulus_log10_pc24a7c71b9b6",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -145,11 +145,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "8d63d6850adcb76de1c7b669ace436fda21806a7bcb6f1ffb3adf68a3473843d"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "c24a7c71b9b660384d7026f97b455f941f725ae769a501cb177872fc68534f33"
     },
     {
-      "name": "eeg_band-power_theta_fz_baseline_log10_p784b116df661",
+      "name": "eeg_band-power_theta_fz_baseline_log10_p45c75b5b6e17",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -170,11 +170,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "784b116df661e2a9e25bdbe9ed16885eb90c5c39deea4dd92d8364f120e25058"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "45c75b5b6e1776f13ba1d5864db54f05c7e9235ef28f35b7be85fe6908d2d67c"
     },
     {
-      "name": "eeg_band-power_theta_fz_stimulus_log10_p689c6a200fbc",
+      "name": "eeg_band-power_theta_fz_stimulus_log10_pfeed153d9ba6",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -195,11 +195,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "689c6a200fbc28ee141a5b698ca9b50188aff0d08d6c92b2406ba703940d0e1b"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "feed153d9ba69dee9c9ea8aeb5d2567961f0aa9d2f1d8a4a7b321c2f6ac8c057"
     },
     {
-      "name": "eeg_band-power_theta_f4_baseline_log10_p4f5ea7a185da",
+      "name": "eeg_band-power_theta_f4_baseline_log10_p3e028619c35e",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -220,11 +220,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "4f5ea7a185daaf4d9e9783350705a35c2f86be545920d42c7b15253ce9870844"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "3e028619c35e415460c889260ea13bc3513d5cec0a488c4c7de7c8c1e82cda18"
     },
     {
-      "name": "eeg_band-power_theta_f4_stimulus_log10_p554632aed43b",
+      "name": "eeg_band-power_theta_f4_stimulus_log10_pb90f5a0a852b",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -245,11 +245,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "554632aed43bb895e4d065684e8cc109c269059dae18b5881973347602338e6c"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "b90f5a0a852b18398fe45d017ecd0f64e20f7e19b350a9547236f4ca9274a80b"
     },
     {
-      "name": "eeg_band-power_theta_c3_baseline_log10_p0595ca0e8f32",
+      "name": "eeg_band-power_theta_c3_baseline_log10_p3afb84181fc9",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -270,11 +270,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "0595ca0e8f32598d9cc1ce5341f7d98d0598b1c5a991c713a2e418ae2c1e1bc2"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "3afb84181fc95877ede31b392dd51d8d8934d3094a382c2d631162513b956e3a"
     },
     {
-      "name": "eeg_band-power_theta_c3_stimulus_log10_p3aa90d4e82e7",
+      "name": "eeg_band-power_theta_c3_stimulus_log10_p3012f33cb9c2",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -295,11 +295,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "3aa90d4e82e7d8abd99dabccb54983c69e04032abd2e5ab59c07aababf9c87cf"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "3012f33cb9c2ff3e164cd324a349e419d310b7f16292d7cf3757575b132ed4cc"
     },
     {
-      "name": "eeg_band-power_theta_cz_baseline_log10_p1433f19e2284",
+      "name": "eeg_band-power_theta_cz_baseline_log10_p2af666210b7a",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -320,11 +320,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "1433f19e2284670c6da71020d023231884f1eed3a8e145f65022aa127964fc14"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "2af666210b7a8b708b306e23e5662873bb46c9f44437022719c3c4fee9278713"
     },
     {
-      "name": "eeg_band-power_theta_cz_stimulus_log10_p52d52995cbaa",
+      "name": "eeg_band-power_theta_cz_stimulus_log10_p715577602ca6",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -345,11 +345,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "52d52995cbaa66a83a249c4459848ec762be50496c782ed062ec6ffd30c3b586"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "715577602ca631ff101dcaf59db6ea8d5412c6e2126187c43f4b99f0ebf72876"
     },
     {
-      "name": "eeg_band-power_theta_c4_baseline_log10_p4410a9ca2c04",
+      "name": "eeg_band-power_theta_c4_baseline_log10_p0162d5f29308",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -370,11 +370,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "4410a9ca2c0403d4f04ec09264bf9029923fe3cea54700ee2be0289263e5037a"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "0162d5f29308ce0ad49d0feff541d87c5f887a2a7b43b72372c3fb218d521586"
     },
     {
-      "name": "eeg_band-power_theta_c4_stimulus_log10_pa24c5cc800e8",
+      "name": "eeg_band-power_theta_c4_stimulus_log10_p9c3050579e74",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -395,11 +395,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "a24c5cc800e8573352a45e38c4001d8709a10f86a8b956b4c236b0b957baf48f"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "9c3050579e7463267b076a8dacbd0f7c2bdacace6c2a789b27272493ab5efc92"
     },
     {
-      "name": "eeg_band-power_theta_p3_baseline_log10_p168ad3c6dd63",
+      "name": "eeg_band-power_theta_p3_baseline_log10_p0599717a09ca",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -420,11 +420,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "168ad3c6dd637be92e9dd2ad53cbe9b457c7127e788e0074a1bca44a8fdbbbf5"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "0599717a09ca5709b2c379432c6d61ca5d069d1cc2d50fa4e0bbc74fc9f22272"
     },
     {
-      "name": "eeg_band-power_theta_p3_stimulus_log10_p921e73b93f9c",
+      "name": "eeg_band-power_theta_p3_stimulus_log10_pb4a6e9e5e2f0",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -445,11 +445,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "921e73b93f9c2b2eac58d9ddc4ec17613dc58441a7945a852fbac3de122d40e6"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "b4a6e9e5e2f02fe85fe95beb77d1083b4a272cc2fbec76a30a9eb8f3b045b87b"
     },
     {
-      "name": "eeg_band-power_theta_pz_baseline_log10_pd43764741a8e",
+      "name": "eeg_band-power_theta_pz_baseline_log10_p29af04c031be",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -470,11 +470,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "d43764741a8ee5a9503f4f6e646d022ec44111b1695c91632f8aa483035802f3"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "29af04c031be03bdf6d17d83ffb029611ec43737d258d7c5d00ee4e5a64203f9"
     },
     {
-      "name": "eeg_band-power_theta_pz_stimulus_log10_p6785615ac0b9",
+      "name": "eeg_band-power_theta_pz_stimulus_log10_pdabfd222fa8a",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -495,11 +495,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "6785615ac0b9d827db41e64ecb0a6c819c25080be2a6e7216f04fac8ca3677eb"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "dabfd222fa8a0dd05e01a34c3fc28c0c4031705a46f66b03ec73d88cb603445c"
     },
     {
-      "name": "eeg_band-power_theta_global_baseline_log10_pa791775f3145",
+      "name": "eeg_band-power_theta_global_baseline_log10_p07ceb9f22569",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -520,11 +520,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "802b4d41d470a476881f1a12a27ce787e9d1b9600699d57214555468b2268b48",
-      "parameter_hash": "a791775f3145d268dd217434dec70b204b939b89c4a1cd0c2ea5f1a68699492a"
+      "computation": "1ce5c0686b4071b968958bfe6a3a50273078397e646822a652b4a6c44ffecfa2",
+      "parameter_hash": "07ceb9f2256909beb2542aaa19f12b54c7a296ce7c83d2c0fe9aaec54e019164"
     },
     {
-      "name": "eeg_band-power_theta_global_stimulus_log10_p4776719fd980",
+      "name": "eeg_band-power_theta_global_stimulus_log10_pc897b77cf086",
       "measure": "band_power",
       "band": {
         "name": "theta",
@@ -545,11 +545,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "802b4d41d470a476881f1a12a27ce787e9d1b9600699d57214555468b2268b48",
-      "parameter_hash": "4776719fd980ecb95052ab6b2897848e02f433f9812198bc4ee2a350c5b875c0"
+      "computation": "1ce5c0686b4071b968958bfe6a3a50273078397e646822a652b4a6c44ffecfa2",
+      "parameter_hash": "c897b77cf0860b9c28e62165b3408855e414947308a6d8e1e042728a8ac07e68"
     },
     {
-      "name": "eeg_band-power_alpha_f3_baseline_log10_p9df901a12d09",
+      "name": "eeg_band-power_alpha_f3_baseline_log10_p0d20e8508ed6",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -570,11 +570,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "9df901a12d09819488c6ec737656d5d22ea88942ad7271cf5dbec7f1bb59deaa"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "0d20e8508ed60977b91d63008b0d1f9e5224299305a4a34d582ff6a43ce0d80a"
     },
     {
-      "name": "eeg_band-power_alpha_f3_stimulus_log10_pbc975def54c2",
+      "name": "eeg_band-power_alpha_f3_stimulus_log10_p3602ad85bd00",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -595,11 +595,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "bc975def54c2b151954a94fd080de92c5854c7039ffc73d6a9db32465a571445"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "3602ad85bd0060f5d8b1022989e03d7d8c6999256ec555546caa4c7e771bc2c4"
     },
     {
-      "name": "eeg_band-power_alpha_fz_baseline_log10_p8010ff35c824",
+      "name": "eeg_band-power_alpha_fz_baseline_log10_pa2b03580e88e",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -620,11 +620,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "8010ff35c8246527e296b32fb8474bd52f7256ca9cdd154e2e155572392ed88d"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "a2b03580e88ecd6f27a9b1bbd3b35f8e0453107007145df781fbbee6cad62e89"
     },
     {
-      "name": "eeg_band-power_alpha_fz_stimulus_log10_pbb50b70803a4",
+      "name": "eeg_band-power_alpha_fz_stimulus_log10_pd7cb9744913c",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -645,11 +645,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "bb50b70803a4ac7c1e984929784aeeb33867dc19c630666495d7fdaf8931e9b0"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "d7cb9744913c9303c4316b702d03404b95fd2a787fc9142ad429ae386db1a0d2"
     },
     {
-      "name": "eeg_band-power_alpha_f4_baseline_log10_p38fbbe769d34",
+      "name": "eeg_band-power_alpha_f4_baseline_log10_p3f3c071b6f5a",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -670,11 +670,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "38fbbe769d34b0ef36f56814c7cf0d689712c626c004e8986ab04386b67a5669"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "3f3c071b6f5ade12ab68ff24dba4474af860b79cae134c1ca42d926e5dc41a36"
     },
     {
-      "name": "eeg_band-power_alpha_f4_stimulus_log10_p6bf42fa159eb",
+      "name": "eeg_band-power_alpha_f4_stimulus_log10_p6faa277704b9",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -695,11 +695,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "6bf42fa159eb77e08b436b916f8d07f671b45451eb5f49c94df2ed04d21905fd"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "6faa277704b9fc6b7fd6e12800caf7b262f80321d6b3cc95660b57d7e27781bc"
     },
     {
-      "name": "eeg_band-power_alpha_c3_baseline_log10_p39b38747bfe8",
+      "name": "eeg_band-power_alpha_c3_baseline_log10_p0e0410b3e1fb",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -720,11 +720,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "39b38747bfe8b5424278986bb609348b9be68089b2fccee2b2b7acf8f15f58a6"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "0e0410b3e1fb8ecddf7327ff126e6e7eee4dd78982d2df4e4d66a27ea4f62fa6"
     },
     {
-      "name": "eeg_band-power_alpha_c3_stimulus_log10_pe138cc432e48",
+      "name": "eeg_band-power_alpha_c3_stimulus_log10_p1fb8cc9cf05a",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -745,11 +745,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "e138cc432e488ac954fd67d866937dd50118299eb495f9a474b11b193cd7f646"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "1fb8cc9cf05a4518466b80267b3965ad9b7402721abba3bdd470e8fae134ecb5"
     },
     {
-      "name": "eeg_band-power_alpha_cz_baseline_log10_p20c90ad29530",
+      "name": "eeg_band-power_alpha_cz_baseline_log10_p9267424574fa",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -770,11 +770,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "20c90ad295302cab549efd7d842b25d48fc5355a556eb620b64fe8cfa6fcd45d"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "9267424574fadd5212a6e845a0a93c74916a6a2ea2c3120dab6c7fd74c41dcb9"
     },
     {
-      "name": "eeg_band-power_alpha_cz_stimulus_log10_pa03293efa332",
+      "name": "eeg_band-power_alpha_cz_stimulus_log10_p400ef60dc7e2",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -795,11 +795,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "a03293efa33253ea20cd45aa65993a5eb3e58eca9d0e5a76722c62450b82f0b8"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "400ef60dc7e2563f2ce863fb3809d15acc4982e19a1da8253191bd8c7bc744e5"
     },
     {
-      "name": "eeg_band-power_alpha_c4_baseline_log10_p0f11148bb1bc",
+      "name": "eeg_band-power_alpha_c4_baseline_log10_pbf663727849c",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -820,11 +820,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "0f11148bb1bc646f497ab126b01574ce9eb3c9723684dd7d7d1ae48673c1bf53"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "bf663727849c481d8c58cf4cff6c78f825a0da01439d7322cec1cc8c8be7eadf"
     },
     {
-      "name": "eeg_band-power_alpha_c4_stimulus_log10_p52bc5ed23a9d",
+      "name": "eeg_band-power_alpha_c4_stimulus_log10_p046aa7cd7b4a",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -845,11 +845,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "52bc5ed23a9d916a5d12ac7baaa7776441a5004d50f3c6230ae112d19ffda159"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "046aa7cd7b4a024fcbaf016a3b31fdc3d559be63085bac5d257f4628eff7bf87"
     },
     {
-      "name": "eeg_band-power_alpha_p3_baseline_log10_pfa9f08aac65f",
+      "name": "eeg_band-power_alpha_p3_baseline_log10_pf34ea5cd161b",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -870,11 +870,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "fa9f08aac65f75ad4ca745d72500b4093e759597054fdb167ba183a8bdfd76ce"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "f34ea5cd161b29bc58aaa0b1ba1e0c199354e9a1f905450082fe201b9bfb4064"
     },
     {
-      "name": "eeg_band-power_alpha_p3_stimulus_log10_pe835bf5bb3fa",
+      "name": "eeg_band-power_alpha_p3_stimulus_log10_p0532b0811cb5",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -895,11 +895,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "e835bf5bb3fabeac5a03b7006a13b2c5a4bcf1831c65f6d13b04bc065bdcd76e"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "0532b0811cb5f3f6291f717622d5ac866bec91df816e539500b03de3f02ff66c"
     },
     {
-      "name": "eeg_band-power_alpha_pz_baseline_log10_p9e377572d277",
+      "name": "eeg_band-power_alpha_pz_baseline_log10_pe2b8d53cf7d6",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -920,11 +920,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "9e377572d2775d2fc3d1581a3666086475c87e5039679cb5d535cc6f5e52ccfb"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "e2b8d53cf7d6645912ff2cf2b0e07b8eb86b39d9e830c8996f1c2c78efd3f495"
     },
     {
-      "name": "eeg_band-power_alpha_pz_stimulus_log10_pd272d09dbaea",
+      "name": "eeg_band-power_alpha_pz_stimulus_log10_pdb51f39f023d",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -945,11 +945,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "d272d09dbaea2a633f68d27c3f9e16137e216662ad92638e24aabcc3d23f10d6"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "db51f39f023ded6fa6c365bf3d2743089ffdf58328bbf32b2f134fe2c2ef8a06"
     },
     {
-      "name": "eeg_band-power_alpha_global_baseline_log10_p9c21e975bf67",
+      "name": "eeg_band-power_alpha_global_baseline_log10_p3fbc4f60ce2d",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -970,11 +970,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "802b4d41d470a476881f1a12a27ce787e9d1b9600699d57214555468b2268b48",
-      "parameter_hash": "9c21e975bf67d43b434dba2901217b58802f69307331431b8bc948d5c29ca2e1"
+      "computation": "1ce5c0686b4071b968958bfe6a3a50273078397e646822a652b4a6c44ffecfa2",
+      "parameter_hash": "3fbc4f60ce2d77f20527cfd2b69806400f8340f28d0572e1d52c784408dd1d47"
     },
     {
-      "name": "eeg_band-power_alpha_global_stimulus_log10_p13608e67397b",
+      "name": "eeg_band-power_alpha_global_stimulus_log10_p7faedee7542c",
       "measure": "band_power",
       "band": {
         "name": "alpha",
@@ -995,11 +995,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "802b4d41d470a476881f1a12a27ce787e9d1b9600699d57214555468b2268b48",
-      "parameter_hash": "13608e67397b8a79c8c75e02a3d18c1b405512a38be8a30350df1ca7e775b49f"
+      "computation": "1ce5c0686b4071b968958bfe6a3a50273078397e646822a652b4a6c44ffecfa2",
+      "parameter_hash": "7faedee7542c54685aa3c202cb059a1e750edc48264002c1010c26e7bb2a93b3"
     },
     {
-      "name": "eeg_band-power_beta_f3_baseline_log10_pecff0ca7ab61",
+      "name": "eeg_band-power_beta_f3_baseline_log10_p5b95a4debb0c",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1020,11 +1020,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "ecff0ca7ab61a28882a8c5f4b87b01a983de5878a78131143fca8e04d2a09311"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "5b95a4debb0cf27af6a70151372ec967c2238265e71f2e836493b61f14a066fd"
     },
     {
-      "name": "eeg_band-power_beta_f3_stimulus_log10_pb960e27f4908",
+      "name": "eeg_band-power_beta_f3_stimulus_log10_p073491e82892",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1045,11 +1045,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "b960e27f490862a3ae678eb2bbd35d105731dfde8c431579c9ed6f7e59e66af1"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "073491e8289282142e68ba03b90e2c0764bfa703805e84e7f269dd78a9d474a3"
     },
     {
-      "name": "eeg_band-power_beta_fz_baseline_log10_pabc72e81419f",
+      "name": "eeg_band-power_beta_fz_baseline_log10_pd6687e8f4be2",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1070,11 +1070,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "abc72e81419fe679e157417d94f604bcaf37856f23e2e88abfe42943afaf5612"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "d6687e8f4be2eb39201aa5bd4db17a61406d14104e354f190cbe20c68aada83b"
     },
     {
-      "name": "eeg_band-power_beta_fz_stimulus_log10_p443c3adcc282",
+      "name": "eeg_band-power_beta_fz_stimulus_log10_p7101abc0df80",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1095,11 +1095,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "443c3adcc2826d19133446866f219a7e8d1483638534781a4ecdfb6927f216f6"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "7101abc0df8044af96de6bd344d63ea08f3ce55ced38c68595829fdf00b793ac"
     },
     {
-      "name": "eeg_band-power_beta_f4_baseline_log10_p03caa1595071",
+      "name": "eeg_band-power_beta_f4_baseline_log10_p5ae5935a786d",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1120,11 +1120,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "03caa15950710a9ab1ea6d88c7bae7464f657dd674f952791c7ac89e05a92685"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "5ae5935a786d943b53af53282f05746baea893d69378721dd0f5d080ff843701"
     },
     {
-      "name": "eeg_band-power_beta_f4_stimulus_log10_p9146d656c90b",
+      "name": "eeg_band-power_beta_f4_stimulus_log10_p5379a7edcf81",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1145,11 +1145,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "9146d656c90be71608b88b1ed282d3d9584c007660e082da495b3ed2ba69feba"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "5379a7edcf810f41d083f9fd62469d4bed36898c740765d136d090e98782a1c0"
     },
     {
-      "name": "eeg_band-power_beta_c3_baseline_log10_p30dc841fbac4",
+      "name": "eeg_band-power_beta_c3_baseline_log10_p12d07f865508",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1170,11 +1170,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "30dc841fbac45e03e8fb0ac27ece41c00569f33f0ec251961e6754d3c7c853fe"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "12d07f865508951982a55585f64004bc195f434aa62013656652b7de9c8adb1c"
     },
     {
-      "name": "eeg_band-power_beta_c3_stimulus_log10_pbf6f2ee94cf6",
+      "name": "eeg_band-power_beta_c3_stimulus_log10_pb9561c7e2eb6",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1195,11 +1195,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "bf6f2ee94cf6001bc4a4eb2ed4245442cbb1e36814cdc010dfaea3091512bb2d"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "b9561c7e2eb623a4e1e14fffe37704311cac61ab847c6d87f61c77a65baf5e4a"
     },
     {
-      "name": "eeg_band-power_beta_cz_baseline_log10_p4963a0ef0ac0",
+      "name": "eeg_band-power_beta_cz_baseline_log10_pce74c6e2b9f2",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1220,11 +1220,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "4963a0ef0ac003397aa2f876533de10b43e06ccd5fddb0ad3683d6277d4dbe93"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "ce74c6e2b9f200a56423844c8bf2045daea9757aad96aab8f922a2df73bf8bcd"
     },
     {
-      "name": "eeg_band-power_beta_cz_stimulus_log10_pbc1b8dae0e20",
+      "name": "eeg_band-power_beta_cz_stimulus_log10_pa73294d94084",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1245,11 +1245,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "bc1b8dae0e205f5cde25b1bfeb4faeb68e76597137b2472c9f4ebf56246b7303"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "a73294d94084a4cdf0a3748f74218c0f207fad1485ca9e8f85617587f4569b23"
     },
     {
-      "name": "eeg_band-power_beta_c4_baseline_log10_pa2c04da760e7",
+      "name": "eeg_band-power_beta_c4_baseline_log10_p45bca5763d98",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1270,11 +1270,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "a2c04da760e78baf84d16d0151e81233ca3f1c66424a811d3a0c0c4b6c42ac41"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "45bca5763d982455503cd0d170d839ee411d5260adcd04379be9c15d124fbd7c"
     },
     {
-      "name": "eeg_band-power_beta_c4_stimulus_log10_p7ad68bf168ed",
+      "name": "eeg_band-power_beta_c4_stimulus_log10_pfb91e9c8f152",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1295,11 +1295,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "7ad68bf168ed9e9bf4c3e5ba2e1fab4fd1935fcf1cc161d09680fdb8c6d6806e"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "fb91e9c8f1525bc0aa17a8f18d453b75e4e2ee44922d38b4ee275d782411cdfd"
     },
     {
-      "name": "eeg_band-power_beta_p3_baseline_log10_pd87b47b4d504",
+      "name": "eeg_band-power_beta_p3_baseline_log10_pa2332a4e2444",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1320,11 +1320,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "d87b47b4d50496a7f9037e5ed71a83f7f29ee35288f6e6ae2a6a38712d2ebc62"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "a2332a4e2444350a7813e0415db7ff4bed3efdedb4c80f5579e61a83ccb138cf"
     },
     {
-      "name": "eeg_band-power_beta_p3_stimulus_log10_pc37805320ff5",
+      "name": "eeg_band-power_beta_p3_stimulus_log10_p5a2dc2734341",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1345,11 +1345,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "c37805320ff54f0a0c5f3c60771c67622f83b89b7d1609f616720794b514ad76"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "5a2dc273434160f9c2e15dc1138aa58732ecf75782ddb651005715cff1eb83f2"
     },
     {
-      "name": "eeg_band-power_beta_pz_baseline_log10_p0d14f2933fa1",
+      "name": "eeg_band-power_beta_pz_baseline_log10_p4bf59cfe81a9",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1370,11 +1370,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "0d14f2933fa12c2b2c5759b3fa78cc24a078a3c92ea06c234511a51ef733d740"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "4bf59cfe81a9f449a07e1059b84223a285750fc2a4e41ae14dde924a8ec480f8"
     },
     {
-      "name": "eeg_band-power_beta_pz_stimulus_log10_pdaca9b18e12a",
+      "name": "eeg_band-power_beta_pz_stimulus_log10_pad9b856ef797",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1395,11 +1395,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2",
-      "parameter_hash": "daca9b18e12aaee37cb2dcf27141c42c2259a1917bf7cd6e3a9ab1ce6f7a3cb8"
+      "computation": "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6",
+      "parameter_hash": "ad9b856ef7977e592b67f63475cfe65e745ee3f2944ddf0b2db68e757e4e214b"
     },
     {
-      "name": "eeg_band-power_beta_global_baseline_log10_p0421e209bec8",
+      "name": "eeg_band-power_beta_global_baseline_log10_pb8c7b225b444",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1420,11 +1420,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "802b4d41d470a476881f1a12a27ce787e9d1b9600699d57214555468b2268b48",
-      "parameter_hash": "0421e209bec8b3c781876ba844ee52b6eb7ed7ff1bbb5ac8246d29fee15f76a4"
+      "computation": "1ce5c0686b4071b968958bfe6a3a50273078397e646822a652b4a6c44ffecfa2",
+      "parameter_hash": "b8c7b225b444b434b5cda764bb217a382342979d5dd9eaf0091dce21753a3c71"
     },
     {
-      "name": "eeg_band-power_beta_global_stimulus_log10_pab83af7412e4",
+      "name": "eeg_band-power_beta_global_stimulus_log10_pfc2077ae1662",
       "measure": "band_power",
       "band": {
         "name": "beta",
@@ -1445,8 +1445,8 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "802b4d41d470a476881f1a12a27ce787e9d1b9600699d57214555468b2268b48",
-      "parameter_hash": "ab83af7412e4ce94422d12113a1335b383ea02953d5761aca50aeacbc7f9a4a4"
+      "computation": "1ce5c0686b4071b968958bfe6a3a50273078397e646822a652b4a6c44ffecfa2",
+      "parameter_hash": "fc2077ae1662a47eba5b04f2143b8bf5acd22a4dfdc79a071ce5df87baa128de"
     },
     {
       "name": "eeg_erds-mean_alpha_central_stimulus_db_p839a4d419937",
@@ -1599,7 +1599,7 @@
       "parameter_hash": "264ee7de83da7b9252ba4d0df5dbbd0abde89b941d15c7de6939dfd9d00e3741"
     },
     {
-      "name": "eeg_peak-freq-adjusted_alpha_global_baseline_raw_pf67913d12853",
+      "name": "eeg_peak-freq-adjusted_alpha_global_baseline_raw_pa4d1424a2613",
       "measure": "peak_freq_adjusted",
       "band": {
         "name": "alpha",
@@ -1620,11 +1620,11 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "7f38ca772d3912ac128d5ad8fb903a6481c06c821ba69519c565301feea01242",
-      "parameter_hash": "f67913d12853e540f44ef5a0e16f534bd9a13fdf94d28397f986175560ea1440"
+      "computation": "453f1446ea72e0947299bb4977508f31f0b7e10744ffd741dd4893aff53af39f",
+      "parameter_hash": "a4d1424a261314f9004d77093965a5b24730f94f5920da536aa719524d8422b6"
     },
     {
-      "name": "eeg_peak-freq-adjusted_alpha_global_stimulus_raw_p7dcc3dd6fda8",
+      "name": "eeg_peak-freq-adjusted_alpha_global_stimulus_raw_p85bb6675ebce",
       "measure": "peak_freq_adjusted",
       "band": {
         "name": "alpha",
@@ -1645,24 +1645,29 @@
       "phase_band": null,
       "amplitude_band": null,
       "nodes": null,
-      "computation": "7f38ca772d3912ac128d5ad8fb903a6481c06c821ba69519c565301feea01242",
-      "parameter_hash": "7dcc3dd6fda8159b92b15ca78f3e3a83d3327b3516115fe046db41e1d4f921a7"
+      "computation": "453f1446ea72e0947299bb4977508f31f0b7e10744ffd741dd4893aff53af39f",
+      "parameter_hash": "85bb6675ebcea931ef9d63dce3df1b49e1d8c38f875ed03be4933175acfbf197"
     }
   ],
   "computations": {
-    "40756916a34b87bb1e07447d9fc46648317d50a7b09ad5b8eca009833d2078e2": {
+    "d3e9f143ae4d48e9d7e69b506935f5f53f7fd343c808184ebd7fe37bb8db8ab6": {
       "method": "band_power",
       "parameters": {
         "baseline": null,
         "input_computation": {
           "method": "welch",
           "parameters": {
+            "frequency_axis_sha256": "72b7f9a0c632b9a1",
+            "frequency_first_hz": 1.9900497512437811,
+            "frequency_last_hz": 40.79601990049751,
+            "n_frequencies": 40,
             "normalization": "density",
             "settings": {
-              "fmax": 30.0,
-              "fmin": 4.0,
+              "fmax": 40.0,
+              "fmin": 2.0,
               "method": "welch"
-            }
+            },
+            "sfreq_hz": 200.0
           }
         },
         "input_source": "welch",
@@ -1676,19 +1681,24 @@
         "weighting": "band_integral"
       }
     },
-    "802b4d41d470a476881f1a12a27ce787e9d1b9600699d57214555468b2268b48": {
+    "1ce5c0686b4071b968958bfe6a3a50273078397e646822a652b4a6c44ffecfa2": {
       "method": "band_power",
       "parameters": {
         "baseline": null,
         "input_computation": {
           "method": "welch",
           "parameters": {
+            "frequency_axis_sha256": "72b7f9a0c632b9a1",
+            "frequency_first_hz": 1.9900497512437811,
+            "frequency_last_hz": 40.79601990049751,
+            "n_frequencies": 40,
             "normalization": "density",
             "settings": {
-              "fmax": 30.0,
-              "fmin": 4.0,
+              "fmax": 40.0,
+              "fmin": 2.0,
               "method": "welch"
-            }
+            },
+            "sfreq_hz": 200.0
           }
         },
         "input_source": "welch",
@@ -1929,7 +1939,7 @@
         ]
       }
     },
-    "7f38ca772d3912ac128d5ad8fb903a6481c06c821ba69519c565301feea01242": {
+    "453f1446ea72e0947299bb4977508f31f0b7e10744ffd741dd4893aff53af39f": {
       "method": "peak_freq_adjusted",
       "parameters": {
         "baseline": null,
@@ -1943,12 +1953,17 @@
             "input_computation": {
               "method": "welch",
               "parameters": {
+                "frequency_axis_sha256": "72b7f9a0c632b9a1",
+                "frequency_first_hz": 1.9900497512437811,
+                "frequency_last_hz": 40.79601990049751,
+                "n_frequencies": 40,
                 "normalization": "density",
                 "settings": {
-                  "fmax": 30.0,
-                  "fmin": 4.0,
+                  "fmax": 40.0,
+                  "fmin": 2.0,
                   "method": "welch"
-                }
+                },
+                "sfreq_hz": 200.0
               }
             },
             "max_iterations": 3,
@@ -1993,7 +2008,7 @@
     "recipe": "recipe.toml",
     "recipe_sha256": "41a025253a37f85eb14a2a9e2b1919d5bf4cad4357b27daab5ad436e5f17964f",
     "mne_version": "1.13.2",
-    "settings_sha256": "0e28fa8bb21db37a0333f0ce80f867a105bf62fc8d4e1b26947d1227d9f8efbd",
+    "settings_sha256": "6a3ef549ed7860cc07895abcb3535df00336774a9b37a6b73f3d90858d19e3f4",
     "recording": "sub-01/eeg/sub-01_task-pain_run-01_epo.fif",
     "input_sha256": "f8d63b56eeca0402ffd58a9e13712624dd74fde91e8263e619d841e71b0c9b22",
     "input_files": {
@@ -2049,8 +2064,8 @@
       },
       "spectra": {
         "method": "welch",
-        "fmin": 4.0,
-        "fmax": 30.0,
+        "fmin": 2.0,
+        "fmax": 40.0,
         "n_fft": null,
         "n_overlap": null,
         "bandwidth": 2.0,
@@ -2265,7 +2280,7 @@
       "onnxruntime": "1.30.0",
       "python-picard": "0.8.2"
     },
-    "code_sha256": "68990447c679179d2327b2793fbf3f46c897d9817caf7d6422521bf7ffbf112e",
+    "code_sha256": "fc56d30d93772108aa7af7612de022b7372cf26aebd403ea481af1a768d33980",
     "upstream": null,
     "channels": [
       "F3",
@@ -2283,7 +2298,7 @@
       "features",
       "crosstrial"
     ],
-    "created": "2026-10-06T02:17:21+00:00"
+    "created": "2026-10-07T01:44:04+00:00"
   },
   "row_text_columns": [
     "event",
@@ -2292,7 +2307,7 @@
   ],
   "schema": 3,
   "files": {
-    "sub-01_task-pain_run-01_features.tsv": "46f433e3b275449ca284959f59bb85c1237c6953cc6f32f38b767b7846c35b4d",
-    "sub-01_task-pain_run-01_features_coverage.tsv": "367989ed0691941f3b1768b5293e29202a36639c465e93fba9ab870231a34a76"
+    "sub-01_task-pain_run-01_features.tsv": "d0f3bd6510f21bb1458ad1038c012aa0e116c50f2b1c9bddea8a6918718eca7f",
+    "sub-01_task-pain_run-01_features_coverage.tsv": "f8c85d1f1e5b18a59652294f79e5c8368875bef4c8647d373bb1e2a0ac337023"
   }
 }

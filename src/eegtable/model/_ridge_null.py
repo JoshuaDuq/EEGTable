@@ -354,6 +354,11 @@ def _subject_r(
         constant = (np.ptp(p, axis=0) == 0.0) | (np.ptp(t, axis=0) == 0.0)
         p, t = _center_within(p, labels), _center_within(t, labels)
         n_trials -= len(np.unique(labels)) - 1
+        if n_trials < 3:
+            raise ValueError(
+                f"Subject-level r needs at least 3 held-out trials per subject beyond one per "
+                f"extra fold; {subject} has {n_trials} after centring within its folds."
+            )
         denominator = np.sqrt((p * p).sum(axis=0) * (t * t).sum(axis=0))
         with np.errstate(invalid="ignore", divide="ignore"):
             r = np.where(constant | (denominator == 0.0), 0.0, (p * t).sum(axis=0) / denominator)

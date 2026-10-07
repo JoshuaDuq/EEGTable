@@ -278,6 +278,17 @@ def test_counting_undefined_subjects_as_zero_still_refuses_too_few_trials() -> N
         subject_level_r(df, undefined="zero")
 
 
+@pytest.mark.parametrize("undefined", ["raise", "zero"])
+def test_fold_centring_that_leaves_two_points_is_refused(undefined) -> None:
+    # Three trials over two folds keep one residual dimension once each fold is centred,
+    # so any data would correlate at exactly +1 or -1.
+    frame = pd.DataFrame(
+        {"subject_id": "s1", "fold": [1, 1, 2], "y_true": [0.3, 1.9, 0.7], "y_pred": [1.1, 0.2, 5]}
+    )
+    with pytest.raises(ValueError, match="fewer than 3"):
+        subject_level_r(frame, undefined=undefined)
+
+
 def test_fold_results_accepts_array_groups_in_dict_records() -> None:
     records = [
         {

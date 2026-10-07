@@ -68,6 +68,26 @@ def test_kernel_shap_preserves_the_callers_random_stream(kernel_shap_inputs) -> 
         assert np.random.random() == expected
 
 
+class _SumRegressor(RegressorMixin, BaseEstimator):
+    # No coef_ or feature_importances_, so shap_importance takes the kernel explainer path.
+    def fit(self, X: np.ndarray, y: np.ndarray) -> _SumRegressor:
+        return self
+
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        return np.asarray(X).sum(axis=1)
+
+
+@needs_shap
+def test_kernel_shap_attributes_every_feature_of_an_additive_model() -> None:
+    # More features than shap's old fixed 100 coalitions, all equally informative. The
+    # exact SHAP value of a summed feature is its deviation from the background mean.
+    values = np.random.default_rng(3).normal(size=(4, 120))
+    model = Pipeline([("regressor", _SumRegressor())]).fit(values, values.sum(axis=1))
+    imp = shap_importance(model, values, [f"f{i}" for i in range(120)], seed=0)
+    expected = np.abs(values - values.mean(axis=0)).mean(axis=0)
+    np.testing.assert_allclose(imp.values, expected, rtol=1e-6)
+
+
 def test_shap_binary_tree_output_keeps_class_and_feature_axes_separate() -> None:
     class TreeExplainer:
         def __init__(self, model):
@@ -185,7 +205,8 @@ def test_shap_kernel_uses_estimator_predict_fn_for_transformed_features() -> Non
             captured["predict_fn"] = predict_fn
             captured["background"] = background
 
-        def shap_values(self, X_input: object, nsamples: int = 100) -> np.ndarray:
+        def shap_values(self, X_input: object, **kwargs: object) -> np.ndarray:
+            captured.update(kwargs)
             arr = np.asarray(X_input)
             return np.zeros_like(arr)
 
@@ -206,6 +227,8 @@ def test_shap_kernel_uses_estimator_predict_fn_for_transformed_features() -> Non
         shap_importance(pipe, X, ["f1", "f2"])
 
     assert captured["predict_fn"] == regressor.predict
+    # shap's default lasso keeps at most 10 features per row; the rest would read as 0.
+    assert captured["l1_reg"] is False
 
 
 def test_shap_stage_requires_min_valid_fold_fraction() -> None:

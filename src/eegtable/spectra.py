@@ -953,17 +953,18 @@ def welch_psd(
                 "n_fft or widen the window."
             )
     resolution = sfreq / n_fft
+    # A channel with any non-finite sample in the window is missing, as for multitaper and
+    # Morlet. MNE would instead estimate around NaN found at the same samples in every row it
+    # is given, so one epoch's estimate would depend on the epochs estimated with it, and an
+    # infinity would not count as missing at all.
+    missing = np.asarray(~np.isfinite(data).all(axis=-1))
+    if missing.any():
+        data = np.where(missing[..., np.newaxis], 0.0, data)
     # MNE estimates an input above 10 MB one row at a time in a Python loop, and one below
     # it in a single vectorized call, so blocks of epochs under that size give the same
-    # numbers far faster. Input with NaN goes in whole: MNE reads NaN at the same samples in
-    # every row as rejected spans and NaN in some rows as broken channels, and a block
-    # boundary could change which of the two it sees.
+    # numbers far faster.
     rows = max(1, int(_WELCH_BLOCK_BYTES // max(1, data[:1].nbytes)))
-    blocks = (
-        [data]
-        if np.isnan(data).any()
-        else [data[start : start + rows] for start in range(0, data.shape[0], rows)]
-    )
+    blocks = [data[start : start + rows] for start in range(0, data.shape[0], rows)]
     estimates = [
         psd_array_welch(
             block,
@@ -982,6 +983,7 @@ def welch_psd(
         for block in blocks
     ]
     psd = np.concatenate([np.asarray(block_psd, dtype=float) for block_psd, _ in estimates])
+    psd[missing] = np.nan
     return psd, np.asarray(estimates[0][1], dtype=float)
 
 

@@ -30,6 +30,13 @@ _UNITS: dict[str, str] = {
 
 def _validate_fit_band(spectra: Spectra, fit_range: tuple[float, float]) -> Band:
     band = Band("fit", *fit_range)
+    # A shorter axis would fit fewer frequencies than the recorded fit_range claims.
+    if spectra.freqs[0] > band.fmin or spectra.freqs[-1] < band.fmax:
+        raise ValueError(
+            f"fit_range {fit_range} reaches outside the frequency axis "
+            f"({spectra.freqs[0]}, {spectra.freqs[-1]}); compute the spectrum over the "
+            f"whole fit_range or narrow it."
+        )
     if spectra.passband is not None and passband_fraction(band, *spectra.passband) < 1.0:
         raise ValueError(
             f"fit_range {fit_range} must lie within the recording passband "

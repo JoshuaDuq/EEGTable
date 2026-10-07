@@ -392,7 +392,15 @@ def subject_level_r(
             fold_labels = df_sub["fold"].to_numpy()
             yt = _center_within(yt, fold_labels)
             yp = _center_within(yp, fold_labels)
-            n_trials -= len(pd.unique(fold_labels)) - 1
+            n_folds = len(pd.unique(fold_labels))
+            n_trials -= n_folds - 1
+            # Two points left would correlate at exactly +1 or -1 whatever the data.
+            if n_trials < 3:
+                invalid_subjects.append(
+                    f"{subj}: fewer than 3 trials left after centring within {n_folds} folds "
+                    f"({len(yt)} trials)"
+                )
+                continue
 
         r, _ = safe_pearsonr(yt, yp)
         if undefined == "zero" and not np.isfinite(r):

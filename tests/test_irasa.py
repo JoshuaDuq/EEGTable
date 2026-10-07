@@ -189,3 +189,18 @@ def test_irasa_refuses_factors_that_round_to_integers(factor):
 
     with pytest.raises(ValueError, match="hset"):
         irasa([_signal()], windows=(WINDOW,), bands=(ALPHA,), hset=(factor,))
+
+
+def test_irasa_band_powers_pair_up_in_a_band_ratio():
+    # The band is already part of each column's identity; repeating it among the shared
+    # computation parameters kept theta and beta columns from ever matching.
+    pytest.importorskip("neurodsp")
+    from eegtable.derived import band_ratio
+    from eegtable.irasa import irasa
+
+    bands = (Band("theta", 4.0, 8.0), Band("beta", 13.0, 30.0))
+    table = irasa([_signal()], windows=(WINDOW,), bands=bands, hset=FACTORS, include_global=False)
+    power = table.select(measure="irasa_aperiodic_power")
+    ratio = band_ratio(power, "theta", "beta")
+    expected = power.select(band="theta").values / power.select(band="beta").values
+    np.testing.assert_allclose(ratio.values, expected)

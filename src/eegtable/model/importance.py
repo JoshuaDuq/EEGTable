@@ -215,7 +215,9 @@ def shap_importance(
     The final estimator is explained on the columns its preprocessing passes it,
     with a tree explainer when it has ``feature_importances_``, a linear explainer
     when it has ``coef_``, and otherwise a kernel explainer over at most 100
-    background rows. Requires ``eegtable[importance]``.
+    background rows. The kernel explainer scores every feature, evaluating
+    ``2 * n_features + 2048`` feature coalitions per explained row, so it is slow
+    for large ``X``. Requires ``eegtable[importance]``.
 
     Parameters
     ----------
@@ -275,9 +277,12 @@ def shap_importance(
         bg_size = min(100, len(X_trans))
         bg_indices = rng.choice(len(X_trans), bg_size, replace=False)
         background = X_trans[bg_indices]
+        # shap's default l1_reg is a lasso that keeps at most 10 features per row (0.47+) or
+        # an AIC lasso (older), zeroing the rest. Without it the weighted least squares
+        # needs more coalitions than features; "auto" is shap's 2 * n_features + 2048.
         with seeded(seed, 0):
             explainer = shap.KernelExplainer(predict_fn, background)
-            shap_values = explainer.shap_values(X_trans, nsamples=100)
+            shap_values = explainer.shap_values(X_trans, nsamples="auto", l1_reg=False)
 
     shap_values = np.asarray(shap_values, dtype=float)
     if shap_values.ndim == 3:

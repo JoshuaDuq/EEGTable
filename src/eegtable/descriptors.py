@@ -93,7 +93,7 @@ def peak_frequency(
         raise ValueError("fit_range applies only when aperiodic_adjusted is True.")
 
     if aperiodic_adjusted:
-        span = fit_range or (min(2.0, band.fmin), max(40.0, band.fmax))
+        span = fit_range or default_fit_range(band)
         spectra = aperiodic_ratio(spectra, fit_range=span)
 
     def kernel(
@@ -123,6 +123,11 @@ def peak_frequency(
             "fit_range": fit_range,
         },
     )
+
+
+def default_fit_range(band: Band) -> tuple[float, float]:
+    """The aperiodic fit range :func:`peak_frequency` uses for ``band`` by default."""
+    return (min(2.0, band.fmin), max(40.0, band.fmax))
 
 
 def _smooth(

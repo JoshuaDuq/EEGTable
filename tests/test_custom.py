@@ -1,5 +1,6 @@
 """Measures of a user's own, computed with the library's windows, bands, ROIs and identity."""
 
+import functools
 import importlib.metadata
 from types import SimpleNamespace
 
@@ -23,6 +24,11 @@ def _peak_power(power, freqs, weights):
 def _largest_deflection(trace, times):
     del times
     return np.nanmax(np.abs(trace), axis=-1)
+
+
+class _Callable:
+    def __call__(self, trace, times):
+        return _largest_deflection(trace, times)
 
 
 def test_a_spectral_measure_reduces_each_band_window_and_channel_with_the_kernel() -> None:
@@ -208,3 +214,13 @@ def test_a_recipe_can_name_a_measure_an_installed_package_registers(installed_pl
 def test_an_unregistered_measure_is_still_unknown(installed_plugin) -> None:
     with pytest.raises(ef.runner.RecipeError, match="unknown measure 'channel_min'"):
         load_recipe({"features": [{"measure": "channel_min"}]})
+
+
+@pytest.mark.parametrize("kernel", [functools.partial(_largest_deflection), _Callable()])
+def test_custom_kernels_without_a_stable_name_are_refused(kernel) -> None:
+    # Named by repr, they carried a memory address into the column identity.
+    signal = ef.Signal.from_epochs(make_epochs(), recording="sub-01")
+    with pytest.raises(TypeError, match="qualified name"):
+        ef.signal_measure(
+            [signal], kernel, measure="m", unit="V", windows=[ef.Window("stim", 0, 1)]
+        )

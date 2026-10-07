@@ -320,7 +320,7 @@ def _burst_measure(
         value = float(threshold)
         if not 0.0 < value < 1.0:
             raise ValueError(f"threshold must be in (0, 1), got {threshold}.")
-        label = f"percentile {value} of {'baseline' if baseline else 'analysis windows'}"
+        label = f"quantile {value} of {'baseline' if baseline else 'analysis windows'}"
     else:
         label = "absolute"
 
@@ -334,10 +334,23 @@ def _burst_measure(
         level = _resolve_threshold(signal, threshold, baseline, windows)
         return {measure: _measures(trace, level, signal.sfreq, min_duration_ms)[measure]}
 
+    def reference_coverage_of(signal: BandSignal) -> npt.NDArray[np.float64]:
+        # A quantile threshold rests on its calibration samples, as ERD/ERS on its baseline.
+        calibration = _calibration_mask(signal, baseline, windows)
+        coverage: npt.NDArray[np.float64] = np.where(
+            np.isfinite(signal.envelope[:, :, calibration]),
+            signal.coverage[:, :, calibration],
+            0.0,
+        ).mean(axis=2)
+        return coverage
+
     return expand_signal(
         signals,
         trace_of=lambda signal: signal.envelope,
         kernel=kernel,
+        reference_coverage_of=(
+            None if isinstance(threshold, np.ndarray) else reference_coverage_of
+        ),
         units={measure: f"{_UNITS[measure]} ({label})"},
         windows=windows,
         groups=groups,
@@ -371,11 +384,7 @@ def _resolve_threshold(
                 f"({n_epochs}, {n_channels})."
             ) from exc
 
-    calibration = (
-        window_mask(signal.times, baseline)
-        if baseline is not None
-        else np.logical_or.reduce([window_mask(signal.times, w) for w in windows])
-    )
+    calibration = _calibration_mask(signal, baseline, windows)
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "All-NaN slice", RuntimeWarning)
         # The envelope is read here rather than through the analysis trace, so it
@@ -383,6 +392,14 @@ def _resolve_threshold(
         # left among the samples pushes the threshold up a rank.
         calibrated = blank_non_finite(signal.envelope[:, :, calibration])
         return np.nanquantile(calibrated, float(threshold), axis=2)
+
+
+def _calibration_mask(
+    signal: BandSignal, baseline: Window | None, windows: Sequence[Window]
+) -> npt.NDArray[np.bool_]:
+    if baseline is not None:
+        return window_mask(signal.times, baseline)
+    return np.asarray(np.logical_or.reduce([window_mask(signal.times, w) for w in windows]))
 
 
 def _measures(

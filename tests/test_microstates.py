@@ -125,6 +125,44 @@ def test_segmentation_rejects_collapsed_microstate_clusters() -> None:
         segment(signal, n_states=2, min_duration_ms=0.0)
 
 
+def _alternating_ring_maps(seed: int) -> tuple:
+    """Four orthogonal maps whose polarity alternates at 10 Hz, in 60-120 ms segments."""
+    rng = np.random.default_rng(seed)
+    n_channels, n_times, sfreq = 32, 1000, 250.0
+    theta = np.linspace(0, 2 * np.pi, n_channels, endpoint=False)
+    maps = np.stack([np.cos(theta), np.sin(theta), np.cos(2 * theta), np.sin(2 * theta)])
+    maps /= np.linalg.norm(maps, axis=1, keepdims=True)
+    times = np.arange(n_times) / sfreq
+    data = np.zeros((10, n_channels, n_times))
+    for epoch in range(10):
+        start = 0
+        while start < n_times:
+            span = slice(start, start + int(rng.integers(15, 30)))
+            phase = rng.uniform(0, 2 * np.pi)
+            oscillation = np.sin(2 * np.pi * 10 * times[span] + phase)
+            data[epoch, :, span] = maps[rng.integers(4)][:, None] * oscillation
+            start = span.stop
+    data += 0.2 * rng.standard_normal(data.shape) / np.sqrt(n_channels)
+    signal = Signal.from_arrays(
+        data=data,
+        times=times,
+        ch_names=tuple(f"E{i}" for i in range(n_channels)),
+        sfreq=sfreq,
+        row_ids=tuple(("test", index, "event") for index in range(10)),
+    )
+    return signal, maps
+
+
+@requires_sklearn
+@pytest.mark.parametrize("seed", [0, 5, 7])
+def test_distinct_states_are_found_whichever_start_leaves_a_cluster_empty(seed) -> None:
+    # Euclidean k-means on sign-flipped maps can return a blended centre no map is
+    # closest to; one start like that used to end the fit instead of being discarded.
+    signal, maps = _alternating_ring_maps(seed)
+    templates = segment(signal, n_states=4, min_duration_ms=0.0).templates
+    assert np.abs(templates @ maps.T).max(axis=0).min() > 0.99
+
+
 def test_peak_topographies_never_substitutes_an_extremum() -> None:
     strength = np.array([1.0, 2.0, 3.0, 4.0])
     epoch = np.array([-1.0, 1.0])[:, None] * strength

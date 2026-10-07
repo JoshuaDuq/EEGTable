@@ -94,6 +94,29 @@ def test_ica_methods_follow_settings(mixture, method):
         assert model.model.fit_params["ortho"] is False
 
 
+def test_infomax_converged_by_weight_change_is_accepted(mixture):
+    import numpy as np
+
+    from eegtable.preprocessing.ica import fit_ica
+
+    # This fit stops by weight change after about 110 steps, and MNE then reports max_iter.
+    first = fit_ica(mixture, ICASettings(method="infomax", n_components=2, max_iter=500))
+    longer = fit_ica(mixture, ICASettings(method="infomax", n_components=2, max_iter=1000))
+    assert first.model.n_iter_ == 500
+    # A higher limit changes nothing, so the first fit converged before its limit.
+    np.testing.assert_array_equal(first.model.unmixing_matrix_, longer.model.unmixing_matrix_)
+
+
+@pytest.mark.parametrize("method", ["fastica", "picard"])
+def test_ica_that_reaches_its_limit_raises(mixture, method):
+    from eegtable.preprocessing.ica import fit_ica
+
+    if method == "picard":
+        pytest.importorskip("picard")
+    with pytest.raises(ValueError, match="did not converge"):
+        fit_ica(mixture, ICASettings(method=method, n_components=4, max_iter=1))
+
+
 def test_iclabel_requires_extended_infomax_and_average_reference():
     from eegtable.preprocessing.config import ArtifactSettings, ICLabelSettings
 
@@ -242,3 +265,38 @@ def test_iclabel_accepts_average_reference_after_single_precision_storage(mixtur
     )
     model = fit_ica(restored, settings)
     assert model.evidence["iclabel"]["probabilities"].shape == (4, 7)
+
+
+def test_iclabel_ignores_what_a_bad_span_holds(mixture):
+    import mne
+    import numpy as np
+
+    pytest.importorskip("mne_icalabel")
+    from eegtable.preprocessing.artifacts import reference_artifact_data
+    from eegtable.preprocessing.config import FilterSettings, ICLabelSettings
+    from eegtable.preprocessing.ica import fit_ica
+    from eegtable.preprocessing.raw import filter_raw
+
+    # Large noise in the EEG from 10 s to 15 s, which a BAD span covers in both copies.
+    noise = np.zeros((mixture.info["nchan"], mixture.n_times))
+    noise[:8, 2500:3750] = np.random.default_rng(0).normal(scale=1e-4, size=(8, 1250))
+    settings = ICASettings(
+        method="infomax", n_components=4, max_iter=2000, iclabel=ICLabelSettings()
+    )
+    fits = []
+    for data in (mixture.get_data(), mixture.get_data() + noise):
+        raw = mne.io.RawArray(data, mixture.info, first_samp=mixture.first_samp, verbose=False)
+        raw.annotations.append(raw.first_time + 10.0, 5.0, "BAD_movement")
+        lowpassed = filter_raw(raw, FilterSettings(h_freq=100.0))
+        fits.append(fit_ica(reference_artifact_data(lowpassed, "average"), settings))
+    clean, noisy = fits
+    # The fit skips the span; MNE then orders the components by variance over every sample.
+    unmixing = noisy.model.unmixing_matrix_
+    order = [
+        np.flatnonzero((unmixing == row).all(axis=1))[0] for row in clean.model.unmixing_matrix_
+    ]
+    np.testing.assert_array_equal(unmixing[order], clean.model.unmixing_matrix_)
+    np.testing.assert_allclose(
+        noisy.evidence["iclabel"]["probabilities"][order],
+        clean.evidence["iclabel"]["probabilities"],
+    )

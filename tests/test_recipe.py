@@ -71,6 +71,33 @@ def test_spectra_default_to_the_span_of_the_recipe_bands(tmp_path) -> None:
     assert (recipe.spectra.fmin, recipe.spectra.fmax) == (4.0, 30.0)
 
 
+@pytest.mark.parametrize(
+    ("entry", "span"),
+    [
+        ('measure = "aperiodic"', (2.0, 40.0)),
+        ('measure = "periodic_power"\nfit_range = [3.0, 30.0]', (3.0, 30.0)),
+        ('measure = "peak_frequency"', (2.0, 40.0)),
+        ('measure = "peak_frequency"\naperiodic_adjusted = false', (8.0, 13.0)),
+    ],
+)
+def test_default_spectra_also_span_every_aperiodic_fit_range(tmp_path, entry, span) -> None:
+    # The aperiodic fit needs its whole range, which reaches past the bands measured.
+    recipe = _load(tmp_path, f"[bands]\nalpha = [8.0, 13.0]\n\n[[features]]\n{entry}\n")
+
+    assert (recipe.spectra.fmin, recipe.spectra.fmax) == span
+
+
+def test_explicit_spectra_must_span_every_aperiodic_fit_range(tmp_path) -> None:
+    problems = _problems(
+        tmp_path,
+        "[bands]\nalpha = [8.0, 13.0]\n\n[spectra]\nfmin = 1.0\nfmax = 30.0\n\n"
+        '[[features]]\nmeasure = "aperiodic"\n',
+    )
+
+    assert "features[0] (aperiodic): fit_range (2.0, 40.0)" in problems
+    assert "raise [spectra] fmax to 40.0" in problems and "lower" not in problems
+
+
 def test_bands_keep_recipe_order(tmp_path) -> None:
     recipe = _load(
         tmp_path,
@@ -253,6 +280,14 @@ def test_unknown_input_key_is_rejected(tmp_path) -> None:
     problems = _problems(tmp_path, '[[features]]\nmeasure = "integrated_band_power"\n', head)
 
     assert "glob" in problems
+
+
+@pytest.mark.parametrize("pattern", ["", "/data/**/*_epo.fif", "../elsewhere/*_epo.fif"])
+def test_input_pattern_must_stay_under_the_root(tmp_path, pattern) -> None:
+    head = f'[inputs]\nroot = "data"\npattern = "{pattern}"\n\n[output]\nroot = "out"\n'
+    problems = _problems(tmp_path, '[[features]]\nmeasure = "integrated_band_power"\n', head)
+
+    assert "inputs: pattern" in problems
 
 
 def test_input_root_is_required(tmp_path) -> None:
