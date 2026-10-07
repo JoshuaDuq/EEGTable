@@ -39,6 +39,7 @@ from eegtable.model.transformers import (
     MissingnessThreshold,
     ReplaceInfWithNaN,
     VarianceThreshold,
+    _count_pipeline_covariates,
     _CovariateImputer,
 )
 from eegtable.model.tuning import _assign_random_state
@@ -233,7 +234,11 @@ class _Split:
         kept = np.ones(X.shape[1], dtype=np.bool_)
         if harmonization is not None:
             X_fit, X_held, kept = harmonize_fold(
-                X_fit, X_held, groups[fit], mode=harmonization, n_covariates=0
+                X_fit,
+                X_held,
+                groups[fit],
+                mode=harmonization,
+                n_covariates=_count_pipeline_covariates(pipeline),
             )
         self._designs: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None = None
         if self._columns:
@@ -331,6 +336,16 @@ class _FreedmanLane:
         return targets
 
 
+def _unit_columns(values: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
+    # Scale before squaring, as scipy.stats.pearsonr does, to avoid overflow/underflow.
+    magnitude = np.abs(values).max(axis=0)
+    scaled = values / np.where(magnitude > 0.0, magnitude, 1.0)
+    norm = np.sqrt((scaled * scaled).sum(axis=0))
+    return np.asarray(
+        np.divide(scaled, norm, out=np.zeros_like(scaled), where=norm > 0.0), dtype=np.float64
+    )
+
+
 def _subject_r(
     predicted: npt.NDArray[np.float64],
     truth: npt.NDArray[np.float64],
@@ -359,9 +374,7 @@ def _subject_r(
                 f"Subject-level r needs at least 3 held-out trials per subject beyond one per "
                 f"extra fold; {subject} has {n_trials} after centring within its folds."
             )
-        denominator = np.sqrt((p * p).sum(axis=0) * (t * t).sum(axis=0))
-        with np.errstate(invalid="ignore", divide="ignore"):
-            r = np.where(constant | (denominator == 0.0), 0.0, (p * t).sum(axis=0) / denominator)
+        r = np.where(constant, 0.0, (_unit_columns(p) * _unit_columns(t)).sum(axis=0))
         z_values.append(np.arctanh(np.clip(r, -0.999999, 0.999999)))
         if config.subject_weighting == "trial_count" and n_trials < 4:
             raise ValueError("Trial-count weighting needs more than 3 trials per subject.")

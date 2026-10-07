@@ -20,7 +20,11 @@ from eegtable.model.design import harmonize_fold
 from eegtable.model.execution import run_folds
 from eegtable.model.residualize import residualize_targets, residualize_within_subjects
 from eegtable.model.splits import Fold, InnerSplit, inner_cv
-from eegtable.model.transformers import MissingnessThreshold, _check_subject_missingness
+from eegtable.model.transformers import (
+    MissingnessThreshold,
+    _check_subject_missingness,
+    _count_pipeline_covariates,
+)
 from eegtable.model.tuning import (
     FoldFitError,
     _needs_subject_scorer,
@@ -207,6 +211,12 @@ def _select_fold_local_params(
         raise ValueError(f"Fold {f.index}: no inner CV splits.")
 
     candidates = [dict(parameters) for parameters in ParameterGrid(dict(grid))]
+    n_covariates = _count_pipeline_covariates(pipeline)
+    if harmonization is not None and any(
+        _count_pipeline_covariates(clone(pipeline).set_params(**parameters)) != n_covariates
+        for parameters in candidates
+    ):
+        raise ValueError("The trailing covariate count must stay fixed during tuning.")
     scores = np.empty((len(candidates), len(local_splits)))
     for split, (local_train, local_valid) in enumerate(local_splits):
         train_idx = outer_train[local_train]
@@ -226,7 +236,7 @@ def _select_fold_local_params(
                 X_valid,
                 groups[train_idx],
                 mode=harmonization,
-                n_covariates=0,
+                n_covariates=n_covariates,
             )
 
         if residualize_on:
@@ -373,7 +383,7 @@ def _fit_fold(
             X_te,
             groups[train_idx],
             mode=harmonization,
-            n_covariates=0,
+            n_covariates=_count_pipeline_covariates(pipeline),
         )
 
     if residualize_on:

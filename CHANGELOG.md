@@ -172,6 +172,12 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Fold-local feature harmonization preserves the pipeline's trailing covariates
+  during evaluation, inner tuning, and ridge permutation inference. Missing
+  covariates can no longer cause EEG columns to be treated as covariates, and
+  tuning cannot change the covariate layout under a shared harmonization mask.
+- Batched ridge permutation correlations avoid underflow and overflow by scaling
+  centered values before normalization, so target units do not change inference.
 - The preprocessing `epoch` stage drops an epoch whose padding, or the part of its
   window outside `rejection.tmin`/`tmax`, overlaps a BAD span; MNE also narrows its
   annotation check to the threshold window it is given.

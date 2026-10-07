@@ -12,8 +12,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from eegtable.model.aggregate import fold_results, subject_level_r
-from eegtable.model.crossfit import cross_fit_regression
-from eegtable.model.estimators import ridge_pipeline
+from eegtable.model.crossfit import cross_fit_classification, cross_fit_regression
+from eegtable.model.estimators import logistic_pipeline, ridge_pipeline
 from eegtable.model.splits import InnerSplit, loso_folds, within_subject_folds
 from eegtable.model.transformers import PreprocessingConfig
 
@@ -127,6 +127,112 @@ def test_cross_fit_applies_target_residualization() -> None:
     raw_y_fold0 = Y[predictions[0].rows]
     assert not np.allclose(predictions[0].y_true, raw_y_fold0)
     assert np.allclose(predictions[0].y_true, 0.0, atol=1e-10)
+
+
+@pytest.mark.parametrize("deconfound", [False, True])
+@pytest.mark.parametrize("tuned", [False, True])
+@pytest.mark.parametrize("task", ["regression", "classification"])
+def test_harmonization_preserves_covariates_missing_in_one_subject(deconfound, tuned, task) -> None:
+    rng = np.random.default_rng(12)
+    groups = np.repeat([f"s{i}" for i in range(6)], 12).astype(object)
+    values = rng.normal(size=(groups.size, 3))
+    target = values[:, 0] + 0.3 * values[:, 2] + rng.normal(size=groups.size)
+    values[groups == "s0", -1] = np.nan
+    if task == "regression":
+        fit, factory, parameter = cross_fit_regression, ridge_pipeline, "regressor__alpha"
+    else:
+        fit, factory, parameter = cross_fit_classification, logistic_pipeline, "lr__C"
+        target = (target > np.median(target)).astype(np.intp)
+    pipeline = factory(PreprocessingConfig(deconfound=deconfound), seed=0, n_covariates=1)
+    predictions = [
+        fit(
+            loso_folds(groups),
+            values,
+            target,
+            groups,
+            pipeline,
+            {parameter: [1.0, 10.0]} if tuned else {},
+            inner=BY_SUBJECT,
+            seed=0,
+            harmonization=mode,
+        )
+        for mode in (None, "intersection")
+    ]
+    # Both EEG features are complete. Harmonization must leave the covariate in its
+    # trailing position for imputation, rather than reassigning an EEG feature to it.
+    for reference, harmonized in zip(*predictions, strict=True):
+        np.testing.assert_allclose(harmonized.y_pred, reference.y_pred)
+        if task == "classification":
+            np.testing.assert_allclose(harmonized.y_prob, reference.y_prob)
+        assert harmonized.best_params == reference.best_params
+
+
+@pytest.mark.parametrize("deconfound", [False, True])
+def test_harmonization_does_not_hide_an_entirely_missing_covariate(deconfound) -> None:
+    rng = np.random.default_rng(13)
+    values = np.column_stack([rng.normal(size=(GROUPS.size, 2)), np.full(GROUPS.size, np.nan)])
+    pipeline = ridge_pipeline(PreprocessingConfig(deconfound=deconfound), seed=0, n_covariates=1)
+    with pytest.raises(ValueError, match="Covariate columns.*no finite training values"):
+        cross_fit_regression(
+            loso_folds(GROUPS),
+            values,
+            rng.normal(size=GROUPS.size),
+            GROUPS,
+            pipeline,
+            {},
+            inner=BY_SUBJECT,
+            seed=0,
+            harmonization="intersection",
+        )
+
+
+def test_harmonization_refuses_tuning_that_changes_the_covariate_layout() -> None:
+    rng = np.random.default_rng(14)
+    pipeline = ridge_pipeline(PreprocessingConfig(), seed=0, n_covariates=1)
+    alternative = ridge_pipeline(PreprocessingConfig(), seed=0, n_covariates=2)
+    with pytest.raises(ValueError, match="covariate.*count.*tuning"):
+        cross_fit_regression(
+            loso_folds(GROUPS),
+            rng.normal(size=(GROUPS.size, 4)),
+            rng.normal(size=GROUPS.size),
+            GROUPS,
+            pipeline,
+            {"preprocessing": [alternative.named_steps["preprocessing"]]},
+            inner=BY_SUBJECT,
+            seed=0,
+            harmonization="intersection",
+        )
+
+
+@pytest.mark.parametrize("container", ["nested", "identity"])
+def test_harmonization_preserves_covariates_across_pipeline_containers(container) -> None:
+    rng = np.random.default_rng(15)
+    groups = np.repeat([f"s{i}" for i in range(3)], 12).astype(object)
+    values = rng.normal(size=(groups.size, 3))
+    target = values[:, 0] + values[:, 1]
+    values[groups == "s1", -1] = np.nan
+    factory = ridge_pipeline(PreprocessingConfig(deconfound=True), seed=0, n_covariates=1)
+    wrapped = (
+        Pipeline([("nested", factory)])
+        if container == "nested"
+        else Pipeline([("identity", Pipeline([("pass", "passthrough")])), *factory.steps])
+    )
+    predictions = [
+        cross_fit_regression(
+            loso_folds(groups),
+            values,
+            target,
+            groups,
+            pipeline,
+            {},
+            inner=BY_SUBJECT,
+            seed=0,
+            harmonization="intersection",
+        )
+        for pipeline in (factory, wrapped)
+    ]
+    for reference, nested in zip(*predictions, strict=True):
+        np.testing.assert_allclose(nested.y_pred, reference.y_pred)
 
 
 @pytest.mark.parametrize("inplace_step", ["regressor", "scaler"])

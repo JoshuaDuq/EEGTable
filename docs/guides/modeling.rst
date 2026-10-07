@@ -419,7 +419,10 @@ Preprocessing is fit on the training rows of the fold.
   excess missingness raises rather than discarding that subject.
   It can also select features, scale, deconfound, or reduce dimension with PCA.
 - ``harmonization="intersection"``: keeps features that have at least one
-  finite value in every training group.
+  finite value in every training group. The pipeline factories' trailing
+  covariates are always retained for their own imputation branch; a covariate
+  with no finite training values raises. Tuning must keep this covariate count
+  fixed.
 - ``harmonization="union_impute"``: keeps the full feature union.
 - **Target residualization**: ``covariates=...`` and ``residualize_on=...`` on
   the cross-fitting call, so the nuisance model is fit inside each outer

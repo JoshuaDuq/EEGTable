@@ -132,11 +132,14 @@ def _case(name: str) -> dict[str, object]:
         case["config"] = NullConfig(scheme="within_subject_within_run", n_permutations=9)
     elif name == "trial_count":
         case["aggregation"] = AggregationConfig(subject_weighting="trial_count")
-    elif name == "deconfounded":
+    elif name in ("deconfounded", "harmonized_covariates"):
         case["X"] = np.column_stack([X, nuisance])
         case["pipeline"] = ridge_pipeline(
             PreprocessingConfig(deconfound=True), seed=0, n_covariates=1
         )
+        if name == "harmonized_covariates":
+            case["X"][GROUPS == "s2", -1] = np.nan
+            case["options"] = {"harmonization": "intersection"}
     elif name == "untuned":
         case["grid"] = {}
     elif name == "supervised_remainder":
@@ -198,6 +201,7 @@ CASES = [
     "within_subject_folds",
     "trial_count",
     "deconfounded",
+    "harmonized_covariates",
     "untuned",
     "supervised_remainder",
 ]
@@ -210,6 +214,27 @@ def test_the_closed_form_ridge_null_equals_refitting_every_draw(name: str, monke
     fast = _null(_case(name))
     monkeypatch.setattr(_ridge_null, "ridge_penalty", lambda *args, **kwargs: None)
     refitted = _null(_case(name))
+    np.testing.assert_allclose(fast.null, refitted.null, rtol=0, atol=1e-9)
+    assert fast.p_value == refitted.p_value
+
+
+def test_ridge_null_harmonization_preserves_missing_covariates() -> None:
+    case = _case("harmonized_covariates")
+    harmonized = _null(case)
+    case["options"] = {}
+    reference = _null(case)
+    np.testing.assert_allclose(harmonized.null, reference.null, rtol=0, atol=1e-9)
+    assert harmonized.p_value == reference.p_value
+
+
+@pytest.mark.parametrize("target_scale", [1e-160, 1e160])
+def test_ridge_null_correlation_is_independent_of_target_units(target_scale, monkeypatch) -> None:
+    case = _case("untuned")
+    case["y"] *= target_scale
+    case["pipeline"] = Pipeline([("regressor", Ridge(alpha=1.0, solver="svd"))])
+    fast = _null(case)
+    monkeypatch.setattr(_ridge_null, "ridge_penalty", lambda *args, **kwargs: None)
+    refitted = _null(case)
     np.testing.assert_allclose(fast.null, refitted.null, rtol=0, atol=1e-9)
     assert fast.p_value == refitted.p_value
 

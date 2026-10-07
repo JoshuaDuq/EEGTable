@@ -431,6 +431,28 @@ def _trailing_columns(n_covariates: int, X: npt.NDArray[Any]) -> list[int]:
     return list(range(X.shape[1] - n_covariates, X.shape[1]))
 
 
+def _first_pipeline_step(pipeline: Pipeline) -> object | None:
+    for _, component in pipeline.steps:
+        step: object = (
+            _first_pipeline_step(component) if isinstance(component, Pipeline) else component
+        )
+        if step is None or (isinstance(step, str) and step == "passthrough"):
+            continue
+        return step
+    return None
+
+
+def _count_pipeline_covariates(pipeline: Pipeline) -> int:
+    """Trailing input covariates declared by the factory's first preprocessing step."""
+    # Later selectors operate on transformed columns, not on the input to harmonize.
+    step = _first_pipeline_step(pipeline)
+    if isinstance(step, ColumnTransformer):
+        for _, _, columns in step.transformers:
+            if isinstance(columns, partial) and columns.func is _trailing_columns:
+                return int(columns.args[0])
+    return 0
+
+
 def base_preprocessing_steps(
     config: PreprocessingConfig,
     *,
