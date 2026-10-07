@@ -52,6 +52,32 @@ def test_nearly_identical_subject_effects_match_scipy_ttest() -> None:
     assert np.isfinite(screen["q"])
 
 
+def test_maximum_statistic_counts_sign_flip_ties_despite_roundoff() -> None:
+    target = np.array([-1.0, 0.0, 1.0]) / np.sqrt(2.0)
+    orthogonal = np.array([1.0, -2.0, 1.0]) / np.sqrt(6.0)
+
+    def feature(z):
+        correlation = np.tanh(z)
+        return correlation * target + np.sqrt(1.0 - correlation**2) * orthogonal
+
+    first, cancelling, last = 0.049054613825311656, 2.002392583645255, 0.18851919251246557
+    values = np.concatenate(
+        [feature(first), feature(cancelling), -feature(cancelling), feature(last)]
+    )[:, None]
+    n_flips = 1000
+    signs = np.random.default_rng(0).choice([-1.0, 1.0], size=(n_flips, 4))
+    # Opposite signs break the cancelling pair; equal outer signs tie the observed
+    # sum in magnitude. |t| increases with |sum(z)| because sum(z**2) is fixed.
+    extreme = (signs[:, 1] != signs[:, 2]) | (signs[:, 0] == signs[:, 3])
+    expected = (1 + extreme.sum()) / (n_flips + 1)
+
+    screen = univariate_screen(
+        values, np.tile(target, 4), np.repeat(np.arange(4), 3), n_flips=n_flips, seed=0
+    )
+
+    assert screen["p_fwer"].iloc[0] == pytest.approx(expected)
+
+
 def test_zero_subject_effects_have_undefined_inference_without_breaking_the_family() -> None:
     target = np.tile([-1.0, 0.0, 1.0], 5)
     orthogonal = np.tile([1.0, -2.0, 1.0], 5)

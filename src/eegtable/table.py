@@ -191,6 +191,11 @@ class FeatureMeta:
     amplitude_band: Band | None = None
     nodes: tuple[str, str] | None = None
 
+    def __post_init__(self) -> None:
+        if self.window_bounds is not None:
+            lower, upper = self.window_bounds
+            object.__setattr__(self, "window_bounds", (float(lower), float(upper)))
+
     def record(self) -> dict[str, object]:
         """JSON-serializable form of every field that defines this column."""
         return {**self.fields_record(), "computation": self.computation.record()}

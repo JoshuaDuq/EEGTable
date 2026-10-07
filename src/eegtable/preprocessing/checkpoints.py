@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from ._deps import require
+from ._validation import validate_sampling_precision
 from .artifacts import ArtifactModel, review_artifact
 from .epochs import validate_metadata_precision
 from .events import EventData
@@ -213,10 +214,12 @@ def publish_checkpoint(
             restored = load_state(staged)
             # FIF applies the channel calibration on write and read: expect one ulp, relatively.
             if state.raw is not None:
+                validate_sampling_precision(state.raw, restored.raw)
                 np.testing.assert_allclose(
                     restored.raw.get_data(), state.raw.get_data(), rtol=1e-14, atol=0
                 )
             if state.epochs is not None:
+                validate_sampling_precision(state.epochs, restored.epochs)
                 np.testing.assert_allclose(
                     restored.epochs.get_data(), state.epochs.get_data(), rtol=1e-14, atol=0
                 )

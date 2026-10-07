@@ -507,8 +507,14 @@ def _validate_outer_folds(
             raise ValueError(f"{name} must contain one nonmissing label per row.")
 
     tested: set[int] = set()
+    fold_ids: set[int] = set()
 
     for fold in folds:
+        if isinstance(fold.index, bool) or not isinstance(fold.index, (int, np.integer)):
+            raise ValueError("Outer fold identifiers must be integers.")
+        if fold.index in fold_ids:
+            raise ValueError("Outer fold identifiers must be unique.")
+        fold_ids.add(fold.index)
         tr = np.asarray(fold.train)
         te = np.asarray(fold.test)
 

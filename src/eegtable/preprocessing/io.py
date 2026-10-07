@@ -11,6 +11,7 @@ from typing import Any
 import mne  # type: ignore[import-untyped]
 import numpy as np
 
+from ._validation import validate_sampling_precision
 from .checkpoints import payload_files, write_json
 from .checks import BUNDLE_SUFFIXES
 from .config import OutputSettings
@@ -79,6 +80,7 @@ def write_result(
         )
         epochs.save(staged / f"{output.name}_epo.fif", fmt="double")
         restored = mne.read_epochs(staged / f"{output.name}_epo.fif", preload=True, proj=False)
+        validate_sampling_precision(epochs, restored)
         np.testing.assert_allclose(restored.get_data(), epochs.get_data(), rtol=1e-14, atol=0)
         np.testing.assert_array_equal(restored.selection, epochs.selection)
         np.testing.assert_array_equal(restored.events, epochs.events)

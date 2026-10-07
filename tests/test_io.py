@@ -96,6 +96,18 @@ def test_epoch_table_round_trips_exactly(tmp_path) -> None:
     _assert_same_table(read_table(tmp_path / "sub-01_features.tsv"), table)
 
 
+def test_integer_window_bounds_round_trip(tmp_path) -> None:
+    original = _epoch_table()
+    table = replace(
+        original,
+        meta=(replace(original.meta[0], window_bounds=(0, 1)), *original.meta[1:]),
+    )
+    path = tmp_path / "features.tsv"
+    write_table(table, path)
+
+    _assert_same_table(read_table(path), table)
+
+
 @pytest.mark.parametrize("field", ["values", "coverage", "support"])
 def test_feature_matrices_preserve_float_precision(tmp_path, field) -> None:
     numbers = np.random.default_rng(42).uniform(size=(3, 2))
@@ -227,6 +239,17 @@ def test_writer_rejects_text_descriptors_that_collide_with_missing_marker(tmp_pa
     rows = pd.DataFrame({"subject_id": pd.Series(["01", "n/a", None], dtype=dtype)})
 
     with pytest.raises(ValueError, match="subject_id.*n/a.*missing"):
+        write_table(_epoch_table(), path, rows=rows)
+
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("dtype", [object, "category"])
+def test_writer_rejects_mixed_text_and_numeric_descriptors(tmp_path, dtype) -> None:
+    path = tmp_path / "features.tsv"
+    rows = pd.DataFrame({"subject_id": pd.Series(["1", 1, None], dtype=dtype)})
+
+    with pytest.raises(ValueError, match="subject_id.*mixed.*text"):
         write_table(_epoch_table(), path, rows=rows)
 
     assert not list(tmp_path.iterdir())
@@ -378,6 +401,41 @@ def test_read_dataset_preserves_text_descriptors_that_look_numeric(tmp_path, dty
 
     assert dataset.targets["subject_id"].tolist() == ["01", "1", "02"]
     assert dataset.targets["rating"].tolist() == [0.25, 1.5, 3.0]
+
+
+@pytest.mark.parametrize("dtype", [object, "category"])
+def test_read_dataset_keeps_numeric_subject_groups_across_descriptor_dtypes(tmp_path, dtype):
+    paths = []
+    for recording, subject_dtype in (("first", dtype), ("second", "int64")):
+        table = replace(
+            _epoch_table(),
+            row_ids=tuple((recording, index, "left") for index in range(3)),
+        )
+        path = tmp_path / f"{recording}.tsv"
+        write_table(
+            table,
+            path,
+            rows=pd.DataFrame({"subject_id": pd.Series([1, 2, 1], dtype=subject_dtype)}),
+        )
+        paths.append(path)
+
+    subjects = io_module.read_dataset(paths).targets["subject_id"]
+
+    assert subjects.tolist() == [1, 2, 1, 1, 2, 1]
+    assert subjects.nunique() == 2
+
+
+@pytest.mark.parametrize("dtype", [object, "string", "category"])
+def test_read_dataset_preserves_text_descriptors_with_missing_values(tmp_path, dtype):
+    path = tmp_path / "features.tsv"
+    rows = pd.DataFrame({"subject_id": pd.Series(["01", None, "02"], dtype=dtype)})
+    write_table(_epoch_table(), path, rows=rows)
+
+    subjects = io_module.read_dataset([path]).targets["subject_id"]
+
+    assert subjects.iloc[0] == "01"
+    assert pd.isna(subjects.iloc[1])
+    assert subjects.iloc[2] == "02"
 
 
 def test_read_dataset_refuses_epoch_key_that_disagrees_with_row_identity(tmp_path) -> None:

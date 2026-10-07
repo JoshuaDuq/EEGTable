@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fractions import Fraction
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -16,6 +18,25 @@ from eegtable.model.aggregate import (
     subject_r_scorer,
 )
 from eegtable.model.crossfit import FoldPrediction
+
+
+def test_paired_signflip_counts_ties_despite_roundoff() -> None:
+    differences = np.array(
+        [1.5834728788021222, 1.3203609870818391, -1.3203609870818391, 0.6333526228249152]
+    )
+    iterations = 1000
+    signs = np.random.default_rng(0).choice([-1.0, 1.0], size=(iterations, 4))
+    exact = [Fraction(value) for value in differences]
+    observed = abs(sum(exact))
+    extreme = sum(
+        abs(sum(value * int(sign) for value, sign in zip(exact, flip, strict=True))) >= observed
+        for flip in signs
+    )
+    expected = (1 + extreme) / (iterations + 1)
+
+    assert paired_signflip_p_value(differences, iterations=iterations, seed=0) == pytest.approx(
+        expected
+    )
 
 
 def _predictions(per_subject: dict[str, tuple[list[float], list[float]]]) -> pd.DataFrame:

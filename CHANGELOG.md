@@ -9,6 +9,12 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
+- Feature metadata canonicalizes time-window bounds as floats, so equivalent
+  integer and float bounds identify the same column and round-trip through files.
+  Custom features previously constructed with integer bounds have new identifiers.
+- Preprocessing checkpoint identities advance to the corrected implementation.
+  Reset existing workflows from `load` before resuming, so saved stages cannot
+  reuse the previous bipolar-reference or native sampling-rate behavior.
 - Morlet computation identities include the wavelet's `zero_mean` setting.
   `Spectra.from_tfr` requires its explicit declaration because MNE does not retain
   it. Recompute existing Morlet tables before combining them with new results.
@@ -129,6 +135,20 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Sign-flip inference counts floating-point ties inclusively in paired and
+  maximum-statistic tests, preventing understated p-values from roundoff.
+- Cross-fitting rejects duplicate or noninteger fold identifiers before fitting;
+  duplicate identifiers could combine predictions from different fitted models
+  during fold-centered scoring.
+- Native preprocessing checkpoints and exports reject sampling-rate precision
+  loss before publication instead of changing the time grid and provenance.
+- Numeric categorical and object row descriptors retain numeric participant
+  identities when recordings are combined; text labels and missing values remain
+  distinct. Mixed text and numeric descriptor columns raise before writing.
+- Bipolar EOG/ECG derivations preserve the retained EEG's reference metadata and
+  projectors, including the configured policy for inactive projections.
+- Custom features constructed with integer time-window bounds now round-trip
+  through feature bundles without a spurious metadata-integrity error.
 - Morlet constructors and recipe extraction reject complex analytic EEG samples
   instead of reporting their power on the real-signal density scale.
 - Nuisance fitting and staged permutations reject fractional or repeated row

@@ -19,6 +19,25 @@ from eegtable.preprocessing.config import (
 from .test_execution import config_for
 
 
+@pytest.mark.parametrize("kind", ["raw", "epochs"])
+def test_checkpoint_rejects_sampling_rate_loss_before_publication(tmp_path, kind):
+    from eegtable.preprocessing.checkpoints import publish_checkpoint
+    from eegtable.preprocessing.pipeline import StageData
+
+    info = mne.create_info(["Cz"], 100.1, "eeg")
+    if kind == "raw":
+        inst = mne.io.RawArray(np.ones((1, 1000)), info)
+    else:
+        inst = mne.EpochsArray(np.ones((2, 1, 200)), info)
+    state = replace(StageData(None), **{kind: inst})
+
+    with pytest.raises(ValueError, match="sampling.*FIF.*precision"):
+        publish_checkpoint(tmp_path, "load", "test-id", state, {}, {})
+
+    assert not (tmp_path / "load" / "test-id").exists()
+    assert not (tmp_path / "load.json").exists()
+
+
 def test_baseline_change_does_not_invalidate_upstream(raw, tmp_path):
     workflow = open_workflow(config_for(raw, tmp_path))
     run_until(workflow, "crop-epochs")

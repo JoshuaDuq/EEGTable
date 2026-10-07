@@ -291,7 +291,7 @@ def stage_identities(workflow: Workflow, source_id: str) -> dict[str, str]:
         decision = read_yaml(path) if stage.review and path.exists() else None
         resolved[stage.name] = identity(
             {
-                "implementation": 1,
+                "implementation": 2,
                 "stage": stage.name,
                 "source": source_id if stage.name == "load" else None,
                 "parents": parents,

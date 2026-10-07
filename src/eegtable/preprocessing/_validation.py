@@ -7,6 +7,17 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 
+def validate_sampling_precision(original: Any, restored: Any) -> None:
+    original_rate = float(original.info["sfreq"])
+    restored_rate = float(restored.info["sfreq"])
+    if restored_rate != original_rate:
+        raise ValueError(
+            f"sampling frequency {original_rate} Hz cannot be preserved at native FIF "
+            f"precision ({restored_rate} Hz); use an exactly representable sampling rate "
+            "before serialization."
+        )
+
+
 def number(value: object, path: str, minimum: float | None = None) -> None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TypeError(f"{path}: expected a finite number, got {value!r}")

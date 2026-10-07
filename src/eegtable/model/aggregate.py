@@ -179,12 +179,13 @@ def paired_signflip_p_value(
         return np.nan
 
     observed = float(abs(np.mean(vals)))
+    threshold = observed - 100.0 * np.finfo(float).eps * observed
     rng = np.random.default_rng(seed)
     n = len(vals)
     count = 0
     for _ in range(iterations):
         signs = rng.choice(np.array([-1.0, 1.0]), size=n, replace=True)
-        if float(abs(np.mean(vals * signs))) >= observed:
+        if float(abs(np.mean(vals * signs))) >= threshold:
             count += 1
     return float((count + 1) / (iterations + 1))
 

@@ -18,6 +18,40 @@ GROUPS = np.repeat(["s1", "s2"], 4).astype(object)
 FOLD = Fold(1, np.arange(4), np.arange(4, 8))
 
 
+@pytest.mark.parametrize("task", ["regression", "classification"])
+def test_outer_fold_identifiers_must_be_unique(task) -> None:
+    evaluate = cross_fit_regression if task == "regression" else cross_fit_classification
+    estimator = DummyRegressor() if task == "regression" else DummyClassifier()
+    folds = [FOLD, Fold(1, np.arange(4, 8), np.arange(4))]
+
+    with pytest.raises(ValueError, match="fold.*unique"):
+        evaluate(
+            folds,
+            VALUES,
+            TARGET,
+            GROUPS,
+            Pipeline([("model", estimator)]),
+            {},
+            inner=InnerSplit("subject"),
+            seed=0,
+        )
+
+
+@pytest.mark.parametrize("index", [True, 1.5, "1"])
+def test_outer_fold_identifiers_must_be_integers(index) -> None:
+    with pytest.raises(ValueError, match="fold.*integer"):
+        cross_fit_regression(
+            [Fold(index, FOLD.train, FOLD.test)],
+            VALUES,
+            TARGET,
+            GROUPS,
+            Pipeline([("model", DummyRegressor())]),
+            {},
+            inner=InnerSplit("subject"),
+            seed=0,
+        )
+
+
 def test_inner_tuning_passes_subjects_to_metrics_other_than_refit() -> None:
     values = np.tile(np.arange(8.0), 5)
     groups = np.repeat(list("ABCDE"), 8).astype(object)

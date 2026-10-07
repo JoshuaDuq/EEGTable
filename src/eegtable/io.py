@@ -154,13 +154,7 @@ def write_table(
         column
         for column in [key, *descriptors.columns]
         if column in {_GROUP_KEY, "recording", "event"}
-        or (
-            column in descriptors
-            and (
-                pd.api.types.is_string_dtype(descriptors[column].dtype)
-                or isinstance(descriptors[column].dtype, pd.CategoricalDtype)
-            )
-        )
+        or (column in descriptors and pd.api.types.is_string_dtype(descriptors[column].dropna()))
     ]
 
     payloads = [(target, values_frame), (coverage_path, matrix_frame(table.coverage))]
@@ -429,6 +423,13 @@ def _descriptors(rows: pd.DataFrame | None, table: FeatureTable, key: str) -> pd
         raise ValueError(
             f"descriptor columns {clashes} would shadow the row key {key!r} or a feature."
         )
+    for column in rows:
+        text = rows[column].dropna().map(lambda value: isinstance(value, str)).to_numpy(dtype=bool)
+        if text.any() and not text.all():
+            raise ValueError(
+                f"descriptor {column!r} has mixed text and non-text values; "
+                "use one value type to preserve identities through TSV serialization."
+            )
     return rows.reset_index(drop=True)
 
 

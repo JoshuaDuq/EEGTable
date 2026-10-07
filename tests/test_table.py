@@ -66,6 +66,14 @@ def test_window_bounds_and_parameters_distinguish_feature_identifiers() -> None:
     assert len({base.name, shifted.name, thresholded.name}) == 3
 
 
+def test_integer_window_bounds_name_the_same_feature_as_float_bounds() -> None:
+    base = _meta()
+    integer_bounds = replace(base, window_bounds=(0, 1))
+
+    assert integer_bounds.name == base.name
+    assert integer_bounds.record() == base.record()
+
+
 def test_dataframe_columns_are_the_canonical_names() -> None:
     df = _table().to_dataframe()
     assert list(df.columns) == [_meta("C3").name, _meta("C4").name]

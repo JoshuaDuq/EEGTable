@@ -6,6 +6,7 @@ import pytest
 from eegtable.preprocessing.config import (
     AnnotationSettings,
     BadSpan,
+    BipolarSettings,
     ChannelSettings,
     FilterSettings,
 )
@@ -18,6 +19,58 @@ def test_channel_copy(raw):
     assert result.info["bads"] == ["C3"]
     assert raw.info["bads"] == []
     np.testing.assert_array_equal(result.get_data(), raw.get_data())
+
+
+@pytest.mark.parametrize("referenced", [False, True])
+def test_bipolar_auxiliary_channel_preserves_eeg_reference(raw, referenced):
+    from eegtable.preprocessing.raw import prepare_channels, restore_reference_channels
+
+    if referenced:
+        raw.set_eeg_reference(["C3"])
+    settings = ChannelSettings(bipolar=(BipolarSettings("HEOG", "Fp1", "Fp2", "eog"),))
+
+    result = prepare_channels(raw, settings)
+
+    assert result.info["custom_ref_applied"] == raw.info["custom_ref_applied"]
+    np.testing.assert_array_equal(result.get_data(picks=raw.ch_names), raw.get_data())
+    np.testing.assert_array_equal(
+        result.get_data(picks=["HEOG"])[0],
+        raw.get_data(picks=["Fp1"])[0] - raw.get_data(picks=["Fp2"])[0],
+    )
+    assert "HEOG" not in raw.ch_names
+    if not referenced:
+        restored = restore_reference_channels(result, ("FCz",))
+        np.testing.assert_array_equal(restored.get_data(picks=["FCz"]), 0.0)
+
+
+@pytest.mark.parametrize("active", [False, True])
+def test_bipolar_auxiliary_channel_preserves_eeg_projectors(raw, active):
+    from eegtable.preprocessing.raw import prepare_channels
+
+    raw.set_eeg_reference("average", projection=True)
+    if active:
+        raw.apply_proj()
+    settings = ChannelSettings(
+        bipolar=(BipolarSettings("HEOG", "Fp1", "Fp2", "eog"),),
+        projections="apply",
+    )
+
+    result = prepare_channels(raw, settings)
+    expected = raw.copy().apply_proj()
+
+    assert len(result.info["projs"]) == len(raw.info["projs"])
+    assert result.info["projs"][0]["active"]
+    np.testing.assert_allclose(result.get_data(picks="eeg"), expected.get_data(picks="eeg"))
+
+
+def test_bipolar_auxiliary_channel_does_not_bypass_projector_policy(raw):
+    from eegtable.preprocessing.raw import prepare_channels
+
+    raw.set_eeg_reference("average", projection=True)
+    settings = ChannelSettings(bipolar=(BipolarSettings("HEOG", "Fp1", "Fp2", "eog"),))
+
+    with pytest.raises(ValueError, match="inactive projectors"):
+        prepare_channels(raw, settings)
 
 
 @pytest.mark.parametrize("dated", [False, True])

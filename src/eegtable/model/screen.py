@@ -121,7 +121,9 @@ def univariate_screen(
             )
         ]
     )
-    exceeding = n_flips - np.searchsorted(np.sort(largest), np.abs(t), side="left")
+    # Count theoretical ties despite roundoff, following SciPy's permutation_test.
+    tolerance = 100.0 * np.finfo(float).eps * np.where(np.isfinite(t), np.abs(t), 0.0)
+    exceeding = n_flips - np.searchsorted(np.sort(largest), np.abs(t) - tolerance, side="left")
     p = np.where(testable, 2.0 * stats.t.sf(np.abs(t), np.maximum(n_subjects - 1, 1)), np.nan)
     q = np.full_like(p, np.nan)
     defined = np.isfinite(p)

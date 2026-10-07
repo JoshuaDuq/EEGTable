@@ -106,15 +106,18 @@ def prepare_channels(raw: Any, settings: ChannelSettings) -> Any:
             kinds[name] not in ("eeg", "eog", "ecg") for name in (bipolar.anode, bipolar.cathode)
         ):
             raise ValueError("channels.bipolar: sources must be voltage physiology channels")
-        working = mne.set_bipolar_reference(
+        derived = mne.set_bipolar_reference(
             working,
             bipolar.anode,
             bipolar.cathode,
             ch_name=bipolar.name,
             drop_refs=False,
-            copy=False,
-        )
-        working.set_channel_types({bipolar.name: bipolar.type})
+            copy=True,
+        ).pick([bipolar.name])
+        derived.set_channel_types({bipolar.name: bipolar.type})
+        # Bipolar referencing removes EEG projectors and changes reference metadata;
+        # those side effects belong only to the auxiliary channel's temporary copy.
+        working.add_channels([derived], force_update_info=True)
     require_names(working, settings.drop, "channels.drop")
     if settings.drop:
         working.drop_channels(list(settings.drop))

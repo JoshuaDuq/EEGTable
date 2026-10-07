@@ -19,6 +19,19 @@ def test_export_bundle(raw, tmp_path):
         write_result(result, output)
 
 
+def test_export_rejects_sampling_rate_loss_before_publication(tmp_path):
+    from eegtable.preprocessing.io import write_result
+
+    raw = mne.io.RawArray(np.ones((1, 1000)), mne.create_info(["Cz"], 100.1, "eeg"))
+    result = preprocess(raw, ProcessingSettings(FixedEpochSettings(200 / 100.1)))
+
+    with pytest.raises(ValueError, match="sampling.*FIF.*precision"):
+        write_result(result, OutputSettings(tmp_path, "subject"))
+
+    assert not (tmp_path / "subject_epo.fif").exists()
+    assert not (tmp_path / "subject_preprocessing.json").exists()
+
+
 def test_export_keeps_float_metadata(raw, tmp_path):
     import pandas as pd
 

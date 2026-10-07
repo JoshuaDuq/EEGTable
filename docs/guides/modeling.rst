@@ -607,6 +607,10 @@ not.
 - Both functions require finite values for every included subject. Exclude
   subjects using pre-specified study criteria before constructing the vector.
 
+Sign-flip tails count numerical ties within 100 times floating-point epsilon
+relative to the observed statistic, following SciPy's ``permutation_test``.
+The maximum-statistic screen uses the same convention.
+
 Permutation nulls
 -----------------
 
