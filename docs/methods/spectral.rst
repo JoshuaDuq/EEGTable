@@ -8,6 +8,11 @@ represent different spectral estimates, even when their reported units agree.
 
 Signatures are in :doc:`/api/spectral`.
 
+The :doc:`aperiodic-background tutorial </auto_tutorials/plot_aperiodic_background>`
+separates raw band power from a fitted background in analytic spectra.
+The :doc:`IRASA tutorial </auto_tutorials/plot_irasa>` checks irregular-resampling
+components against NeuroDSP, including their signed residual power.
+
 Spectral Power
 --------------
 

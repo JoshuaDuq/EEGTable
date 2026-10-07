@@ -7,6 +7,10 @@ to locate trough-to-trough cycles and characterize their waveform. Install
 ``eegtable[cycles]``. The project's declared pandas dependency is ``>=2.0,<3.0``.
 The function signature is in :doc:`/api/dynamics`.
 
+The :doc:`cycle-waveform tutorial </auto_tutorials/plot_cycle_waveforms>` compares
+symmetric and asymmetric oscillations and checks complete-cycle selection and
+waveform summaries against ByCycle.
+
 Detection and Window Support
 ----------------------------
 

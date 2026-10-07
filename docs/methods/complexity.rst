@@ -10,6 +10,11 @@ complexity. Microstates instead use the spatial map across channels.
 
 Signatures are in :doc:`/api/complexity`.
 
+The :doc:`complexity tutorial </auto_tutorials/plot_signal_complexity>` verifies
+template counting and distinguishes the two multiscale tolerance definitions.
+The :doc:`microstate tutorial </auto_tutorials/plot_microstate_templates>` fits
+templates on training epochs and measures held-out assignments with frozen maps.
+
 Sample and Multiscale Entropy
 -----------------------------
 

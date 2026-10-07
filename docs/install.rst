@@ -174,13 +174,15 @@ From the repository root:
 
 .. code-block:: bash
 
-   python -m pip install -e ".[docs,model,connectivity]"
+   python -m pip install -e ".[docs,model,connectivity,microstates,irasa,cycles]"
    python -m sphinx -b html -W --keep-going docs docs/_build/html
 
 Open ``docs/_build/html/index.html`` to inspect the generated site. The build
 imports the current source for API signatures and docstrings and executes all
-worked tutorials. The ``model`` and ``connectivity`` extras provide the tutorial
-integrations. Internet access is needed to fetch external reference inventories
+worked tutorials. The listed extras provide the modeling, connectivity,
+microstate, IRASA, and cycle-analysis tutorial integrations. The ``docs`` extra
+requires MNE 1.13.2 or newer for the current montage names used in the spatial
+tutorials. Internet access is needed to fetch external reference inventories
 and download the public EEGBCI recordings on first use; MNE reuses its data cache
 afterward. The CI documentation job also installs other scientific integrations.
 A documentation build does not

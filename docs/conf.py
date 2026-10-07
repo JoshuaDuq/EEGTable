@@ -55,12 +55,18 @@ sphinx_gallery_conf = {
         [
             "plot_resting_alpha.py",
             "plot_morlet_support.py",
+            "plot_aperiodic_background.py",
+            "plot_irasa.py",
             "plot_erp_measurements.py",
             "plot_beta_bursts.py",
+            "plot_cycle_waveforms.py",
+            "plot_signal_complexity.py",
             "plot_phase_consistency.py",
             "plot_sensor_connectivity.py",
             "plot_motor_erds.py",
             "plot_session_reliability.py",
+            "plot_microstate_templates.py",
+            "plot_csp_decoding.py",
             "plot_grouped_modeling.py",
         ]
     ),

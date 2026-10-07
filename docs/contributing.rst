@@ -35,8 +35,10 @@ label simulations clearly and fix their random seeds. Explain units, estimator
 settings, boundary handling, and the sample unit. Include numerical checks
 against a reference implementation or known ground truth when available.
 
-Add the source filename to the learning order in ``docs/conf.py`` and link its
-generated page in ``docs/index.rst``. Verify both direct execution and the gallery:
+Add the source filename to the learning order in ``docs/conf.py`` and describe
+its prerequisites in ``tutorials/README.rst``. The generated gallery supplies
+the children of the Tutorials dropdown automatically. Verify direct execution,
+the gallery, and sidebar navigation:
 
 .. code-block:: bash
 

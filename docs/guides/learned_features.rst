@@ -18,6 +18,11 @@ variance in every epoch. Choose a prespecified frequency band and crop the
 analysis window on the ``Signal``. Selecting those settings from held-out
 performance requires an additional training-only selection procedure.
 
+The :doc:`CSP tutorial </auto_tutorials/plot_csp_decoding>` fits spatial filters
+and a classifier inside each participant-disjoint split. The
+:doc:`microstate tutorial </auto_tutorials/plot_microstate_templates>` separates
+template fitting from assignment on held-out epochs.
+
 Signal classification supports only integer labels coded ``0`` and ``1``.
 Signal regression accepts one finite continuous target per epoch. Backend
 support for multiclass classification or multioutput regression does not

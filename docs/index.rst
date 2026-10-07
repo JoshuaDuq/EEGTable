@@ -140,17 +140,9 @@ Build an analysis workflow
 
 .. toctree::
    :hidden:
-   :caption: Tutorials
+   :maxdepth: 2
 
-   Resting alpha power <auto_tutorials/plot_resting_alpha>
-   Morlet power and support <auto_tutorials/plot_morlet_support>
-   ERP measurements <auto_tutorials/plot_erp_measurements>
-   Beta bursts <auto_tutorials/plot_beta_bursts>
-   Phase consistency <auto_tutorials/plot_phase_consistency>
-   Sensor connectivity <auto_tutorials/plot_sensor_connectivity>
-   Single-trial ERD <auto_tutorials/plot_motor_erds>
-   Session reliability <auto_tutorials/plot_session_reliability>
-   Held-out participants <auto_tutorials/plot_grouped_modeling>
+   Tutorials <auto_tutorials/index>
 
 .. toctree::
    :hidden:

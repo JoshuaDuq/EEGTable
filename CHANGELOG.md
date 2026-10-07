@@ -152,6 +152,10 @@ behaviour, and every such change is listed here.
   global means and pattern ROIs would split into separate columns. It also warns
   when a Welch window holds a single segment, making its spectrum one periodogram.
 - Documentation:
+  - six further executable tutorials on aperiodic backgrounds, IRASA, entropy,
+    cycle waveforms, frozen microstate templates, and participant-disjoint CSP;
+  - a collapsible Tutorials section using native Sphinx/Furo navigation, with
+    the current tutorial's parent expanded and gallery links supplied automatically;
   - eight additional tutorials on resting alpha, Morlet support and quality,
     ERPs, beta bursts, phase consistency, sensor connectivity, session reliability,
     and participant-held-out modeling, with reference calculations and figures
