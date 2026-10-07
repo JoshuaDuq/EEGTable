@@ -600,6 +600,11 @@ def permutation_test(
                 ) from exc
             null_scores.append(score)
         null_arr = np.asarray(null_scores, dtype=np.float64)
+    # An identity permutation uses the observed fit; batched linear algebra must
+    # not turn that exact tie into a different statistic through roundoff.
+    original_rows = np.arange(len(target))
+    identity_draws = [np.array_equal(source, original_rows) for source in sources]
+    null_arr[identity_draws] = recomputed_observed
     # Count numerical ties inclusively, as SciPy's permutation_test does: independently
     # computed statistics can round differently, including an identity permutation.
     tolerance = 100.0 * np.finfo(null_arr.dtype).eps * abs(observed)

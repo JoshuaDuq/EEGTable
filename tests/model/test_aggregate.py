@@ -53,7 +53,15 @@ def test_subject_aggregates_ignore_unused_categorical_labels(function) -> None:
     frame = _predictions({"s1": ([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0])})
     expected = function(frame)
     frame["subject_id"] = pd.Categorical(frame.subject_id, categories=["s1", "unused"])
-    assert function(frame) == expected
+    actual = function(frame)
+    if function is subject_level_r:
+        assert actual.per_subject == expected.per_subject
+        np.testing.assert_array_equal(
+            (actual.r, actual.ci_low, actual.ci_high),
+            (expected.r, expected.ci_low, expected.ci_high),
+        )
+    else:
+        assert actual == expected
 
 
 def test_subject_scorer_ignores_unused_categorical_labels() -> None:

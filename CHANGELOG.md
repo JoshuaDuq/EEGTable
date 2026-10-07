@@ -135,6 +135,10 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Identity permutations reuse the observed fit's statistic, preserving exact ties
+  across single-target and batched Ridge computations on different BLAS platforms.
+- CI tests verify ICLabel classification without requiring a version-specific
+  warning and compare undefined confidence intervals with NaN-aware assertions.
 - Sign-flip inference counts floating-point ties inclusively in paired and
   maximum-statistic tests, preventing understated p-values from roundoff.
 - Cross-fitting rejects duplicate or noninteger fold identifiers before fitting;

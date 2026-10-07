@@ -219,9 +219,7 @@ def test_iclabel_accepts_an_applied_average_projector_with_bad_channels(mixture)
     settings = ICASettings(
         method="infomax", n_components=4, max_iter=2000, iclabel=ICLabelSettings()
     )
-    # ICLabel's metadata check cannot recognize MNE's applied average projector.
-    with pytest.warns(RuntimeWarning, match="referenced to a common average"):
-        model = fit_ica(training, settings)
+    model = fit_ica(training, settings)
     assert model.model.ch_names == [name for name in mixture.ch_names[:8] if name != "O2"]
     assert model.evidence["iclabel"]["probabilities"].shape == (4, 7)
 

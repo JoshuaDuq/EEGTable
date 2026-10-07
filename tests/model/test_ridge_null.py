@@ -43,7 +43,19 @@ def test_identity_permutations_count_as_ties(batched, greater_is_better, monkeyp
     observed = _prediction_statistic(predictions, groups, aggregation, None)
     # Independent floating-point calculations of the same statistic can differ by an ULP.
     observed = np.nextafter(observed, np.inf if greater_is_better else -np.inf)
-    if not batched:
+    if batched:
+        estimate = _ridge_null.ridge_null
+
+        def perturbed_identity_statistics(*args, **kwargs):
+            statistics = estimate(*args, **kwargs)
+            sources = args[3]
+            identity = (sources == np.arange(len(y))).all(axis=1)
+            # BLAS kernels can round single-target and batched fits differently.
+            statistics[identity] += 1e-12
+            return statistics
+
+        monkeypatch.setattr(_ridge_null, "ridge_null", perturbed_identity_statistics)
+    else:
         monkeypatch.setattr(_ridge_null, "ridge_penalty", lambda *args, **kwargs: None)
     result = permutation_test(
         folds,
