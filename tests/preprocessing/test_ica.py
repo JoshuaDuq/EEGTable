@@ -3,6 +3,55 @@ import pytest
 from eegtable.preprocessing.config import ICASettings
 
 
+@pytest.mark.parametrize("channels", [None, ["Fp1", "Fp2", "C3"]])
+def test_ordinary_ica_does_not_require_electrode_geometry(mixture, channels):
+    from eegtable.preprocessing.checks import validate_processing
+    from eegtable.preprocessing.config import (
+        ArtifactSettings,
+        FixedEpochSettings,
+        ProcessingSettings,
+    )
+    from eegtable.preprocessing.ica import fit_ica
+
+    raw = mixture.copy()
+    if channels is not None:
+        raw.pick(channels)
+    raw.set_montage(None)
+    settings = ICASettings(n_components=3)
+    validate_processing(
+        raw, ProcessingSettings(FixedEpochSettings(2), artifact=ArtifactSettings("ica", settings))
+    )
+
+    model = fit_ica(raw, settings)
+
+    assert model.model.n_components_ == 3
+
+
+def test_iclabel_still_requires_electrode_geometry(mixture):
+    from eegtable.preprocessing.checks import validate_processing
+    from eegtable.preprocessing.config import (
+        ArtifactSettings,
+        FilterSettings,
+        FixedEpochSettings,
+        ICLabelSettings,
+        ProcessingSettings,
+    )
+    from eegtable.preprocessing.ica import fit_ica
+
+    raw = mixture.copy().filter(None, 100).set_montage(None)
+    settings = ICASettings(method="infomax", iclabel=ICLabelSettings())
+    processing = ProcessingSettings(
+        FixedEpochSettings(2),
+        artifact=ArtifactSettings("ica", settings, "average"),
+        filter=FilterSettings(l_freq=1, h_freq=100),
+    )
+
+    with pytest.raises(ValueError, match="montage"):
+        validate_processing(raw, processing)
+    with pytest.raises(ValueError, match="montage"):
+        fit_ica(raw, settings)
+
+
 def test_exact_ica_review_and_no_refit(mixture):
     import numpy as np
 

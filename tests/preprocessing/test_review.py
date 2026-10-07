@@ -239,9 +239,10 @@ def test_interactive_ica_review_pages_the_topomaps(qt_stubbed, monkeypatch):
     from types import SimpleNamespace
 
     # Same reason as open_viewer: one figure per component count is unscrollable.
-    monkeypatch.setattr(review_module, "_confirm_choices", lambda title, labels: [1])
+    monkeypatch.setattr(review_module, "_confirm_choices", lambda title, labels: [])
     model = _Plottable()
     model.n_components_ = 3
+    model.exclude = [1]
     raw = _Plottable()
     state = SimpleNamespace(
         raw=raw, epochs=None, artifact=SimpleNamespace(method="ica", model=model, fit_id="fit")
@@ -249,6 +250,31 @@ def test_interactive_ica_review_pages_the_topomaps(qt_stubbed, monkeypatch):
     decision = review_module.viewer_decision("review-artifact", state)
     assert model.calls == [("components", {}), ("sources", raw, True)]
     assert decision == {"fit_id": "fit", "exclude": [1]}
+
+
+@pytest.mark.parametrize("excluded", [[], [1]])
+def test_ica_review_saves_viewer_choices_on_a_disposable_copy(qt_stubbed, monkeypatch, excluded):
+    from types import SimpleNamespace
+
+    import mne
+
+    model = mne.preprocessing.ICA()
+    model.n_components_ = 3
+    monkeypatch.setattr(mne.preprocessing.ICA, "plot_components", lambda self: None)
+    monkeypatch.setattr(
+        mne.preprocessing.ICA,
+        "plot_sources",
+        lambda self, raw, block: setattr(self, "exclude", excluded.copy()),
+    )
+    monkeypatch.setattr(review_module, "_confirm_choices", lambda title, labels: [])
+    state = SimpleNamespace(
+        raw=_Plottable(), artifact=SimpleNamespace(method="ica", model=model, fit_id="fit")
+    )
+
+    decision = review_module.viewer_decision("review-artifact", state)
+
+    assert decision == {"fit_id": "fit", "exclude": excluded}
+    assert model.exclude == []
 
 
 def test_viewer_shows_epochs_before_raw_without_an_ica(qt_stubbed):

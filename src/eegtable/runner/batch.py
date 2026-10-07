@@ -40,7 +40,6 @@ from eegtable.io import _read_sidecar, write_table
 from eegtable.provenance import (
     file_hash,
     identity,
-    implementation_hash,
     serializable,
     software_versions,
 )
@@ -52,6 +51,7 @@ from eegtable.runner.compute import (
 )
 from eegtable.runner.measures import SUPPLIED, get
 from eegtable.runner.progress import NullReporter, Reporter
+from eegtable.runner.provenance import extraction_hash, extraction_software
 from eegtable.runner.recipe import Inputs, Recipe, RoiPattern
 from eegtable.table import _ROW_ID_FIELDS
 
@@ -644,8 +644,8 @@ def _statuses(recipe: Recipe, recordings: tuple[Recording, ...]) -> tuple[Record
     logged = _last_failures(recipe.output.root)
     current = {
         "settings_sha256": settings_sha256(recipe),
-        "software": _software(recipe),
-        "code_sha256": implementation_hash(),
+        "software": extraction_software(recipe),
+        "code_sha256": extraction_hash(recipe),
     }
     return tuple(
         _status_of(
@@ -1107,20 +1107,10 @@ def _capture_provenance(recording: Recording, recipe: Recipe) -> dict[str, Any]:
         "input_sha256": source_files[recording.source.resolve().name],
         "input_files": source_files,
         "resolved_settings": resolved_settings(recipe),
-        "software": _software(recipe),
-        "code_sha256": implementation_hash(),
+        "software": extraction_software(recipe),
+        "environment": software_versions(),
+        "code_sha256": extraction_hash(recipe),
     }
-
-
-def _software(recipe: Recipe) -> dict[str, str]:
-    # software_versions lists a fixed set of packages; a plugin measure's own distribution
-    # has to join it, or upgrading the plugin would leave its results current.
-    versions = software_versions()
-    for spec in recipe.features:
-        provider = get(spec.measure).provider
-        if provider is not None:
-            versions[provider[0]] = provider[1]
-    return versions
 
 
 def _verify_captured_provenance(
@@ -1133,8 +1123,8 @@ def _verify_captured_provenance(
     ):
         raise ValueError("Input changed during extraction; results were not published.")
     if (
-        _software(recipe) != captured["software"]
-        or implementation_hash() != captured["code_sha256"]
+        extraction_software(recipe) != captured["software"]
+        or extraction_hash(recipe) != captured["code_sha256"]
     ):
         raise ValueError(
             "Software or implementation changed during extraction; results were not published."

@@ -2,6 +2,7 @@
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -33,6 +34,8 @@ def test_extraction_records_portable_identity_and_resolved_computation(tmp_path)
     assert provenance["recording"] == "sub-01/eeg/sub-01_task-rest_epo.fif"
     assert len(provenance["input_sha256"]) == 64
     assert provenance["software"]["mne"]
+    assert provenance["environment"]["eegtable"]
+    assert set(provenance["software"]) == {"python", "mne", "numpy", "scipy", "pandas"}
     assert len(provenance["code_sha256"]) == 64
     assert provenance["resolved_settings"]["spectra"]["method"] == "welch"
     assert set(sidecar["files"]) == {output.name, output.stem + "_coverage.tsv"}
@@ -52,6 +55,186 @@ def test_touching_unchanged_input_does_not_invalidate_results(tmp_path):
     later = source.stat().st_mtime + 60
     os.utime(source, (later, later))
     assert status(recipe)[0].state == "done"
+
+
+@pytest.mark.parametrize("package", ["mne-bids", "onnxruntime", "scikit-learn"])
+def test_unused_package_change_preserves_extraction_cache(tmp_path, monkeypatch, package):
+    import eegtable.provenance as provenance
+
+    recipe, _, _ = _extract(tmp_path)
+    installed_version = provenance.version
+    monkeypatch.setattr(
+        provenance,
+        "version",
+        lambda name: "changed" if name == package else installed_version(name),
+    )
+
+    assert status(recipe)[0].state == "done"
+    resumed = run(recipe, resume=True)
+    assert resumed.ok and len(resumed.skipped) == 1 and not resumed.recordings
+
+
+@pytest.mark.parametrize("module", ["preprocessing/review.py", "model/metrics.py", "cycles.py"])
+def test_unused_source_change_preserves_extraction_cache(tmp_path, monkeypatch, module):
+    import eegtable.provenance as provenance
+
+    recipe, _, _ = _extract(tmp_path)
+    changed = Path(provenance.__file__).parent / module
+    original_hash = provenance.file_hash
+    monkeypatch.setattr(
+        provenance, "file_hash", lambda path: "changed" if path == changed else original_hash(path)
+    )
+
+    assert status(recipe)[0].state == "done"
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "power.py",
+        "_expand.py",
+        "groups.py",
+        "runner/compute.py",
+        "runner/measures.py",
+        "__init__.py",
+    ],
+)
+def test_relevant_source_change_invalidates_extraction_cache(tmp_path, monkeypatch, module):
+    import eegtable.provenance as provenance
+
+    recipe, _, _ = _extract(tmp_path)
+    changed = Path(provenance.__file__).parent / module
+    original_hash = provenance.file_hash
+    monkeypatch.setattr(
+        provenance, "file_hash", lambda path: "changed" if path == changed else original_hash(path)
+    )
+
+    assert status(recipe)[0].state == "stale"
+
+
+def test_required_package_change_invalidates_extraction_cache(tmp_path, monkeypatch):
+    import eegtable.provenance as provenance
+
+    recipe, _, _ = _extract(tmp_path)
+    installed_version = provenance.version
+    monkeypatch.setattr(
+        provenance, "version", lambda name: "changed" if name == "mne" else installed_version(name)
+    )
+
+    assert status(recipe)[0].state == "stale"
+
+
+@pytest.mark.parametrize(
+    "measure,package",
+    [("permutation_entropy", "antropy"), ("microstate_coverage", "scikit-learn")],
+)
+def test_selected_optional_package_versions_are_read_fresh(monkeypatch, measure, package):
+    import eegtable.provenance as provenance
+    from eegtable.runner.provenance import extraction_software
+
+    recipe = load_recipe({"features": [{"measure": measure}]})
+    monkeypatch.setattr(provenance, "version", lambda name: "first")
+    before = extraction_software(recipe)
+    monkeypatch.setattr(
+        provenance, "version", lambda name: "changed" if name == package else "first"
+    )
+
+    assert before[package] == "first"
+    assert extraction_software(recipe) == {**before, package: "changed"}
+
+
+def test_plugin_microstates_record_segmentation_dependencies(monkeypatch):
+    import eegtable.provenance as provenance
+    from eegtable.runner.measures import MEASURES, Measure
+    from eegtable.runner.provenance import extraction_software
+
+    plugin = Measure(
+        "plugin_microstates", MEASURES["microstate_coverage"].function, ("demo-plugin", "first")
+    )
+    monkeypatch.setitem(MEASURES, plugin.name, plugin)
+    monkeypatch.setattr(provenance, "version", lambda name: "installed")
+    recipe = load_recipe({"features": [{"measure": plugin.name}]})
+
+    assert extraction_software(recipe)["scikit-learn"] == "installed"
+
+
+@pytest.mark.parametrize(
+    "measure,package",
+    [
+        ("wpli", "mne-connectivity"),
+        ("permutation_entropy", "antropy"),
+        ("spectral_parameterization", "specparam"),
+        ("irasa", "neurodsp"),
+        ("cycle_features", "bycycle"),
+        ("pac_surrogates", "tensorpac"),
+    ],
+)
+def test_plugin_alias_records_implementation_dependencies(monkeypatch, measure, package):
+    import eegtable.provenance as provenance
+    from eegtable.runner.measures import MEASURES, Measure
+    from eegtable.runner.provenance import extraction_software
+
+    plugin = Measure("plugin_alias", MEASURES[measure].function, ("demo-plugin", "first"))
+    monkeypatch.setitem(MEASURES, plugin.name, plugin)
+    monkeypatch.setattr(provenance, "version", lambda name: "installed")
+    entry = {"measure": plugin.name}
+    if plugin.kind == "pac":
+        entry["pairs"] = [["theta", "gamma"]]
+    recipe = load_recipe({"features": [entry]})
+
+    assert package in extraction_software(recipe)
+
+
+def test_plugin_dependency_change_invalidates_extraction_cache(tmp_path, monkeypatch):
+    import eegtable.provenance as provenance
+    from eegtable.runner.measures import MEASURES, Measure
+
+    pytest.importorskip("antropy")
+    plugin = Measure(
+        "plugin_entropy", MEASURES["permutation_entropy"].function, ("demo-plugin", "registered")
+    )
+    monkeypatch.setitem(MEASURES, plugin.name, plugin)
+    monkeypatch.setattr(provenance, "version", lambda name: "first")
+    source = tmp_path / "data/sub-01/eeg/sub-01_task-rest_epo.fif"
+    save_epochs(source)
+    recipe_path = tmp_path / "recipe.toml"
+    recipe_path.write_text(
+        '[inputs]\nroot = "data"\n[output]\nroot = "out"\n'
+        '[[features]]\nmeasure = "plugin_entropy"\nseries = ["broadband"]\n',
+        encoding="utf-8",
+    )
+    recipe = load_recipe(recipe_path)
+    assert run(recipe).ok
+    assert status(recipe)[0].state == "done"
+    monkeypatch.setattr(
+        provenance, "version", lambda name: "changed" if name == "antropy" else "first"
+    )
+
+    assert status(recipe)[0].state == "stale"
+    resumed = run(recipe, resume=True, overwrite=True)
+    assert resumed.ok and len(resumed.recordings) == 1 and not resumed.skipped
+
+
+def test_unused_package_change_during_computation_does_not_block_publication(tmp_path, monkeypatch):
+    import eegtable.provenance as provenance
+    import eegtable.runner.batch as batch
+
+    recipe, _, _ = _extract(tmp_path)
+    compute = batch.compute_features
+    installed_version = provenance.version
+
+    def modify_unused_package(*args, **kwargs):
+        features = compute(*args, **kwargs)
+        monkeypatch.setattr(
+            provenance,
+            "version",
+            lambda name: "changed" if name == "mne-bids" else installed_version(name),
+        )
+        return features
+
+    monkeypatch.setattr(batch, "compute_features", modify_unused_package)
+
+    assert run(recipe, overwrite=True).ok
 
 
 def test_renamed_input_is_stale_when_output_stem_and_bytes_match(tmp_path):
@@ -257,7 +440,7 @@ def test_upstream_change_during_computation_fails_without_publishing(
     assert not list((tmp_path / "out").rglob("*_features.tsv"))
 
 
-@pytest.mark.parametrize("changed", ["software_versions", "implementation_hash"])
+@pytest.mark.parametrize("changed", ["extraction_software", "extraction_hash"])
 def test_environment_change_during_computation_fails_without_publishing(
     tmp_path, monkeypatch, changed
 ):
@@ -280,7 +463,9 @@ def test_environment_change_during_computation_fails_without_publishing(
         monkeypatch.setattr(
             batch,
             changed,
-            lambda: {"changed": "version"} if changed == "software_versions" else "changed",
+            lambda recipe: (
+                {"changed": "version"} if changed == "extraction_software" else "changed"
+            ),
         )
         return features
 

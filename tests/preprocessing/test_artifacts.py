@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from eegtable.preprocessing.artifacts import (
     apply_artifact,
@@ -7,6 +8,54 @@ from eegtable.preprocessing.artifacts import (
     review_artifact,
 )
 from eegtable.preprocessing.config import RegressionSettings
+
+
+@pytest.mark.parametrize("change", ["drop-auxiliary", "resample"])
+def test_ica_accepts_changes_outside_its_spatial_inputs(mixture, change):
+    from eegtable.preprocessing.config import ICASettings
+    from eegtable.preprocessing.ica import fit_ica
+
+    model = fit_ica(mixture, ICASettings(n_components=4))
+    reviewed = review_artifact(model, {"fit_id": model.fit_id, "exclude": [0]})
+    application = mixture.copy()
+    if change == "drop-auxiliary":
+        application.drop_channels(["VEOG", "ECG", "STI"])
+    else:
+        application.resample(125)
+
+    actual = apply_artifact(application, reviewed)
+    expected = model.model.copy().apply(application.copy(), exclude=[0])
+
+    np.testing.assert_array_equal(actual.get_data(), expected.get_data())
+
+
+@pytest.mark.parametrize(
+    "change", ["missing", "reordered", "type", "bad", "reference", "projector"]
+)
+def test_ica_rejects_changes_to_its_spatial_inputs(mixture, change):
+    import mne
+
+    from eegtable.preprocessing.config import ICASettings
+    from eegtable.preprocessing.ica import fit_ica
+
+    model = fit_ica(mixture, ICASettings(n_components=4))
+    reviewed = review_artifact(model, {"fit_id": model.fit_id, "exclude": [0]})
+    application = mixture.copy()
+    if change == "missing":
+        application.drop_channels(["Fp1"])
+    elif change == "reordered":
+        application.reorder_channels(application.ch_names[::-1])
+    elif change == "type":
+        application.set_channel_types({"Fp1": "eog"})
+    elif change == "bad":
+        application.info["bads"] = ["Fp1"]
+    elif change == "reference":
+        application.set_eeg_reference("average")
+    else:
+        application.add_proj(mne.compute_proj_raw(application, n_eeg=1))
+
+    with pytest.raises(ValueError, match="incompatible"):
+        apply_artifact(application, reviewed)
 
 
 def test_regression_matches_mne_and_attenuates(raw):

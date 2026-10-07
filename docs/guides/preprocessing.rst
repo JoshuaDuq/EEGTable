@@ -409,6 +409,14 @@ Artifact Settings
 - ``max_iter``: a ``fastica`` or ``picard`` fit that reaches it fails as
   unconverged. MNE's ``infomax`` reports the limit whether or not it converged,
   so an ``infomax`` fit is not checked.
+- Ordinary ICA requires at least two independent good EEG channels. Electrode
+  positions are required for ICLabel and scalp-map visualization, rather than
+  for fitting ICA itself.
+- Applying ICA requires the fitted channels in their training order, with the
+  same channel types, bad labels, reference and projectors. Auxiliary channels
+  may be removed, and the sampling rate may differ: ICA applies a spatial
+  operator to each sample. SSP and regression retain their full compatibility
+  checks.
 
 **ICLabel**: ``iclabel`` takes ``threshold`` (default 0.8) and ``keep``
 (default ``[brain, other]``). It runs ICLabel on the training copy, without
@@ -417,6 +425,7 @@ the BAD spans the fit skipped, using the ONNX backend installed by
 
 - ``infomax`` or ``picard``.
 - ``artifact.reference: average``.
+- Finite nonzero electrode positions and at least four good EEG channels.
 - Training data filtered to exactly 1–100 Hz, matching
   `MNE-ICALabel's documented requirements
   <https://mne.tools/mne-icalabel/stable/generated/api/mne_icalabel.iclabel.iclabel_label_components.html>`_.
@@ -554,6 +563,8 @@ YAML with a comment above each field.
 - ``--decisions FILE`` reads another file instead.
 - The Qt viewer (``preprocessing-gui``) writes the same decision when the dialog
   is accepted.
+- ICA component choices made in MNE's viewer are saved after confirmation;
+  cancelling leaves the fitted checkpoint unchanged.
 
 Decision Fields
 ~~~~~~~~~~~~~~~

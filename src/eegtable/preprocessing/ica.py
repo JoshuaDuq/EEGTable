@@ -56,9 +56,10 @@ def fit_ica(raw: Any, settings: ICASettings) -> ArtifactModel:
     Parameters
     ----------
     raw : mne.io.Raw
-        Continuous recording with finite nonzero EEG positions and at least four
-        good EEG channels. ICLabel also requires an applied common average reference
-        of those channels and a training copy filtered to exactly 1-100 Hz.
+        Continuous recording with at least two independent good EEG channels.
+        ICLabel additionally requires electrode positions, at least four good EEG
+        channels, an applied common average reference and training data filtered
+        to exactly 1-100 Hz.
     settings : ICASettings
         Algorithm, components (at most the EEG rank; None uses the rank), seed,
         iteration limit, thresholds, segment length, artifact channels and
@@ -77,7 +78,7 @@ def fit_ica(raw: Any, settings: ICASettings) -> ArtifactModel:
     if settings.iclabel is not None:
         require("mne_icalabel", "preprocessing-auto")
         validate_iclabel_passband(max(raw.info["highpass"], settings.l_freq), raw.info["lowpass"])
-    validate_geometry(raw)
+        validate_geometry(raw)
     picks = good_eeg_names(raw)
     if settings.iclabel is not None:
         _validate_iclabel_reference(raw, picks)

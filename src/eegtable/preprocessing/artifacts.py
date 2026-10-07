@@ -30,8 +30,9 @@ class ArtifactModel:
         decision must quote it.
     compatibility : dict
         Channel names and types, bad labels, sample rate, reference flag and
-        projectors of the training data; data the operator is applied to must
-        match them.
+        projectors of the training data. ICA checks only its fitted channels,
+        reference and projectors; its spatial operator does not depend on sample
+        rate or auxiliary channels. Other operators require all fields to match.
     evidence : dict
         Detector output for review, such as ICA scores, ICLabel classes and
         ``suggested_exclude``.
@@ -231,6 +232,17 @@ def review_artifact(model: ArtifactModel, decision: dict[str, Any]) -> ReviewedA
     return ReviewedArtifact(model, dict(decision))
 
 
+def _ica_compatibility(metadata: dict[str, Any], channels: list[str]) -> dict[str, Any]:
+    indices = [index for index, name in enumerate(metadata["channels"]) if name in channels]
+    return {
+        "channels": [metadata["channels"][index] for index in indices],
+        "types": [metadata["types"][index] for index in indices],
+        "bads": [name for name in metadata["bads"] if name in channels],
+        "reference": metadata["reference"],
+        "projectors": metadata["projectors"],
+    }
+
+
 def apply_artifact(inst: Any, reviewed: ReviewedArtifact) -> Any:
     """Apply a reviewed artifact operator to a copy of continuous data or epochs.
 
@@ -241,8 +253,10 @@ def apply_artifact(inst: Any, reviewed: ReviewedArtifact) -> Any:
     Parameters
     ----------
     inst : mne.io.Raw or mne.Epochs
-        Data with the channel names and types, bad labels, sample rate, reference
-        flag and projectors of the training data.
+        Data with the operator's training reference and projectors. ICA's fitted
+        channels must retain their order, types and bad labels; auxiliary channels
+        and sample rate may differ. Other operators require the full training
+        channel identity and sample rate.
     reviewed : ReviewedArtifact
         From :func:`review_artifact`; the decision is validated again.
 
@@ -252,9 +266,13 @@ def apply_artifact(inst: Any, reviewed: ReviewedArtifact) -> Any:
     """
     artifact = reviewed.artifact
     review_artifact(artifact, reviewed.decision)
-    if identity(channel_identity(inst)) != identity(artifact.compatibility):
+    actual, expected = channel_identity(inst), artifact.compatibility
+    if artifact.method == "ica":
+        actual = _ica_compatibility(actual, artifact.model.ch_names)
+        expected = _ica_compatibility(expected, artifact.model.ch_names)
+    if identity(actual) != identity(expected):
         raise ValueError(
-            "artifact: incompatible channel order, bad labels, reference or sample rate"
+            "artifact: incompatible channels, bad labels, reference, projectors or sample rate"
         )
     result = inst.copy().load_data()
     # An empty choice leaves the samples exactly untouched instead of a PCA round trip.

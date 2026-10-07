@@ -312,6 +312,14 @@ def plugin_variance(monkeypatch):
     from eegtable.runner.measures import MEASURES
 
     installed = SimpleNamespace(name="eegtable-demo-plugin", version="1.0")
+    import eegtable.provenance as provenance
+
+    installed_version = provenance.version
+    monkeypatch.setattr(
+        provenance,
+        "version",
+        lambda name: installed.version if name == installed.name else installed_version(name),
+    )
 
     def entry_points(*, group, name):
         if group == "eegtable.measures" and name == "plugin_variance":
@@ -335,7 +343,7 @@ def test_upgrading_a_plugin_measure_makes_its_results_stale(tmp_path, plugin_var
     assert sidecar["provenance"]["software"]["eegtable-demo-plugin"] == "1.0"
 
     plugin_variance.version = "1.1"
-    MEASURES.pop("plugin_variance")  # as a new process would, looking it up again
+    assert MEASURES["plugin_variance"].provider[1] == "1.0"
 
     (entry,) = status(load_recipe(path))
     assert entry.state == "stale" and "software" in entry.reason

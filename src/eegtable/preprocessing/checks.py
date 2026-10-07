@@ -55,10 +55,10 @@ def validate_processing(raw: Any, settings: ProcessingSettings) -> None:
             channels.append(model.ecg_channel)
         require_names(raw, channels, "artifact")
         if isinstance(model, ICASettings):
-            validate_geometry(raw)
             if model.method == "picard":
                 require("picard", "preprocessing-auto")
             if model.iclabel is not None:
+                validate_geometry(raw)
                 require("mne_icalabel", "preprocessing-auto")
                 validate_iclabel_passband(
                     max(raw.info["highpass"], settings.filter.l_freq or 0.0, model.l_freq),

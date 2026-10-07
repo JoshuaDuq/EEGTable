@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+from collections.abc import Collection
 from dataclasses import asdict, is_dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -77,6 +78,14 @@ def software_versions() -> dict[str, str]:
             if package in ("eegtable", "mne", "numpy", "scipy", "pandas"):
                 raise
     return versions
+
+
+def dependency_versions(packages: Collection[str]) -> dict[str, str]:
+    """Record required dependency versions; missing distributions raise."""
+    return {
+        "python": platform.python_version(),
+        **{name: version(name) for name in sorted(packages)},
+    }
 
 
 def implementation_hash() -> str:

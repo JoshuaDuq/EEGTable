@@ -121,10 +121,8 @@ def viewer_decision(stage: str, state: Any) -> dict[str, Any]:
             # topomap figures do not scroll.
             model.plot_components()
             model.plot_sources(state.raw.copy(), block=True)
-            selected = _confirm_choices(
-                "Exclude ICA components", [str(index) for index in range(model.n_components_)]
-            )
-            return {"fit_id": artifact.fit_id, "exclude": selected}
+            _confirm_choices("Save ICA review?", [])
+            return {"fit_id": artifact.fit_id, "exclude": list(model.exclude)}
         if artifact.method == "ssp":
             mne.viz.plot_projs_topomap(artifact.model, info=state.raw.info)
             selected = _confirm_choices(

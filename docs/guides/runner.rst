@@ -483,16 +483,20 @@ each recording in one of five states:
 
 ``done``
    Every table is complete, passes its payload checksums, and matches the current input,
-   resolved recipe, software environment and Python source identity. The software
-   environment includes the version of each installed package providing a plugin measure
-   the recipe names.
+   resolved recipe, required software and extraction source identity. Required
+   software includes core numerical packages, optional packages used by selected
+   measures, and the current version of each selected plugin provider.
+   The source identity covers shared extraction modules, selected measures and
+   their local import dependencies. Registry modules are hashed without following
+   their imports of unselected measures. Edits to shared modules conservatively
+   invalidate their users; unrelated preprocessing or modeling edits do not.
 ``missing``
    No results.
 ``failed``
    No results, and the last run failed on it. The reason is that run's error, read from
    the recording's ``_failed.json``, so it survives another run into the same output root.
 ``stale``
-   The recipe, recording identity, software environment, implementation, input
+   The recipe, recording identity, required software, extraction implementation, input
    content, or linked preprocessing manifest changed.
 ``partial``
    A table, coverage file, or sidecar is missing, unreadable, unsupported, or
@@ -500,6 +504,11 @@ each recording in one of five states:
    makes the result partial.
 
 **What "this recipe" means**
+
+The sidecar also retains the full installed analysis environment under
+``provenance.environment`` as evidence. Changes to unused optional packages do
+not invalidate results or interrupt publication. Tables written before these
+scoped identities require one recomputation with ``--overwrite``.
 
 - It is what the recipe computes. Comments, formatting, and the three location keys
   (``inputs.root``, ``inputs.pattern``, ``output.root``) are left out, so moving the data and
