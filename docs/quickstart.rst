@@ -190,6 +190,8 @@ The keys are those of a TOML recipe, described in :doc:`guides/runner`.
 Next steps
 ----------
 
+- :doc:`auto_tutorials/index`: runnable analyses on public EEG and seeded
+  simulations, with generated figures and interpretation.
 - :doc:`guides/tables`: select features, preserve metadata, and stack recordings.
 - :doc:`guides/runner`: apply a recipe consistently across a cohort.
 - :doc:`guides/modeling`: choose grouping, tuning, and inference for a prediction task.

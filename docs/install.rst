@@ -174,11 +174,14 @@ From the repository root:
 
 .. code-block:: bash
 
-   python -m pip install -e ".[docs]"
+   python -m pip install -e ".[docs,model,connectivity]"
    python -m sphinx -b html -W --keep-going docs docs/_build/html
 
 Open ``docs/_build/html/index.html`` to inspect the generated site. The build
-imports the current source for API signatures and docstrings. Internet access
-is needed to fetch external reference inventories; the CI documentation job
-also installs optional scientific integrations. A documentation build does not
+imports the current source for API signatures and docstrings and executes all
+worked tutorials. The ``model`` and ``connectivity`` extras provide the tutorial
+integrations. Internet access is needed to fetch external reference inventories
+and download the public EEGBCI recordings on first use; MNE reuses its data cache
+afterward. The CI documentation job also installs other scientific integrations.
+A documentation build does not
 rerun dataset validation or refresh its saved evidence.

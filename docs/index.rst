@@ -50,6 +50,8 @@ Start here
       .. rubric:: :doc:`Quick start <quickstart>`
 
       Work through PSD, time-frequency, and burst examples with MNE objects.
+      Follow the :doc:`worked tutorials <auto_tutorials/index>` for runnable
+      analyses with figures, tables, and interpretation.
 
    .. grid-item::
 
@@ -140,7 +142,15 @@ Build an analysis workflow
    :hidden:
    :caption: Tutorials
 
+   Resting alpha power <auto_tutorials/plot_resting_alpha>
+   Morlet power and support <auto_tutorials/plot_morlet_support>
+   ERP measurements <auto_tutorials/plot_erp_measurements>
+   Beta bursts <auto_tutorials/plot_beta_bursts>
+   Phase consistency <auto_tutorials/plot_phase_consistency>
+   Sensor connectivity <auto_tutorials/plot_sensor_connectivity>
    Single-trial ERD <auto_tutorials/plot_motor_erds>
+   Session reliability <auto_tutorials/plot_session_reliability>
+   Held-out participants <auto_tutorials/plot_grouped_modeling>
 
 .. toctree::
    :hidden:

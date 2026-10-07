@@ -9,6 +9,10 @@ epoch. See :ref:`concepts-row-kinds`.
 
 Signatures are in :doc:`/api/connectivity`.
 
+The :doc:`sensor-connectivity tutorial </auto_tutorials/plot_sensor_connectivity>`
+compares PLV and wPLI for random-phase, shared, and phase-lagged signals, with
+matching MNE-Connectivity calculations and explicit trial-group rows.
+
 Inter-Trial Phase Coherence
 ---------------------------
 

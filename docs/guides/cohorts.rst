@@ -131,6 +131,10 @@ both fitting and model selection.
 Repeated-session reliability
 ----------------------------
 
+The :doc:`worked reliability tutorial </auto_tutorials/plot_session_reliability>`
+extracts log alpha power, records trial aggregation, and compares agreement with
+consistency in a balanced repeated-session simulation.
+
 :func:`eegtable.intraclass_reliability` evaluates one explicitly aggregated estimate
 per subject/session, with a complete balanced design and at least three subjects
 and two sessions. It reports single-measure absolute agreement ICC(2,1) and

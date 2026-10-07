@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from sphinx_gallery.sorting import ExplicitOrder
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
@@ -47,6 +49,21 @@ sphinx_gallery_conf = {
     "remove_config_comments": True,
     "show_signature": False,
     "write_computation_times": False,
+    "abort_on_example_error": True,
+    "run_stale_examples": True,
+    "within_subsection_order": ExplicitOrder(
+        [
+            "plot_resting_alpha.py",
+            "plot_morlet_support.py",
+            "plot_erp_measurements.py",
+            "plot_beta_bursts.py",
+            "plot_phase_consistency.py",
+            "plot_sensor_connectivity.py",
+            "plot_motor_erds.py",
+            "plot_session_reliability.py",
+            "plot_grouped_modeling.py",
+        ]
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -220,5 +237,18 @@ def _root_404_links(app, doctree, docname):
             node["refuri"] = prefix + uri
 
 
+def _tutorial_source_links(app, pagename, templatename, context, doctree):
+    if pagename == "auto_tutorials/index":
+        source = "tutorials/README.rst"
+    elif pagename.startswith("auto_tutorials/plot_"):
+        source = pagename.replace("auto_tutorials/", "tutorials/", 1) + ".py"
+    else:
+        return
+    repository = app.config.html_theme_options["source_repository"]
+    branch = app.config.html_theme_options["source_branch"]
+    context["theme_source_view_link"] = f"{repository}/blob/{branch}/{source}?plain=true"
+
+
 def setup(app):
     app.connect("doctree-resolved", _root_404_links)
+    app.connect("html-page-context", _tutorial_source_links)

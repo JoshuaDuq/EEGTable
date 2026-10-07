@@ -256,6 +256,10 @@ These measures summarize one window: ``variance``, ``mean_amplitude``,
 ``zero_crossing_rate``. ``hjorth_mobility`` and ``hjorth_complexity`` are
 also included.
 
+The :doc:`ERP measurement tutorial </auto_tutorials/plot_erp_measurements>`
+extracts prespecified mean amplitude and positive peak latency while retaining
+trial identities after rejection, with NumPy and MNE reference calculations.
+
 **Input.**
 
 - On a :class:`~eegtable.Signal` the input is the waveform.

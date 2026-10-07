@@ -18,8 +18,8 @@ python -m pip install -e ".[dev,docs,model,connectivity,microstates,importance,r
 
 ```bash
 python -m pytest
-python -m ruff check src tests
-python -m black --check src tests
+python -m ruff check src tests tutorials docs/conf.py
+python -m black --check src tests tutorials docs/conf.py
 python -m mypy
 python -m sphinx -b html -W --keep-going docs docs/_build/html
 ```

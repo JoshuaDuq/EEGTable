@@ -9,6 +9,15 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
+- Extraction reuse compares recipe-scoped software and source identities.
+  Unused optional package upgrades and unrelated preprocessing/modeling edits
+  no longer invalidate results. The full analysis environment remains recorded
+  separately. Existing extraction tables require one recomputation to adopt the
+  scoped identities.
+- Ordinary ICA no longer requires electrode positions or four good EEG channels;
+  rank validation remains enforced, and ICLabel retains its geometry requirements.
+  ICA application accepts changes to auxiliary channels and sampling rate while
+  preserving checks on its fitted channels, reference and projectors.
 - Export checkpoints now record the exported provenance identity. Existing export
   checkpoints require `reset CONFIG --from export` before republishing; upstream
   preprocessing checkpoints remain reusable.
@@ -143,6 +152,12 @@ behaviour, and every such change is listed here.
   global means and pattern ROIs would split into separate columns. It also warns
   when a Welch window holds a single segment, making its spectrum one periodogram.
 - Documentation:
+  - eight additional tutorials on resting alpha, Morlet support and quality,
+    ERPs, beta bursts, phase consistency, sensor connectivity, session reliability,
+    and participant-held-out modeling, with reference calculations and figures
+    generated on every documentation build;
+  - explicit finite-value and reduction checks in the motor ERD tutorial, with
+    descriptive summaries that account for the repeated-observation sample unit;
   - a tutorial that measures single-trial ERD on a public dataset, with figures,
     run on every documentation build;
   - guides to the long format and reading bundles in R, to writing your own
@@ -175,6 +190,11 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- ICA review saves the exclusions selected in MNE's viewer after confirmation,
+  rather than replacing them with a separate unchecked checklist. Plugin
+  provider versions are read afresh when checking extraction reuse or publication.
+- Plugin aliases of built-in measures retain their numerical dependency versions,
+  so upgrades to those dependencies invalidate extraction reuse.
 - Graph summaries preserve the minimum edge coverage and support, and any input
   flags, so derived networks cannot bypass the quality policy applied to their
   connectivity estimates.
