@@ -243,6 +243,7 @@ class RecordingInputs:
                 finite,
                 recording=self.recording,
                 n_cycles=n_cycles,
+                zero_mean=True,
                 sfreq=self.sfreq,
                 statistic=self.recipe.spectra.window_statistic,
             )
@@ -341,6 +342,8 @@ class RecordingInputs:
 
     def _morlet(self) -> tuple[Any, npt.NDArray[np.float64]]:
         if self._tfr is None:
+            if np.iscomplexobj(self.epochs.get_data(copy=False)):
+                raise TypeError("Morlet power requires real epoch samples, not analytic signals.")
             settings = self.recipe.spectra
             freqs = (
                 _log_grid(settings.fmin, settings.fmax, settings.n_freqs)
@@ -354,6 +357,7 @@ class RecordingInputs:
                 "morlet",
                 freqs=freqs,
                 n_cycles=n_cycles,
+                zero_mean=True,
                 picks="all",
                 decim=settings.decim,
                 output="power",

@@ -78,7 +78,9 @@ def test_the_morlet_constructor_is_the_tfr_route_without_restating_its_settings(
     tfr = epochs.compute_tfr(
         "morlet", freqs=freqs, n_cycles=3.0, average=False, return_itc=False, verbose="error"
     )
-    manual = Spectra.from_tfr(tfr, WINDOWS, recording="sub-01", n_cycles=3.0, sfreq=250.0)
+    manual = Spectra.from_tfr(
+        tfr, WINDOWS, recording="sub-01", n_cycles=3.0, sfreq=250.0, zero_mean=True
+    )
 
     np.testing.assert_allclose(spectra.data, manual.data)
     assert spectra.computation == manual.computation
@@ -109,7 +111,9 @@ def test_morlet_time_offsets_with_the_same_sample_count_have_distinct_identities
         for decim in (4, slice(1, None, 4))
     ]
     spectra = [
-        Spectra.from_tfr(tfr, WINDOWS, recording="sub-01", n_cycles=3.0, sfreq=250.0)
+        Spectra.from_tfr(
+            tfr, WINDOWS, recording="sub-01", n_cycles=3.0, sfreq=250.0, zero_mean=True
+        )
         for tfr in tfrs
     ]
 
@@ -156,6 +160,102 @@ def test_psd_constructors_refuse_complex_epochs(method) -> None:
     epochs = make_epochs().apply_hilbert(envelope=False)
     with pytest.raises(TypeError, match="real"):
         getattr(Spectra, method)(epochs, recording="sub-01")
+
+
+def test_morlet_constructor_refuses_complex_epochs() -> None:
+    epochs = make_epochs().apply_hilbert(envelope=False)
+    with pytest.raises(TypeError, match="real"):
+        Spectra.morlet(
+            epochs,
+            [Window("all", -np.inf, np.inf)],
+            recording="sub-01",
+            freqs=np.array([8.0, 10.0, 12.0]),
+            n_cycles=3.0,
+        )
+
+
+@pytest.mark.parametrize("field", ["freqs", "n_cycles"])
+def test_morlet_constructor_refuses_complex_wavelet_settings(field) -> None:
+    settings = {"freqs": np.array([8.0, 10.0, 12.0]), "n_cycles": np.full(3, 3.0)}
+    settings[field] = np.asarray(settings[field], dtype=complex) + 1j
+    with pytest.raises(TypeError, match="real"):
+        Spectra.morlet(
+            make_epochs(),
+            [Window("all", -np.inf, np.inf)],
+            recording="sub-01",
+            **settings,
+        )
+
+
+def test_tfr_conversion_requires_the_zero_mean_declaration() -> None:
+    tfr = make_epochs().compute_tfr(
+        "morlet",
+        freqs=np.array([8.0, 10.0, 12.0]),
+        n_cycles=1.0,
+        zero_mean=True,
+        average=False,
+        return_itc=False,
+        verbose=False,
+    )
+    with pytest.raises(TypeError, match="zero_mean"):
+        Spectra.from_tfr(
+            tfr,
+            [Window("all", -np.inf, np.inf)],
+            recording="sub-01",
+            n_cycles=1.0,
+            sfreq=250.0,
+        )
+
+
+def test_tfr_zero_mean_settings_with_different_power_have_distinct_names() -> None:
+    tables = []
+    for zero_mean in (False, True):
+        tfr = make_epochs().compute_tfr(
+            "morlet",
+            freqs=np.array([8.0, 10.0, 12.0]),
+            n_cycles=1.0,
+            zero_mean=zero_mean,
+            average=False,
+            return_itc=False,
+            verbose=False,
+        )
+        spectra = Spectra.from_tfr(
+            tfr,
+            [Window("all", -np.inf, np.inf)],
+            recording="sub-01",
+            n_cycles=1.0,
+            sfreq=250.0,
+            zero_mean=zero_mean,
+        )
+        assert spectra.computation.parameters["zero_mean"] is zero_mean
+        tables.append(ef.mean_tfr_power(spectra, bands=[ef.Band("alpha", 8.0, 12.0)]))
+    assert not np.array_equal(tables[0].values, tables[1].values)
+    assert set(tables[0].names).isdisjoint(tables[1].names)
+
+
+@pytest.mark.parametrize("zero_mean", [None, 0, 1, "False"])
+def test_tfr_conversion_requires_a_boolean_zero_mean(zero_mean) -> None:
+    with pytest.raises(TypeError, match="zero_mean.*bool"):
+        Spectra.from_tfr(
+            object(),
+            [Window("all", -np.inf, np.inf)],
+            recording="sub-01",
+            n_cycles=3.0,
+            sfreq=250.0,
+            zero_mean=zero_mean,
+        )
+
+
+def test_tfr_conversion_refuses_complex_cycle_counts() -> None:
+    with pytest.raises(TypeError, match="real"):
+        Spectra.from_tfr(
+            object(),
+            [Window("all", -np.inf, np.inf)],
+            recording="sub-01",
+            n_cycles=np.array([3.0 + 1j]),
+            sfreq=250.0,
+            zero_mean=True,
+        )
 
 
 def _whole_and_in_blocks(monkeypatch, data):

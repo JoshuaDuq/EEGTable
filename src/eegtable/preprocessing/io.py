@@ -10,11 +10,11 @@ from typing import Any
 
 import mne  # type: ignore[import-untyped]
 import numpy as np
-import pandas as pd
 
 from .checkpoints import payload_files, write_json
 from .checks import BUNDLE_SUFFIXES
 from .config import OutputSettings
+from .epochs import validate_metadata_precision
 from .pipeline import PreprocessingResult
 from .provenance import file_hash, identity
 from .report import build_report
@@ -84,17 +84,7 @@ def write_result(
         np.testing.assert_array_equal(restored.events, epochs.events)
         if restored.info["custom_ref_applied"] != epochs.info["custom_ref_applied"]:
             raise ValueError("export: reference changed during native serialization")
-        if epochs.metadata is not None:
-            # Native JSON uses 10 decimal places; refuse rounding that materially changes values.
-            try:
-                pd.testing.assert_frame_equal(
-                    restored.metadata, epochs.metadata, check_exact=False, rtol=1e-9, atol=0
-                )
-            except AssertionError as exc:
-                raise ValueError(
-                    "export: epoch metadata cannot be preserved at native FIF JSON precision; "
-                    f"rescale numeric columns or store exact values as strings. {exc}"
-                ) from exc
+        validate_metadata_precision(epochs.metadata, restored.metadata)
         result.events.to_csv(staged / f"{output.name}_events.tsv", sep="\t", index=False)
         if result.repairs is not None:
             result.repairs.to_csv(staged / f"{output.name}_repairs.tsv", sep="\t", index=False)

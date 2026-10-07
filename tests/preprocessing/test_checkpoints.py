@@ -1,6 +1,9 @@
 from dataclasses import replace
 from datetime import date
 
+import mne
+import numpy as np
+import pandas as pd
 import pytest
 
 from eegtable.preprocessing import list_steps, open_workflow, run_step, run_until
@@ -195,3 +198,46 @@ def test_epoch_checkpoints_hold_no_raw(raw, tmp_path):
         checkpoint = read_checkpoint(workflow, stage)
         assert checkpoint.state.raw is None
         assert not (checkpoint.path / "data_raw.fif").exists()
+
+
+def test_checkpoint_refuses_epoch_metadata_precision_loss(raw, tmp_path):
+    from eegtable.preprocessing.checkpoints import publish_checkpoint
+    from eegtable.preprocessing.pipeline import StageData
+
+    epochs = mne.Epochs(
+        raw,
+        np.array([[raw.first_samp + 100, 0, 1]]),
+        event_id={"stimulus": 1},
+        tmin=0,
+        tmax=0.5,
+        baseline=None,
+        metadata=pd.DataFrame({"effect": [1e-11]}),
+        preload=True,
+        verbose=False,
+    )
+
+    with pytest.raises(ValueError, match="metadata.*precision.*rescale"):
+        publish_checkpoint(tmp_path, "epoch", "a" * 64, StageData(None, epochs=epochs), {}, {})
+
+    assert not (tmp_path / "epoch.json").exists()
+    assert not (tmp_path / "epoch" / ("a" * 64)).exists()
+
+
+def test_checkpoint_refuses_event_metadata_precision_loss(raw, tmp_path):
+    from eegtable.preprocessing.checkpoints import publish_checkpoint
+    from eegtable.preprocessing.config import EventSettings
+    from eegtable.preprocessing.events import resolve_events
+    from eegtable.preprocessing.pipeline import StageData
+
+    events = resolve_events(
+        raw,
+        EventSettings("annotations", {"stimulus": 1}),
+        events=np.array([[raw.first_samp + 100, 0, 1]]),
+        metadata=pd.DataFrame({"effect": [1.23456789e-14]}),
+    )
+
+    with pytest.raises(ValueError, match="metadata.*precision.*rescale"):
+        publish_checkpoint(tmp_path, "events", "b" * 64, StageData(raw, events), {}, {})
+
+    assert not (tmp_path / "events.json").exists()
+    assert not (tmp_path / "events" / ("b" * 64)).exists()

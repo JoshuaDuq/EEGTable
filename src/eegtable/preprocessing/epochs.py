@@ -6,6 +6,7 @@ from typing import Any
 
 import mne  # type: ignore[import-untyped]
 import numpy as np
+import pandas as pd
 from scipy.signal import detrend
 
 from .config import EventEpochSettings, FixedEpochSettings, ReferenceSettings, ThresholdSettings
@@ -29,6 +30,28 @@ def validate_epochs(epochs: Any) -> None:
     good_eeg_names(epochs)
     if not np.isfinite(epochs.get_data()).all():
         raise ValueError("epochs: nonfinite samples")
+
+
+def validate_metadata_precision(
+    original: pd.DataFrame | None, restored: pd.DataFrame | None
+) -> None:
+    if original is None:
+        return
+    if restored is None:
+        raise ValueError("metadata: missing after serialization")
+    # JSON restores nulls as either None or NaN and infers all-missing column dtypes.
+    original_values = original.astype(object).where(original.notna(), None)
+    restored_values = restored.astype(object).where(restored.notna(), None)
+    # JSON has limited decimal precision; refuse material metadata rounding.
+    try:
+        pd.testing.assert_frame_equal(
+            restored_values, original_values, check_exact=False, rtol=1e-9, atol=0
+        )
+    except AssertionError as exc:
+        raise ValueError(
+            "metadata: cannot be preserved at native JSON precision; "
+            f"rescale numeric columns or store exact values as strings. {exc}"
+        ) from exc
 
 
 def make_epochs(

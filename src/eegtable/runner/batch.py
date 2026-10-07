@@ -665,6 +665,8 @@ def _judge(recording: Recording, current: dict[str, Any]) -> tuple[RecordingStat
         bundle = recording._bundle(name)
         gone = [path.name for path in bundle if not path.exists()]
         if len(gone) == len(bundle):
+            if recording._support(name).exists():
+                return "partial", f"the {name} support file has no accompanying table"
             continue
         if gone:
             return "partial", f"the {name} table lacks {', '.join(gone)}"

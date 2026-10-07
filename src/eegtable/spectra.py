@@ -344,6 +344,7 @@ class Spectra:
         recording: str,
         n_cycles: float | npt.NDArray[np.float64],
         sfreq: float,
+        zero_mean: bool,
         statistic: WindowStatistic = "mean",
     ) -> Spectra:
         """Build from an MNE ``EpochsTFR`` by averaging over time windows.
@@ -372,6 +373,9 @@ class Spectra:
             for the same reason: a TFR computed with ``decim`` reports the
             decimated rate as its own, and MNE keeps no record of the original,
             so reading it off the object would scale a decimated TFR wrongly.
+        zero_mean : bool
+            Whether the Morlet wavelets were made zero-mean. Required because
+            MNE does not retain this setting, and it changes the estimated power.
         statistic : {"mean", "median"}, default "mean"
             Temporal reduction of supported coefficients. The median is divided
             by ln 2, calibrating the population median to the mean of an
@@ -385,6 +389,10 @@ class Spectra:
         Spectra
             One spectrum per window, in V²/Hz.
         """
+        if not isinstance(zero_mean, bool):
+            raise TypeError("zero_mean must be a boolean matching the Morlet computation.")
+        if np.iscomplexobj(n_cycles):
+            raise TypeError("Morlet cycle counts must be real.")
         if statistic not in ("mean", "median"):
             raise ValueError(f"statistic must be 'mean' or 'median', got {statistic!r}.")
         if getattr(tfr, "baseline", None) is not None:
@@ -442,6 +450,7 @@ class Spectra:
             computation=ComputationSpec.create(
                 "morlet",
                 n_cycles=np.asarray(n_cycles, dtype=float),
+                zero_mean=zero_mean,
                 frequencies_hz=freqs,
                 # Recorded because it changes every value: a table built before
                 # this scaling existed must not land on the same column.
@@ -653,7 +662,7 @@ class Spectra:
         Parameters
         ----------
         epochs : mne.Epochs
-            Epoched data, not baseline-corrected. Channels are picked from a copy.
+            Real epoched data, not baseline-corrected. Channels are picked from a copy.
         windows : sequence of Window
             Time windows; an infinite one spans the epochs.
         recording : str
@@ -676,13 +685,18 @@ class Spectra:
         Spectra
             One wavelet-smoothed density per window, in V²/Hz for EEG in volts.
         """
+        if np.iscomplexobj(freqs) or np.iscomplexobj(n_cycles):
+            raise TypeError("Morlet frequencies and cycle counts must be real.")
         selected = epochs.copy().pick(picks, exclude=exclude)
+        if np.iscomplexobj(selected.get_data(copy=False)):
+            raise TypeError("Morlet power requires real epoch samples, not analytic signals.")
         times = np.asarray(selected.times, dtype=float)
         cycles = np.asarray(n_cycles, dtype=float)
         tfr = selected.compute_tfr(
             "morlet",
             freqs=np.asarray(freqs, dtype=float),
             n_cycles=n_cycles,
+            zero_mean=True,
             picks="all",
             decim=decim,
             output="power",
@@ -697,6 +711,7 @@ class Spectra:
             recording=recording,
             n_cycles=cycles if cycles.ndim else float(cycles),
             sfreq=float(selected.info["sfreq"]),
+            zero_mean=True,
             statistic=statistic,
         )
 

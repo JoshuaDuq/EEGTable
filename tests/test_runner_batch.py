@@ -479,6 +479,26 @@ def test_status_before_any_run_is_missing_for_every_recording(tmp_path) -> None:
     }
 
 
+@pytest.mark.parametrize("table", ["features", "crosstrial"])
+def test_support_without_its_table_is_partial_and_cannot_be_skipped(tmp_path, table) -> None:
+    save_epochs(tmp_path / "data/sub-01/eeg/sub-01_task-rest_epo.fif")
+    recipe = _recipe(tmp_path, POWER)
+    support = _features_path(tmp_path, "sub-01").with_name(f"sub-01_task-rest_{table}_support.tsv")
+    support.parent.mkdir(parents=True)
+    support.write_text("orphaned support", encoding="utf-8")
+
+    entry = status(recipe)[0]
+    assert entry.state == "partial"
+    assert table in entry.reason and "support" in entry.reason
+    with pytest.raises(RunError, match="partial"):
+        run(recipe, resume=True)
+
+    result = run(recipe, resume=True, overwrite=True)
+    assert result.ok and len(result.recordings) == 1 and not result.skipped
+    assert not support.exists()
+    assert status(recipe)[0].state == "done"
+
+
 def test_status_after_a_run_is_done_and_lists_the_results(tmp_path) -> None:
     _two_recordings(tmp_path)
     recipe = _recipe(tmp_path, POWER)

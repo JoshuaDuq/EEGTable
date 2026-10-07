@@ -58,6 +58,10 @@ estimate on the scale of a one-sided density.
 
 - **Correction**: :meth:`~eegtable.Spectra.from_tfr` divides that factor out and
   therefore needs the sampling rate the TFR was computed at.
+- **Wavelet declaration**: ``from_tfr`` requires the original ``n_cycles`` and
+  ``zero_mean`` settings, which MNE does not retain. Both enter feature identities;
+  removing the wavelet's mean can change power, especially at low cycle counts.
+  ``Spectra.morlet`` and recipe extraction explicitly use ``zero_mean=True``.
 - **Decimated TFR**: it reports only the decimated rate.
 - **Scaling**: raw coefficient power scales approximately with the sampling
   rate for fixed physical wavelet parameters. Discrete sampling, low cycle

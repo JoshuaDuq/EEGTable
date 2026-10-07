@@ -18,6 +18,99 @@ TRAIN = np.arange(8, dtype=np.intp)
 TEST = np.arange(8, 12, dtype=np.intp)
 
 
+@pytest.mark.parametrize("method", ["pooled", "within", "staged"])
+@pytest.mark.parametrize(
+    "train, message",
+    [
+        (np.arange(8) + 0.25, "integer"),
+        (np.array([0, 1, 2, 3, 4, 5, 6, 6]), "duplicate"),
+    ],
+)
+def test_nuisance_fitting_rejects_invalid_training_rows(method, train, message):
+    y = np.random.default_rng(4).normal(size=12)
+    covariates = np.arange(12.0).reshape(-1, 1)
+    groups = np.full(12, "subject", dtype=object)
+    with pytest.raises(ValueError, match=message):
+        if method == "pooled":
+            fit_nuisance_model(y, covariates, train, TEST, columns=("c",))
+        elif method == "within":
+            residualize_within_subjects(y, covariates, groups, train, TEST, columns=("c",))
+        else:
+            fit_staged_residual_preprocessor(
+                X=y[:, None],
+                y=y,
+                covariates=covariates,
+                groups=groups,
+                rows=train,
+                columns=("c",),
+            )
+
+
+@pytest.mark.parametrize("method", ["pooled", "within", "staged"])
+def test_nuisance_fitting_requires_covariates_aligned_to_all_rows(method):
+    y = np.random.default_rng(4).normal(size=12)
+    covariates = np.arange(13.0).reshape(-1, 1)
+    groups = np.full(12, "subject", dtype=object)
+    with pytest.raises(ValueError, match="covariates.*rows"):
+        if method == "pooled":
+            fit_nuisance_model(y, covariates, TRAIN, TEST, columns=("c",))
+        elif method == "within":
+            residualize_within_subjects(y, covariates, groups, TRAIN, TEST, columns=("c",))
+        else:
+            fit_staged_residual_preprocessor(
+                X=y[:, None],
+                y=y,
+                covariates=covariates,
+                groups=groups,
+                rows=TRAIN,
+                columns=("c",),
+            )
+
+
+@pytest.mark.parametrize("invalid", ["train", "permutation"])
+def test_staged_permutation_rejects_fractional_row_indices(invalid):
+    y = np.random.default_rng(4).normal(size=12)
+    train = TRAIN + 0.25 if invalid == "train" else TRAIN
+    source = np.arange(12) + 0.25 if invalid == "permutation" else np.arange(12)
+    with pytest.raises(ValueError, match="integer"):
+        reconstruct_staged_permutation_target_for_fold(
+            y=y,
+            covariates=np.arange(12.0).reshape(-1, 1),
+            train=train,
+            test=TEST,
+            columns=("c",),
+            permutation_indices=source,
+        )
+
+
+@pytest.mark.parametrize(
+    "feature_shape, group_shape, message",
+    [
+        ((13, 2), (12,), "X"),
+        ((12, 2), (13,), "groups"),
+        ((12,), (12,), "X"),
+        ((12, 2), (12, 1), "groups"),
+    ],
+)
+def test_staged_preprocessing_requires_all_inputs_aligned_to_target(
+    feature_shape, group_shape, message
+):
+    rng = np.random.default_rng(4)
+    y = rng.normal(size=12)
+    X = rng.normal(size=feature_shape)
+    groups = np.full(group_shape, "subject", dtype=object)
+
+    with pytest.raises(ValueError, match=message):
+        fit_staged_residual_preprocessor(
+            X=X,
+            y=y,
+            covariates=np.arange(12.0).reshape(-1, 1),
+            groups=groups,
+            rows=TRAIN,
+            columns=("c",),
+        )
+
+
 def test_nuisance_removal_is_invariant_to_covariate_units() -> None:
     covariates = np.random.default_rng(3).normal(size=(40, 2))
     y = 2 + covariates @ np.array([3.0, 5.0])

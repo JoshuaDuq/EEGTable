@@ -32,7 +32,7 @@ def _morlet_band_means(recording: Recording, epochs: object) -> ef.FeatureTable:
         "morlet", freqs=FREQS, n_cycles=N_CYCLES, use_fft=True, return_itc=False, average=False
     )
     spectra = ef.Spectra.from_tfr(
-        tfr, [WINDOW], recording=recording.name, n_cycles=N_CYCLES, sfreq=sfreq
+        tfr, [WINDOW], recording=recording.name, n_cycles=N_CYCLES, sfreq=sfreq, zero_mean=True
     )
     return ef.mean_tfr_power(spectra, bands=[MU, BETA], include_global=False)
 
@@ -114,7 +114,7 @@ def test_support_is_partial_where_wavelets_overrun_the_window(first: Recording) 
         "morlet", freqs=FREQS, n_cycles=N_CYCLES, use_fft=True, return_itc=False, average=False
     )
     spectra = ef.Spectra.from_tfr(
-        tfr, [WINDOW], recording=first.name, n_cycles=N_CYCLES, sfreq=160.0
+        tfr, [WINDOW], recording=first.name, n_cycles=N_CYCLES, sfreq=160.0, zero_mean=True
     )
     assert spectra.support.max() <= 1.0
     assert spectra.support.min() < 1.0, "a 3 s window cannot be fully supported at every bin"

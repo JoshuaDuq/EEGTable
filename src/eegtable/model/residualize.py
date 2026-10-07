@@ -57,12 +57,22 @@ class FoldNuisanceFit:
 
 def _validate_indices(
     y: npt.NDArray[np.float64],
+    covariates: pd.DataFrame | npt.NDArray[np.float64],
     train_idx: npt.NDArray[np.intp],
     test_idx: npt.NDArray[np.intp],
 ) -> None:
     if y.ndim != 1:
         msg = f"Target residualization expects a 1D target vector, got shape {y.shape}."
         raise ValueError(msg)
+    if len(covariates) != len(y):
+        raise ValueError(f"covariates has {len(covariates)} rows and target has {len(y)}.")
+    for label, indices in (("train", train_idx), ("test", test_idx)):
+        if indices.ndim != 1:
+            raise ValueError(f"Target residualization {label} indices must be 1-D.")
+        if indices.size and not np.issubdtype(indices.dtype, np.integer):
+            raise ValueError(f"Target residualization {label} indices must be integers.")
+        if np.unique(indices).size != indices.size:
+            raise ValueError(f"Target residualization has duplicate {label} indices.")
     if train_idx.size == 0:
         msg = "Target residualization requires non-empty train indices."
         raise ValueError(msg)
@@ -195,11 +205,11 @@ def fit_nuisance_model(
         DataFrame supplies ``columns`` by name; an array has exactly one column per
         name, in order.
     train : array-like of int
-        Rows the model is fitted on. They must outnumber its parameters, and on
+        Unique row indices the model is fitted on. They must outnumber its parameters, and on
         them no nuisance column may be constant or linearly dependent on the
         others.
     test : array-like of int, optional
-        Rows the fitted model is applied to; disjoint from ``train``.
+        Unique row indices the fitted model is applied to; disjoint from ``train``.
     columns : sequence of str
         Nuisance column names; blank names are ignored and an intercept is always
         added.
@@ -214,11 +224,11 @@ def fit_nuisance_model(
         raise ValueError(msg)
 
     y_values = np.asarray(y, dtype=np.float64)
-    train_indices = np.asarray(train, dtype=np.intp)
-    test_indices = (
-        np.asarray(test, dtype=np.intp) if test is not None else np.empty(0, dtype=np.intp)
-    )
-    _validate_indices(y_values, train_indices, test_indices)
+    train_indices = np.asarray(train)
+    test_indices = np.asarray(test) if test is not None else np.empty(0, dtype=np.intp)
+    _validate_indices(y_values, covariates, train_indices, test_indices)
+    train_indices = train_indices.astype(np.intp, copy=False)
+    test_indices = test_indices.astype(np.intp, copy=False)
 
     design_train = _design_matrix(covariates, train_indices, column_names, check_rank=True)
     y_train = y_values[train_indices]
@@ -328,7 +338,7 @@ def residualize_within_subjects(
     groups : ndarray, shape (n_rows,)
         Subject label of each design row.
     train, test : array-like of int
-        Disjoint training and held-out rows.
+        Unique, disjoint training and held-out row indices.
     columns : sequence of str
         Nuisance column names; blank names are ignored and an intercept is always
         added.
@@ -347,9 +357,11 @@ def residualize_within_subjects(
         raise ValueError("Target residualization requires at least one nuisance column.")
     data = np.asarray(values, dtype=np.float64)
     group_labels = np.asarray(groups, dtype=object)
-    train_rows = np.asarray(train, dtype=np.intp)
-    test_rows = np.asarray(test, dtype=np.intp)
-    _validate_indices(np.empty(len(data)), train_rows, test_rows)
+    train_rows = np.asarray(train)
+    test_rows = np.asarray(test)
+    _validate_indices(np.empty(len(data)), covariates, train_rows, test_rows)
+    train_rows = train_rows.astype(np.intp, copy=False)
+    test_rows = test_rows.astype(np.intp, copy=False)
     if len(group_labels) != len(data):
         raise ValueError(f"groups has {len(group_labels)} rows and values has {len(data)}.")
 
@@ -605,8 +617,17 @@ def fit_staged_residual_preprocessor(
         raise ValueError(msg)
 
     cfg = config or PreprocessingConfig()
-    fit_rows = np.asarray(rows, dtype=np.intp)
-    values = _finite_feature_block(X, fit_rows)
+    fit_rows = np.asarray(rows)
+    y_values = np.asarray(y, dtype=np.float64)
+    _validate_indices(y_values, cov, fit_rows, np.empty(0, dtype=np.intp))
+    fit_rows = fit_rows.astype(np.intp, copy=False)
+    feature_values = np.asarray(X, dtype=np.float64)
+    group_labels = np.asarray(groups)
+    if feature_values.ndim != 2 or feature_values.shape[0] != len(y_values):
+        raise ValueError("X must be 2-D with one row per target row.")
+    if group_labels.shape != y_values.shape:
+        raise ValueError("groups must contain one label per target row.")
+    values = _finite_feature_block(feature_values, fit_rows)
 
     max_missing = cfg.max_feature_missingness
     missing_rate = (
@@ -626,7 +647,7 @@ def fit_staged_residual_preprocessor(
     max_subject_missingness = cfg.max_subject_missingness
     validate_subject_missingness(
         kept,
-        cast(npt.NDArray[np.object_], np.asarray(groups)[fit_rows]),
+        cast(npt.NDArray[np.object_], group_labels[fit_rows]),
         maximum=max_subject_missingness,
     )
     with warnings.catch_warnings():
@@ -643,7 +664,7 @@ def fit_staged_residual_preprocessor(
     design = _design_matrix(cov, fit_rows, tuple(columns), check_rank=True)
     feature_coefficients = fit_coefficients(design, imputed)
 
-    y_fit = np.asarray(y, dtype=np.float64)[fit_rows]
+    y_fit = y_values[fit_rows]
     if not np.all(np.isfinite(y_fit)):
         msg = "Staged residual learning requires finite training target values."
         raise ValueError(msg)
@@ -730,13 +751,13 @@ def reconstruct_staged_permutation_target_for_fold(
         raise ValueError(msg)
 
     y_arr = np.asarray(y, dtype=np.float64)
-    train_indices = np.asarray(trn, dtype=np.intp)
-    test_indices = np.asarray(tst, dtype=np.intp)
+    train_indices = np.asarray(trn)
+    test_indices = np.asarray(tst)
+    _validate_indices(y_arr, cov, train_indices, test_indices)
+    train_indices = train_indices.astype(np.intp, copy=False)
+    test_indices = test_indices.astype(np.intp, copy=False)
     fold_mask = np.zeros(len(y_arr), dtype=np.bool_)
     fold_mask[train_indices] = True
-    if np.any(fold_mask[test_indices]):
-        msg = "Outer fold train and test indices must be disjoint."
-        raise ValueError(msg)
     fold_mask[test_indices] = True
     fold_indices = np.flatnonzero(fold_mask)
 
@@ -763,10 +784,12 @@ def reconstruct_staged_permutation_target_for_fold(
         msg = "Staged residual permutation requires finite nuisance predictions."
         raise ValueError(msg)
 
-    source_indices = np.asarray(permutation_indices, dtype=np.intp)
+    source_indices = np.asarray(permutation_indices)
     if source_indices.shape != (len(y_arr),):
         msg = "Permutation indices must contain one source row per target row."
         raise ValueError(msg)
+    if not np.issubdtype(source_indices.dtype, np.integer):
+        raise ValueError("Permutation indices must be integers.")
     if not np.array_equal(np.sort(source_indices), np.arange(len(y_arr), dtype=np.intp)):
         msg = "Permutation indices must be a permutation of all row indices."
         raise ValueError(msg)

@@ -392,7 +392,9 @@ def _toy_tfr(n_epochs: int = 4, method: str = "morlet", decim: int = 1):
 
 def test_from_tfr_produces_one_spectrum_per_window() -> None:
     windows = (Window("base", -2.0, -1.0), Window("stim", 0.0, 1.0))
-    spectra = Spectra.from_tfr(_toy_tfr(), windows, recording="test", n_cycles=3.0, sfreq=200.0)
+    spectra = Spectra.from_tfr(
+        _toy_tfr(), windows, recording="test", n_cycles=3.0, sfreq=200.0, zero_mean=True
+    )
     assert spectra.data.shape == (4, 2, 2, 3)
     assert tuple(w.name for w in spectra.windows) == ("base", "stim")
     assert spectra.source == "morlet"
@@ -411,7 +413,9 @@ def test_from_tfr_preserves_explicitly_retained_channels() -> None:
     )
     window = Window("middle", 1.0, 3.0)
 
-    spectra = Spectra.from_tfr(tfr, [window], recording="test", n_cycles=3.0, sfreq=200.0)
+    spectra = Spectra.from_tfr(
+        tfr, [window], recording="test", n_cycles=3.0, sfreq=200.0, zero_mean=True
+    )
 
     mask = support_restricted_mask(tfr.times, tfr.freqs, window, 3.0)[0]
     expected = tfr.get_data(picks=tfr.ch_names)[:, :, 0, mask].mean(axis=-1) / 200.0
@@ -424,7 +428,9 @@ def test_from_tfr_preserves_explicitly_retained_channels() -> None:
 def test_from_tfr_window_mean_equals_a_manual_mean_over_the_time_mask() -> None:
     tfr = _toy_tfr()
     window = Window("stim", 0.0, 1.0)
-    spectra = Spectra.from_tfr(tfr, (window,), recording="test", n_cycles=3.0, sfreq=200.0)
+    spectra = Spectra.from_tfr(
+        tfr, (window,), recording="test", n_cycles=3.0, sfreq=200.0, zero_mean=True
+    )
     times = np.asarray(tfr.times)
     mask = support_restricted_mask(times, np.asarray(tfr.freqs), window, 3.0)
     # Divided by the sampling rate: MNE's power is sfreq times the density.
@@ -444,7 +450,7 @@ def test_from_tfr_limits_wavelet_support_to_available_times(tmin: float, tmax: f
     window = Window("requested", tmin, tmax)
     intersection = Window("available", max(tmin, tfr.times[0]), min(tmax, tfr.times[-1]))
     spectra = Spectra.from_tfr(
-        tfr, (window, intersection), recording="test", n_cycles=3.0, sfreq=200.0
+        tfr, (window, intersection), recording="test", n_cycles=3.0, sfreq=200.0, zero_mean=True
     )
 
     np.testing.assert_allclose(spectra.data[:, :, 0], spectra.data[:, :, 1])
@@ -482,6 +488,7 @@ def _reduced(burst: bool, statistic: str) -> np.ndarray:
         n_cycles=7.0,
         sfreq=sfreq,
         statistic=statistic,
+        zero_mean=True,
     )
     return spectra.data[:, 0, 0, :].mean(axis=0)
 
@@ -502,9 +509,11 @@ def test_from_tfr_median_ignores_a_brief_burst_that_the_mean_absorbs() -> None:
 def test_from_tfr_records_a_median_reduction_in_its_computation() -> None:
     tfr = _toy_tfr()
     window = (Window("stim", 0.0, 1.0),)
-    mean = Spectra.from_tfr(tfr, window, recording="test", n_cycles=3.0, sfreq=200.0)
+    mean = Spectra.from_tfr(
+        tfr, window, recording="test", n_cycles=3.0, sfreq=200.0, zero_mean=True
+    )
     median = Spectra.from_tfr(
-        tfr, window, recording="test", n_cycles=3.0, sfreq=200.0, statistic="median"
+        tfr, window, recording="test", n_cycles=3.0, sfreq=200.0, statistic="median", zero_mean=True
     )
     assert median.computation.parameters["window_statistic"] == "median"
     assert "window_statistic" not in mean.computation.parameters
@@ -519,6 +528,7 @@ def test_from_tfr_rejects_an_unknown_window_statistic() -> None:
             n_cycles=3.0,
             sfreq=200.0,
             statistic="mode",
+            zero_mean=True,
         )
 
 
@@ -526,7 +536,12 @@ def test_from_tfr_refuses_an_already_baselined_tfr() -> None:
     tfr = _toy_tfr().apply_baseline((-2.0, -1.0), mode="logratio", verbose="ERROR")
     with pytest.raises(ValueError, match="already baseline"):
         Spectra.from_tfr(
-            tfr, (Window("stim", 0.0, 1.0),), recording="test", n_cycles=3.0, sfreq=200.0
+            tfr,
+            (Window("stim", 0.0, 1.0),),
+            recording="test",
+            n_cycles=3.0,
+            sfreq=200.0,
+            zero_mean=True,
         )
 
 
@@ -540,13 +555,19 @@ def test_from_tfr_refuses_a_tfr_that_is_not_morlet() -> None:
             recording="test",
             n_cycles=3.0,
             sfreq=200.0,
+            zero_mean=True,
         )
 
 
 def test_from_tfr_rejects_a_window_outside_the_time_axis() -> None:
     with pytest.raises(ValueError, match="no samples"):
         Spectra.from_tfr(
-            _toy_tfr(), (Window("late", 30.0, 40.0),), recording="test", n_cycles=3.0, sfreq=200.0
+            _toy_tfr(),
+            (Window("late", 30.0, 40.0),),
+            recording="test",
+            n_cycles=3.0,
+            sfreq=200.0,
+            zero_mean=True,
         )
 
 
@@ -554,7 +575,12 @@ def test_from_tfr_rejects_a_finite_window_bound_past_the_time_axis() -> None:
     # The epochs end at 1.995 s. Clipped, the column would claim 0-3 s and measure 0-1.995 s.
     with pytest.raises(ValueError, match="reaches outside"):
         Spectra.from_tfr(
-            _toy_tfr(), (Window("stim", 0.0, 3.0),), recording="test", n_cycles=3.0, sfreq=200.0
+            _toy_tfr(),
+            (Window("stim", 0.0, 3.0),),
+            recording="test",
+            n_cycles=3.0,
+            sfreq=200.0,
+            zero_mean=True,
         )
 
 
@@ -563,14 +589,21 @@ def test_from_tfr_accepts_a_window_ending_where_a_decimated_axis_stops_short() -
     # window ending at the epochs' end lies within one step of the axis and is still data.
     tfr = _toy_tfr(decim=4)
     spectra = Spectra.from_tfr(
-        tfr, (Window("stim", 0.0, 1.995),), recording="test", n_cycles=3.0, sfreq=200.0
+        tfr,
+        (Window("stim", 0.0, 1.995),),
+        recording="test",
+        n_cycles=3.0,
+        sfreq=200.0,
+        zero_mean=True,
     )
     assert spectra.data.shape[2] == 1
 
 
 def test_from_tfr_requires_at_least_one_window() -> None:
     with pytest.raises(ValueError, match="at least one window"):
-        Spectra.from_tfr(_toy_tfr(), (), recording="test", n_cycles=3.0, sfreq=200.0)
+        Spectra.from_tfr(
+            _toy_tfr(), (), recording="test", n_cycles=3.0, sfreq=200.0, zero_mean=True
+        )
 
 
 def test_from_tfr_rejects_complex_output() -> None:
@@ -594,6 +627,7 @@ def test_from_tfr_rejects_complex_output() -> None:
             recording="test",
             n_cycles=3.0,
             sfreq=200.0,
+            zero_mean=True,
         )
 
 
@@ -649,6 +683,7 @@ def test_from_tfr_refuses_invalid_cycles_for_a_whole_epoch_window(n_cycles) -> N
             recording="test",
             n_cycles=n_cycles,
             sfreq=200.0,
+            zero_mean=True,
         )
 
 
@@ -666,7 +701,12 @@ def test_frequencies_drop_out_of_a_window_individually() -> None:
     # A window of half-width 0.22 s therefore holds only 12 Hz.
     tfr = _toy_tfr()
     spectra = Spectra.from_tfr(
-        tfr, (Window("narrow", 0.0, 0.44),), recording="test", n_cycles=3.0, sfreq=200.0
+        tfr,
+        (Window("narrow", 0.0, 0.44),),
+        recording="test",
+        n_cycles=3.0,
+        sfreq=200.0,
+        zero_mean=True,
     )
     assert np.isnan(spectra.data[:, :, 0, 0]).all()
     assert np.isnan(spectra.data[:, :, 0, 1]).all()
@@ -681,20 +721,29 @@ def test_a_window_narrower_than_every_wavelet_raises() -> None:
     tfr = _toy_tfr()
     with pytest.raises(ValueError, match="retains no coefficients"):
         Spectra.from_tfr(
-            tfr, (Window("tiny", 0.0, 0.1),), recording="test", n_cycles=3.0, sfreq=200.0
+            tfr,
+            (Window("tiny", 0.0, 0.1),),
+            recording="test",
+            n_cycles=3.0,
+            sfreq=200.0,
+            zero_mean=True,
         )
 
 
 def test_from_tfr_requires_the_morlet_cycle_count() -> None:
     with pytest.raises(TypeError, match="n_cycles"):
-        Spectra.from_tfr(_toy_tfr(), (Window("stim", 0.0, 1.0),), recording="test", sfreq=200.0)
+        Spectra.from_tfr(
+            _toy_tfr(), (Window("stim", 0.0, 1.0),), recording="test", sfreq=200.0, zero_mean=True
+        )
 
 
 def test_from_tfr_requires_the_original_sampling_rate() -> None:
     # MNE reports the decimated rate as the TFR's own and keeps no record of the
     # original, so reading it off the object would scale a decimated TFR wrongly.
     with pytest.raises(TypeError, match="sfreq"):
-        Spectra.from_tfr(_toy_tfr(), (Window("stim", 0.0, 1.0),), recording="test", n_cycles=3.0)
+        Spectra.from_tfr(
+            _toy_tfr(), (Window("stim", 0.0, 1.0),), recording="test", n_cycles=3.0, zero_mean=True
+        )
 
 
 def test_from_tfr_expresses_morlet_power_as_a_density_independent_of_sampling_rate() -> None:
@@ -713,7 +762,12 @@ def test_from_tfr_expresses_morlet_power_as_a_density_independent_of_sampling_ra
             "morlet", freqs=np.array([10.0]), n_cycles=7.0, return_itc=False, verbose="ERROR"
         )
         spectra = Spectra.from_tfr(
-            tfr, (Window("mid", 2.0, 6.0),), recording="test", n_cycles=7.0, sfreq=sfreq
+            tfr,
+            (Window("mid", 2.0, 6.0),),
+            recording="test",
+            n_cycles=7.0,
+            sfreq=sfreq,
+            zero_mean=True,
         )
         densities.append(spectra.data.item())
     np.testing.assert_allclose(densities[0], densities[1], rtol=1e-3)
@@ -725,7 +779,12 @@ def test_from_tfr_expresses_morlet_power_as_a_density_independent_of_sampling_ra
 def test_support_fraction_is_distinct_from_finite_coverage() -> None:
     tfr = _toy_tfr()
     spectra = Spectra.from_tfr(
-        tfr, (Window("stim", 0.0, 1.0),), recording="test", n_cycles=3.0, sfreq=200.0
+        tfr,
+        (Window("stim", 0.0, 1.0),),
+        recording="test",
+        n_cycles=3.0,
+        sfreq=200.0,
+        zero_mean=True,
     )
 
     assert (spectra.coverage == 1.0).all()
@@ -750,7 +809,12 @@ def test_event_immediately_outside_window_cannot_affect_retained_coefficients() 
     )
 
     spectra = Spectra.from_tfr(
-        tfr, (Window("target", 0.0, 0.6),), recording="test", n_cycles=3.0, sfreq=200.0
+        tfr,
+        (Window("target", 0.0, 0.6),),
+        recording="test",
+        n_cycles=3.0,
+        sfreq=200.0,
+        zero_mean=True,
     )
 
     np.testing.assert_allclose(spectra.data[1], spectra.data[0], atol=1e-14)

@@ -598,6 +598,21 @@ def test_model_recipe_requires_integer_version(tmp_path):
         load(path)
 
 
+def test_external_targets_preserve_float_precision(tmp_path):
+    from eegtable.runner.model_run import _merge_targets
+
+    descriptors = pd.DataFrame(
+        {"recording": ["rec", "rec"], "epoch": [0, 1], "event": ["left", "right"]}
+    )
+    outcome = np.array([0.30000000000000004, 0.12345678901234567])
+    source = tmp_path / "targets.tsv"
+    descriptors.assign(outcome=outcome, subject_id="01").to_csv(source, sep="\t", index=False)
+
+    targets = _merge_targets(descriptors, source, "epochs", "subject_id")
+
+    np.testing.assert_array_equal(targets.outcome.to_numpy(), outcome)
+
+
 def test_external_targets_join_by_exact_sample_identity(tmp_path):
     from eegtable.io import read_dataset
 

@@ -9,6 +9,9 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
+- Morlet computation identities include the wavelet's `zero_mean` setting.
+  `Spectra.from_tfr` requires its explicit declaration because MNE does not retain
+  it. Recompute existing Morlet tables before combining them with new results.
 - Preprocessing source fingerprints include acquisition descriptions and subject
   information, and enabled scientific stages include their optional package
   versions. Existing checkpoint trees require resetting the load stage before reuse.
@@ -126,6 +129,15 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Morlet constructors and recipe extraction reject complex analytic EEG samples
+  instead of reporting their power on the real-signal density scale.
+- Nuisance fitting and staged permutations reject fractional or repeated row
+  indices and misaligned inputs before selecting trials or fitting models.
+- Preprocessing checkpoints reject material numeric metadata loss during JSON
+  serialization before publishing rounded event or epoch descriptors.
+- External model targets preserve floating-point precision when read from TSV.
+- Orphaned support files mark a recording as partial, so resumed extraction
+  cannot skip recordings whose feature bundles are missing.
 - SHAP preprocessing preserves caller-owned feature arrays and refuses PCA
   attribution even when component names match input feature names. Kernel SHAP
   seeds coalition sampling and preserves the caller's random streams.

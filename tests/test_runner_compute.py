@@ -61,6 +61,18 @@ def test_per_epoch_measures_give_one_row_per_epoch(tmp_path) -> None:
     assert result.crosstrial is None
 
 
+def test_runner_morlet_rejects_analytic_epoch_samples(tmp_path) -> None:
+    epochs = make_epochs().apply_hilbert(envelope=False, verbose=False)
+
+    with pytest.raises(TypeError, match="real.*samples|real.*epoch"):
+        features(
+            tmp_path,
+            '[spectra]\nmethod = "morlet"\nfmin = 4.0\nn_freqs = 10\n'
+            '[[features]]\nmeasure = "mean_tfr_power"\nbands = ["alpha"]\n',
+            epochs,
+        )
+
+
 def test_peak_frequency_finds_the_simulated_oscillation(tmp_path) -> None:
     # Smoothing is off: its default even-width kernel shifts peaks by half a bin.
     result = features(
@@ -415,7 +427,7 @@ def test_a_setting_welch_reads_still_names_its_columns(tmp_path) -> None:
 
 
 def test_default_spectral_recipe_column_names(tmp_path) -> None:
-    # Names include the global channels and frequency grid, plus retained Morlet times.
+    # Morlet names also include the retained times and the declared zero-mean wavelets.
     welch = features(
         tmp_path,
         "[windows]\nbase = [-0.5, 0.0]\nstim = [0.0, 1.0]\n\n"
@@ -435,7 +447,7 @@ def test_default_spectral_recipe_column_names(tmp_path) -> None:
         "eeg_band-power_alpha_global_stim_raw_p33863f92cacb",
     ]
     assert list(morlet.epochs.to_dataframe().columns) == [
-        "eeg_mean-tfr-power_alpha_global_stim_raw_pb44a1a4fa6b1"
+        "eeg_mean-tfr-power_alpha_global_stim_raw_p8fe39fe7bd1a"
     ]
     for table in (welch.epochs, morlet.epochs):
         assert table.meta[0].computation.parameters["spatial_channels"] == [

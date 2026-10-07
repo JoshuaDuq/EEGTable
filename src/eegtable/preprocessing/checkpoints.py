@@ -16,6 +16,7 @@ import pandas as pd
 
 from ._deps import require
 from .artifacts import ArtifactModel, review_artifact
+from .epochs import validate_metadata_precision
 from .events import EventData
 from .pipeline import StageData
 from .provenance import canonical_json, file_hash, serializable
@@ -220,6 +221,10 @@ def publish_checkpoint(
                     restored.epochs.get_data(), state.epochs.get_data(), rtol=1e-14, atol=0
                 )
                 np.testing.assert_array_equal(restored.epochs.selection, state.epochs.selection)
+                validate_metadata_precision(state.epochs.metadata, restored.epochs.metadata)
+            if state.events is not None:
+                assert restored.events is not None
+                validate_metadata_precision(state.events.metadata, restored.events.metadata)
             manifest = {
                 "schema": 1,
                 "stage": stage,

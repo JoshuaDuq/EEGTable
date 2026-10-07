@@ -98,9 +98,10 @@ coefficients and raise an error. The fraction of each window a value rests on
 is the table's ``support``, separate from numerical ``coverage``.
 
 For a TFR computed in MNE, :meth:`~eegtable.Spectra.from_tfr` takes it with the
-cycle count and the sampling rate before decimation, which MNE keeps on neither
-object. The baseline is a window in the wrapped representation; do not call
-MNE's ``apply_baseline`` first. These estimator conventions follow MNE's
+cycle count, the explicit ``zero_mean`` setting, and the sampling rate before
+decimation, which MNE does not retain. The baseline is a window in the wrapped
+representation; do not call MNE's ``apply_baseline`` first. These estimator
+conventions follow MNE's
 `time-frequency tutorial
 <https://mne.tools/stable/auto_tutorials/time-freq/20_sensors_time_frequency.html>`_.
 See :doc:`methods/spectral` for scaling and temporal attribution.

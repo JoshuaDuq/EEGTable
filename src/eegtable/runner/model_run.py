@@ -116,6 +116,7 @@ def _merge_targets(
         keep_default_na=False,
         na_values=["n/a"],
         dtype={"recording": str, "event": str, "group": str, groups: str},
+        float_precision="round_trip",
     )
     if not set(keys) <= set(targets) or targets[keys].isna().any().any():
         raise ValueError(f"external targets require complete identity columns {keys}.")
