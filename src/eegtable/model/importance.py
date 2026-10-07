@@ -14,7 +14,7 @@ from sklearn.inspection import permutation_importance as sklearn_perm_importance
 from sklearn.metrics import check_scoring
 from sklearn.pipeline import FeatureUnion, Pipeline
 
-from eegtable._validation import blank_non_finite
+from eegtable._validation import blank_non_finite, validate_names
 from eegtable.model._deps import require_shap
 from eegtable.model.aggregate import _SubjectRScorer
 from eegtable.model.crossfit import (
@@ -160,6 +160,16 @@ def permutation_importance(
     """
     X_arr = np.asarray(X, dtype=np.float64)
     y_arr = np.asarray(y)
+    if X_arr.ndim != 2:
+        raise ValueError("X must be a 2-D array of samples and features.")
+    names = (
+        tuple(f"feature_{i}" for i in range(X_arr.shape[1]))
+        if feature_names is None
+        else tuple(feature_names)
+    )
+    if len(names) != X_arr.shape[1]:
+        raise ValueError("feature_names must contain one name per column of X.")
+    validate_names(names, "feature_names")
     scorer = check_scoring(model, scoring=scoring)
 
     def score(estimator: Pipeline, values: npt.NDArray[np.float64], targets: object) -> float:
@@ -170,10 +180,6 @@ def permutation_importance(
         model, X_arr, y_arr, scoring=score, n_repeats=n_repeats, random_state=seed
     )
     values = np.asarray(res.importances_mean, dtype=np.float64)
-    if feature_names is None:
-        names = tuple(f"feature_{i}" for i in range(values.size))
-    else:
-        names = tuple(feature_names)
     per_fold = np.empty((0, len(names)), dtype=np.float64)
     return Importance(feature_names=names, values=values, per_fold=per_fold)
 
@@ -309,6 +315,8 @@ def _input_positions(
     index = {name: i for i, name in enumerate(feature_names)}
     if len(index) != len(feature_names):
         raise ValueError("feature_names must be unique to attribute SHAP values to them.")
+    if len(set(explained)) != len(explained):
+        raise ValueError("Output feature names must be unique to attribute SHAP values to inputs.")
     unknown = [name for name in explained if name not in index]
     if unknown:
         msg = (

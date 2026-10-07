@@ -155,6 +155,10 @@ def _subject_z(
     with np.errstate(invalid="ignore", divide="ignore"):
         dx = np.where(finite, trials - trials.sum(axis=0) / count, 0.0)
         dy = np.where(finite, paired - paired.sum(axis=0) / count, 0.0)
+        # Rescale centered columns before squaring, as in scipy.stats.pearsonr:
+        # correlation must not depend on overflow or underflow in the input units.
+        dx = dx / np.max(np.abs(dx), axis=0)
+        dy = dy / np.max(np.abs(dy), axis=0)
         r = (dx * dy).sum(axis=0) / np.sqrt((dx * dx).sum(axis=0) * (dy * dy).sum(axis=0))
     # A feature or target constant over its finite trials has no correlation to report.
     varies = _spread(np.where(finite, values, np.nan)) & _spread(

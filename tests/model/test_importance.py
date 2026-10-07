@@ -140,6 +140,15 @@ def test_permutation_importance_names_every_feature_it_scores() -> None:
     assert len(result.feature_names) == result.values.size == 3
 
 
+@pytest.mark.parametrize("names", [("a",), ("a", "b", "c"), ("a", "a"), ("a", "")])
+def test_permutation_importance_rejects_ambiguous_feature_names(names) -> None:
+    values = np.random.default_rng(0).normal(size=(20, 2))
+    target = values[:, 0]
+    model = Pipeline([("regressor", LinearRegression())]).fit(values, target)
+    with pytest.raises(ValueError, match="feature_names"):
+        permutation_importance(model, values, target, feature_names=names, n_repeats=2)
+
+
 def test_permutation_scores_receive_unmodified_feature_values() -> None:
     rng = np.random.default_rng(7)
     values = rng.normal(size=(80, 3)) * [2, 3, 4] + 10
@@ -477,6 +486,25 @@ def test_shap_importance_uses_explicit_transformer_column_mapping() -> None:
         [np.abs(values[:, 0] - values[:, 0].mean()).mean(), 0.0],
         atol=1e-12,
     )
+
+
+def test_shap_importance_refuses_duplicate_output_feature_mapping() -> None:
+    values = np.arange(20.0)[:, None]
+    model = Pipeline(
+        [
+            (
+                "duplicate",
+                FunctionTransformer(
+                    lambda data: np.column_stack([data, data]),
+                    feature_names_out=lambda transformer, names: [names[0], names[0]],
+                ),
+            ),
+            ("model", LinearRegression()),
+        ]
+    ).fit(values, values[:, 0])
+
+    with _shap_stand_in(), pytest.raises(ValueError, match="unique"):
+        shap_importance(model, values, ["a"])
 
 
 @pytest.mark.parametrize("container", ["direct", "pipeline", "columns", "union"])

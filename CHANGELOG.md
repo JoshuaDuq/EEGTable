@@ -172,6 +172,12 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Univariate screening rescales centered observations before computing Pearson
+  correlations, preventing extreme input units from producing spurious perfect
+  or zero correlations through floating-point underflow or overflow.
+- Permutation importance rejects misaligned, duplicate, or empty feature names.
+  SHAP importance rejects duplicate output-to-input mappings instead of silently
+  overwriting one transformed column's attribution with another's.
 - Fold-local feature harmonization preserves the pipeline's trailing covariates
   during evaluation, inner tuning, and ridge permutation inference. Missing
   covariates can no longer cause EEG columns to be treated as covariates, and

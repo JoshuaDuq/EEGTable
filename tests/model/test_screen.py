@@ -9,6 +9,38 @@ from eegtable.model.screen import univariate_screen
 GROUPS = np.repeat([f"s{i:02d}" for i in range(12)], 30).astype(object)
 
 
+@pytest.mark.parametrize(
+    "feature_scale,target_scale", [(1e-200, 1), (1e200, 1), (1, 1e-200), (1, 1e200)]
+)
+def test_screen_correlations_are_invariant_to_units(feature_scale, target_scale) -> None:
+    rng = np.random.default_rng(3)
+    values = rng.normal(size=(60, 2))
+    target = values[:, 0] + rng.normal(size=60)
+    groups = np.repeat(np.arange(3), 20)
+    values[::7, 1] = np.nan
+    correlations = []
+    for subject in np.unique(groups):
+        rows = groups == subject
+        correlations.append(
+            [
+                stats.pearsonr(
+                    values[rows & np.isfinite(values[:, column]), column],
+                    target[rows & np.isfinite(values[:, column])],
+                ).statistic
+                for column in range(values.shape[1])
+            ]
+        )
+    expected = np.tanh(np.arctanh(correlations).mean(axis=0))
+
+    screen = univariate_screen(
+        values * feature_scale, target * target_scale, groups, n_flips=31, seed=0
+    )
+
+    np.testing.assert_allclose(screen["r"], expected, rtol=1e-12)
+    reference = univariate_screen(values, target, groups, n_flips=31, seed=0)
+    np.testing.assert_allclose(screen, reference, rtol=1e-12)
+
+
 @pytest.mark.parametrize("missing", [None, np.nan])
 def test_screen_requires_a_subject_label_for_every_trial(missing) -> None:
     target = np.tile(np.arange(4.0), 4)
