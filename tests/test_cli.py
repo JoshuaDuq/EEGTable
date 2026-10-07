@@ -3,7 +3,6 @@
 import io
 import json
 import re
-import shlex
 import subprocess
 import sys
 from importlib import util
@@ -13,6 +12,7 @@ import pytest
 
 from eegtable.runner import load_recipe
 from eegtable.runner.cli import main
+from eegtable.runner.progress import shell_command
 from tests.synthetic import save_epochs
 
 POWER = '[[features]]\nmeasure = "integrated_band_power"\nbands = ["alpha"]\nspatial = ["global"]\n'
@@ -228,14 +228,16 @@ def test_suggested_commands_can_be_pasted_into_a_shell(tmp_path, capsys) -> None
     folder.mkdir()
     new = str(folder / "new recipe.toml")
     assert main(["init", new]) == 0
-    assert f"eegtable check {shlex.quote(new)}" in capsys.readouterr().out
+    assert shell_command(["eegtable", "check", new]) in capsys.readouterr().out
     _recording(folder, "sub-01")
     recipe = str(_recipe(folder))
 
     main(["status", recipe])
-    assert f"Next: eegtable run {shlex.quote(recipe)} --resume" in capsys.readouterr().out
+    assert (
+        "Next: " + shell_command(["eegtable", "run", recipe, "--resume"]) in capsys.readouterr().out
+    )
     main(["check", recipe])
-    assert f"Ready: eegtable run {shlex.quote(recipe)}" in capsys.readouterr().out
+    assert "Ready: " + shell_command(["eegtable", "run", recipe]) in capsys.readouterr().out
 
 
 def test_text_output_survives_a_legacy_code_page(tmp_path, monkeypatch) -> None:
@@ -478,3 +480,15 @@ def test_model_init_needs_no_modeling_dependencies(tmp_path, monkeypatch) -> Non
 
     assert main(["model", "init", str(path)]) == 0
     assert path.is_file()
+
+
+@pytest.mark.parametrize(
+    "windows,expected",
+    [(False, "eegtable run 'my study/r.toml'"), (True, 'eegtable run "my study/r.toml"')],
+)
+def test_suggested_commands_use_the_platforms_quoting(monkeypatch, windows, expected) -> None:
+    # cmd.exe keeps POSIX single quotes as part of the path.
+    from eegtable.runner import progress
+
+    monkeypatch.setattr(progress, "_WINDOWS", windows)
+    assert shell_command(["eegtable", "run", "my study/r.toml"]) == expected

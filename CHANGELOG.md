@@ -207,7 +207,8 @@ behaviour, and every such change is listed here.
 - An empty, absolute or `..` `inputs.pattern` is a recipe error instead of a
   traceback.
 - `eegtable init` into a missing folder exits 2 with an error, and suggested
-  commands are shell-quoted so paths with spaces can be pasted.
+  commands are quoted for the platform's shell (POSIX, or cmd.exe and PowerShell
+  on Windows) so paths with spaces can be pasted.
 - The basic template's commented `[windows]` suggestion uses a 1 s baseline; the
   0.5 s one failed `check` on the template's own `peak_frequency` entry.
 - Factory pipelines with covariates can be pickled, and the package's transformers

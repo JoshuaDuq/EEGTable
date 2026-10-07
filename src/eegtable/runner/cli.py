@@ -13,7 +13,6 @@ import argparse
 import io
 import json
 import os
-import shlex
 import sys
 from collections.abc import Sequence
 from importlib import resources
@@ -29,7 +28,14 @@ from eegtable.runner.batch import (
     run,
     status,
 )
-from eegtable.runner.progress import CHECK, CROSS, JsonReporter, TextReporter, human_duration
+from eegtable.runner.progress import (
+    CHECK,
+    CROSS,
+    JsonReporter,
+    TextReporter,
+    human_duration,
+    shell_command,
+)
 from eegtable.runner.recipe import RecipeError, load_recipe
 
 _LABEL_WIDTH = 15
@@ -284,7 +290,7 @@ def _status(args: argparse.Namespace) -> int:
     if after is None:
         print(f"{CHECK} Every recording is up to date.")
     else:
-        print("Next: eegtable " + shlex.join(after))
+        print("Next: " + shell_command(["eegtable", *after]))
     return 0
 
 
@@ -320,7 +326,7 @@ def _init(args: argparse.Namespace) -> int:
         return _fail(exc, None)
     print(
         f"Wrote {path}. Set inputs.root and output.root, then run: "
-        f"eegtable check {shlex.quote(str(path))}"
+        f"{shell_command(['eegtable', 'check', str(path)])}"
     )
     return 0
 
@@ -373,7 +379,7 @@ def _check_lines(
     n = len(report.recordings)
     existing = (
         f"{len(report.existing)} result files already there; "
-        f"eegtable status {shlex.quote(str(recipe_path))} shows which are current"
+        f"{shell_command(['eegtable', 'status', str(recipe_path)])} shows which are current"
         if report.existing
         else "no earlier results"
     )
@@ -410,5 +416,5 @@ def _check_lines(
             lines.extend(f"  {label}: {problem}" for problem in problems)
         return lines
     lines.extend(f"! {warning}" for warning in report.warnings)
-    lines.append(f"{CHECK} Ready: eegtable run {shlex.quote(str(recipe_path))}")
+    lines.append(f"{CHECK} Ready: {shell_command(['eegtable', 'run', str(recipe_path)])}")
     return lines

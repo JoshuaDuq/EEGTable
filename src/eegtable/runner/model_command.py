@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import shlex
 import sys
 from importlib import resources, util
 from pathlib import Path
 
 from eegtable.runner.model_cli import register as register
+from eegtable.runner.progress import shell_command
 
 
 def _require_dependencies() -> None:
@@ -51,7 +51,7 @@ def handle(args: argparse.Namespace) -> int:
                 stream.write(template)
             print(
                 f"Wrote {args.recipe}. Set inputs, target and output, then run: "
-                f"eegtable model check {shlex.quote(str(args.recipe))}"
+                f"{shell_command(['eegtable', 'model', 'check', str(args.recipe)])}"
             )
             return 0
         _require_dependencies()

@@ -9,6 +9,9 @@ subject, so a front end written for that protocol can follow a run unchanged.
 from __future__ import annotations
 
 import json
+import os
+import shlex
+import subprocess
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -186,6 +189,16 @@ class JsonReporter:
     def emit(self, **event: Any) -> None:
         """Write one event."""
         print(json.dumps(event), file=self.stream, flush=True)
+
+
+# cmd.exe and PowerShell take double quotes; POSIX quoting would wrap every Windows path,
+# backslashes and all, in single quotes that cmd.exe keeps as part of the name.
+_WINDOWS = os.name == "nt"
+
+
+def shell_command(args: Sequence[str]) -> str:
+    """``args`` as one command line that can be pasted into this platform's shell."""
+    return subprocess.list2cmdline(args) if _WINDOWS else shlex.join(args)
 
 
 def human_duration(seconds: float) -> str:
