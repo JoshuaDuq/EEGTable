@@ -194,7 +194,10 @@ def test_corrected_stages_are_stale_only_in_recipes_they_affect(
     monkeypatch.setattr(execution, "_implementation", lambda stage, settings: 2)
     before = [execution.stage_identities(workflow, "source") for workflow in workflows]
 
-    assert before[0] == current[0]
+    assert before[0]["export"] != current[0]["export"]
+    assert {name: value for name, value in before[0].items() if name != "export"} == {
+        name: value for name, value in current[0].items() if name != "export"
+    }
     assert before[1]["load"] == current[1]["load"]
     assert before[1][stage] != current[1][stage]
     assert before[1]["export"] != current[1]["export"]

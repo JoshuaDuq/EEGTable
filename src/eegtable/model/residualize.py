@@ -9,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from eegtable._validation import blank_non_finite
+from eegtable._validation import as_real_array, blank_non_finite
 from eegtable.model import _deps as _deps
 from eegtable.model._nuisance import fit_coefficients
 from eegtable.model.transformers import PreprocessingConfig, validate_subject_missingness
@@ -148,14 +148,14 @@ def _design_matrix(
         sub = covariates.iloc[rows]
         design_columns: list[npt.NDArray[np.float64]] = [np.ones(len(rows), dtype=np.float64)]
         for col in columns:
-            values = pd.to_numeric(sub[col], errors="coerce").to_numpy(dtype=np.float64)
+            values = as_real_array(pd.to_numeric(sub[col], errors="coerce").to_numpy(), col)
             if not np.all(np.isfinite(values)):
                 msg = f"Target residualization column '{col}' contains non-finite values."
                 raise ValueError(msg)
             design_columns.append(values)
         design = np.column_stack(design_columns)
     else:
-        cov_arr = np.asarray(covariates, dtype=np.float64)
+        cov_arr = as_real_array(covariates, "covariates")
         if cov_arr.ndim == 1:
             cov_arr = cov_arr.reshape(-1, 1)
         if cov_arr.shape[1] != len(columns):
@@ -223,7 +223,7 @@ def fit_nuisance_model(
         msg = "Target residualization requires at least one nuisance column."
         raise ValueError(msg)
 
-    y_values = np.asarray(y, dtype=np.float64)
+    y_values = as_real_array(y, "y")
     train_indices = np.asarray(train)
     test_indices = np.asarray(test) if test is not None else np.empty(0, dtype=np.intp)
     _validate_indices(y_values, covariates, train_indices, test_indices)
@@ -355,7 +355,7 @@ def residualize_within_subjects(
     column_names = tuple(str(c).strip() for c in columns if str(c).strip())
     if not column_names:
         raise ValueError("Target residualization requires at least one nuisance column.")
-    data = np.asarray(values, dtype=np.float64)
+    data = as_real_array(values, "values")
     group_labels = np.asarray(groups, dtype=object)
     train_rows = np.asarray(train)
     test_rows = np.asarray(test)
@@ -449,7 +449,7 @@ def _without_rounding(
 def _finite_feature_block(
     X: npt.NDArray[np.float64], rows: npt.NDArray[np.intp]
 ) -> npt.NDArray[np.float64]:
-    values = np.asarray(X, dtype=np.float64)[rows].copy()
+    values = as_real_array(X, "X")[rows].copy()
     values[~np.isfinite(values)] = np.nan
     return values
 
@@ -539,7 +539,7 @@ class StagedResidualPreprocessor:
     ) -> npt.NDArray[np.float64]:
         """Target residual of ``rows`` after the nuisance prediction, Yeo-Johnson transformed."""
         pred = self.nuisance_prediction(covariates, rows)
-        residual = np.asarray(y, dtype=np.float64)[rows] - pred
+        residual = as_real_array(y, "y")[rows] - pred
         from sklearn.preprocessing import PowerTransformer
 
         pt = cast(PowerTransformer, self.power_transform)
@@ -551,9 +551,7 @@ class StagedResidualPreprocessor:
         from sklearn.preprocessing import PowerTransformer
 
         pt = cast(PowerTransformer, self.power_transform)
-        inversed = pt.inverse_transform(
-            np.asarray(values, dtype=np.float64).reshape(-1, 1)
-        ).flatten()
+        inversed = pt.inverse_transform(as_real_array(values, "values").reshape(-1, 1)).flatten()
         return cast(npt.NDArray[np.float64], inversed)
 
 
@@ -623,10 +621,10 @@ def fit_staged_residual_preprocessor(
 
     cfg = config or PreprocessingConfig()
     fit_rows = np.asarray(rows)
-    y_values = np.asarray(y, dtype=np.float64)
+    y_values = as_real_array(y, "y")
     _validate_indices(y_values, cov, fit_rows, np.empty(0, dtype=np.intp))
     fit_rows = fit_rows.astype(np.intp, copy=False)
-    feature_values = np.asarray(X, dtype=np.float64)
+    feature_values = as_real_array(X, "X")
     group_labels = np.asarray(groups)
     if feature_values.ndim != 2 or feature_values.shape[0] != len(y_values):
         raise ValueError("X must be 2-D with one row per target row.")
@@ -755,7 +753,7 @@ def reconstruct_staged_permutation_target_for_fold(
         msg = "reconstruct_staged_permutation_target_for_fold requires train and test indices."
         raise ValueError(msg)
 
-    y_arr = np.asarray(y, dtype=np.float64)
+    y_arr = as_real_array(y, "y")
     train_indices = np.asarray(trn)
     test_indices = np.asarray(tst)
     _validate_indices(y_arr, cov, train_indices, test_indices)

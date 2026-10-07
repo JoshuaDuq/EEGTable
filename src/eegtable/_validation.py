@@ -11,6 +11,17 @@ import numpy.typing as npt
 MULTITAPER_MIN_BINS = 1.35
 
 
+def validate_real_array(values: npt.ArrayLike, name: str) -> None:
+    if np.iscomplexobj(values):
+        raise ValueError(f"{name} must contain real values; complex data are unsupported.")
+
+
+def as_real_array(values: npt.ArrayLike, name: str) -> npt.NDArray[np.float64]:
+    """Convert numeric input without silently discarding imaginary components."""
+    validate_real_array(values, name)
+    return np.asarray(values, dtype=np.float64)
+
+
 def minimum_sample_count(duration_seconds: float, sfreq: float) -> int:
     """Round a minimum duration up, allowing one ULP of conversion roundoff."""
     samples = np.nextafter(duration_seconds * sfreq, -np.inf)

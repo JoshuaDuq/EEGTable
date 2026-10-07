@@ -8,6 +8,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from eegtable._validation import as_real_array
 from eegtable.model import _deps as _deps
 from eegtable.quality import QualityPolicy, _validate_descriptor_labels, apply_quality
 from eegtable.table import FeatureMeta, FeatureTable, RowId
@@ -410,7 +411,7 @@ def compute_train_group_intersection_mask(
     ndarray of bool, shape (n_features,)
         True for the columns to keep. Raises when no column qualifies.
     """
-    X_arr = np.asarray(X_train, dtype=np.float64)
+    X_arr = as_real_array(X_train, "X_train")
     groups_arr = np.asarray(groups_train)
     if X_arr.ndim != 2:
         msg = f"Expected 2D X_train, got shape={X_arr.shape}"
@@ -472,8 +473,8 @@ def harmonize_fold(
     if mode_str not in ("intersection", "union_impute"):
         msg = f"Unknown harmonization mode: {mode!r}. Expected 'intersection' or 'union_impute'."
         raise ValueError(msg)
-    Xtr = np.asarray(X_train, dtype=np.float64)
-    Xte = np.asarray(X_test, dtype=np.float64)
+    Xtr = as_real_array(X_train, "X_train")
+    Xte = as_real_array(X_test, "X_test")
     if Xtr.shape[1] != Xte.shape[1]:
         msg = f"X_train/X_test feature mismatch: {Xtr.shape[1]} vs {Xte.shape[1]}"
         raise ValueError(msg)

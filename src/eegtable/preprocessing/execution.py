@@ -14,7 +14,13 @@ import mne  # type: ignore[import-untyped]
 import numpy as np
 
 from ._deps import require
-from .checkpoints import Checkpoint, load_checkpoint, publish_checkpoint, write_pointer
+from .checkpoints import (
+    Checkpoint,
+    load_checkpoint,
+    publish_checkpoint,
+    verify_manifest,
+    write_pointer,
+)
 from .checks import validate_source_destinations
 from .config import (
     AutoRejectSettings,
@@ -258,6 +264,8 @@ def _implementation(stage: str, settings: ProcessingSettings) -> int:
     artifact = settings.artifact.settings if settings.artifact is not None else None
     rejection = settings.rejection
     corrected = {
+        # Export reuse now requires the bundle to match its checkpoint's provenance.
+        "export": True,
         # The muscle detector stopped scoring bad channels.
         "annotate": settings.annotations.muscle is not None,
         # ICLabel stopped reading BAD spans.
@@ -543,7 +551,12 @@ def _run_locked(
                 state = load_checkpoint(path, current).state
                 write_result(result_from_state(state), output, overwrite=overwrite)
             else:
-                validate_bundle(manifest)
+                bundle = validate_bundle(manifest)
+                checkpoint_manifest = verify_manifest(path)
+                if identity(bundle["provenance"]) != checkpoint_manifest["export_provenance_id"]:
+                    raise ValueError(
+                        "export: bundle provenance differs from its checkpoint; use --overwrite"
+                    )
         return StepResult(stage, "completed", path, "next CONFIG")
     parents = {
         name: read_stage(workflow, name, identities) for name in enabled_parents(workflow, stage)

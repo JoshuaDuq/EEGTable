@@ -7,6 +7,7 @@ import numpy.typing as npt
 import pandas as pd
 from scipy import stats
 
+from eegtable._validation import as_real_array
 from eegtable.model.residualize import residualize_within_subjects
 
 __all__ = ["univariate_screen"]
@@ -74,8 +75,8 @@ def univariate_screen(
         than 3 subjects is not tested. Zero mean and zero between-subject variance
         leave ``t``, ``p``, ``q`` and ``p_fwer`` undefined (NaN).
     """
-    values = np.asarray(X, dtype=np.float64)
-    target = np.asarray(y, dtype=np.float64)
+    values = as_real_array(X, "X")
+    target = as_real_array(y, "y")
     labels = np.asarray(groups, dtype=object)
     if values.ndim != 2 or target.shape != (values.shape[0],) or labels.shape != target.shape:
         raise ValueError("X, y and groups must have one row per trial.")

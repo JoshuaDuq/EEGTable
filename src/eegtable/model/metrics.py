@@ -19,6 +19,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
+from eegtable._validation import as_real_array
 from eegtable.model.aggregate import AggregationConfig, subject_level_r
 from eegtable.model.scoring import safe_pearsonr
 
@@ -189,8 +190,8 @@ def classification_metrics(
     y_true, y_pred : ndarray of int, shape (n_trials,)
         Labels and predictions coded 0 and 1; any other label raises.
     y_prob : ndarray, optional
-        Finite probabilities, shape ``(n_trials, 2)`` in class order ``(0, 1)``,
-        or ``(n_trials,)`` for class 1.
+        Real probabilities in ``[0, 1]``, shape ``(n_trials, 2)`` in class order
+        ``(0, 1)`` with each row summing to one, or ``(n_trials,)`` for class 1.
     y_score : ndarray, optional
         Finite decision scores, shape ``(n_trials,)``, larger for class 1. AUC and
         average precision use them in preference to ``y_prob``.
@@ -208,17 +209,21 @@ def classification_metrics(
     if not set(labels.tolist()) <= {0, 1}:
         msg = f"classification_metrics expects labels coded 0/1, got {labels.tolist()}."
         raise ValueError(msg)
-    y_t = np.asarray(y_true, dtype=np.intp)
-    y_p = np.asarray(y_pred, dtype=np.intp)
+    y_t = np.asarray(as_real_array(y_true, "y_true"), dtype=np.intp)
+    y_p = np.asarray(as_real_array(y_pred, "y_pred"), dtype=np.intp)
     _check_aligned("Classification", y_t, y_p)
     if y_prob is not None:
-        y_prob = np.asarray(y_prob, dtype=float)
+        y_prob = as_real_array(y_prob, "y_prob")
         if y_prob.shape not in ((len(y_t),), (len(y_t), 2)):
             raise ValueError("y_prob must have shape (n_trials,) or (n_trials, 2).")
         if not np.isfinite(y_prob).all():
             raise ValueError("y_prob must be finite for every trial; no trials may be dropped.")
+        if np.any((y_prob < 0.0) | (y_prob > 1.0)):
+            raise ValueError("y_prob probabilities must be in [0, 1].")
+        if y_prob.ndim == 2 and not np.allclose(y_prob.sum(axis=1), 1.0):
+            raise ValueError("y_prob class probabilities must sum to one for every trial.")
     if y_score is not None:
-        y_score = np.asarray(y_score, dtype=float)
+        y_score = as_real_array(y_score, "y_score")
         if y_score.shape != (len(y_t),) or not np.isfinite(y_score).all():
             raise ValueError("y_score must be finite with shape (n_trials,).")
     cm = confusion_matrix(y_t, y_p, labels=[0, 1]).astype(np.intp)
@@ -319,8 +324,8 @@ def regression_metrics(
     per_subject : list of dict
         ``{"subject": ..., "r": ...}`` for each subject; empty without ``groups``.
     """
-    yt = np.asarray(y_true, dtype=float)
-    yp = np.asarray(y_pred, dtype=float)
+    yt = as_real_array(y_true, "y_true")
+    yp = as_real_array(y_pred, "y_pred")
     _check_aligned("Regression", yt, yp)
     _check_finite_predictions("Regression", yt, yp)
     if groups is not None:
@@ -404,9 +409,9 @@ def within_subject_centered_metrics(
         no subject qualifies.
     """
     grp = np.asarray(groups)
-    t = np.asarray(target, dtype=float)
-    f = np.asarray(full_prediction, dtype=float)
-    n = np.asarray(nuisance_prediction, dtype=float)
+    t = as_real_array(target, "target")
+    f = as_real_array(full_prediction, "full_prediction")
+    n = as_real_array(nuisance_prediction, "nuisance_prediction")
     _check_aligned("Within-subject prediction", grp, t, f, n)
     _check_finite_predictions("Within-subject prediction", t, f, n)
     _check_labelled("Within-subject prediction", subject=grp)
@@ -505,9 +510,9 @@ def within_condition_metrics(
         qualifies.
     """
     grp = np.asarray(groups)
-    t = np.asarray(target, dtype=float)
-    f = np.asarray(full_prediction, dtype=float)
-    n = np.asarray(nuisance_prediction, dtype=float)
+    t = as_real_array(target, "target")
+    f = as_real_array(full_prediction, "full_prediction")
+    n = as_real_array(nuisance_prediction, "nuisance_prediction")
     cond = np.asarray(conditions)
 
     _check_aligned("Within-condition prediction", grp, t, f, n, cond)

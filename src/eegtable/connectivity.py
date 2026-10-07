@@ -567,6 +567,8 @@ def global_efficiency(pairs: FeatureTable) -> FeatureTable:
     paths are shortest by that distance. Zero weights are absent edges;
     disconnected pairs contribute exactly zero efficiency. A non-finite edge
     makes the graph summary undefined, since missing is not disconnected.
+    Coverage and support are the minimum over input edges; flags on any edge
+    propagate to the graph summary.
 
     Parameters
     ----------
@@ -589,7 +591,8 @@ def clustering_coefficient(pairs: FeatureTable, *, threshold: float) -> FeatureT
     is averaged over every node. Nodes with fewer than two neighbors contribute
     zero, following NetworkX and the Brain Connectivity Toolbox. The threshold
     is an explicit required argument. A non-finite edge makes the graph summary
-    undefined.
+    undefined. Coverage and support are the minimum over input edges; flags on
+    any edge propagate to the graph summary.
 
     Parameters
     ----------
@@ -899,7 +902,8 @@ def _graph_measure(
             "this table has columns that are not pairs."
         )
     columns: list[tuple[FeatureMeta, npt.NDArray[np.float64]]] = []
-    for indices in _by_estimator(pairs).values():
+    graphs = tuple(_by_estimator(pairs).values())
+    for indices in graphs:
         nodes = _validate_graph_edges(pairs, indices)
         values = np.empty(pairs.n_rows)
         for row in range(pairs.n_rows):
@@ -926,7 +930,23 @@ def _graph_measure(
                 values,
             )
         )
-    return _table(columns, pairs.row_labels, pairs.row_ids)
+    table = _table(columns, pairs.row_labels, pairs.row_ids)
+    return replace(
+        table,
+        coverage=np.minimum(
+            table.coverage,
+            np.stack([pairs.coverage[:, indices].min(axis=1) for indices in graphs], axis=1),
+        ),
+        flags={
+            name: np.stack([mask[:, indices].any(axis=1) for indices in graphs], axis=1)
+            for name, mask in pairs.flags.items()
+        },
+        support=(
+            None
+            if pairs.support is None
+            else np.stack([pairs.support[:, indices].min(axis=1) for indices in graphs], axis=1)
+        ),
+    )
 
 
 def _by_estimator(pairs: FeatureTable) -> dict[str, list[int]]:

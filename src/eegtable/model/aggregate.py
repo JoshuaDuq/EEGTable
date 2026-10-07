@@ -9,6 +9,7 @@ import numpy.typing as npt
 import pandas as pd
 from scipy import stats
 
+from eegtable._validation import as_real_array
 from eegtable.model.scoring import safe_pearsonr
 
 __all__ = [
@@ -122,7 +123,7 @@ def bootstrap_mean_ci(
         2.5th and 97.5th percentiles of the resampled means. NaN for no subjects;
         the value itself for one.
     """
-    vals = np.asarray(values, dtype=float)
+    vals = as_real_array(values, "values")
     if vals.ndim != 1:
         raise ValueError("Bootstrap inference requires a 1-D vector of subject values.")
     if not np.isfinite(vals).all():
@@ -170,7 +171,7 @@ def paired_signflip_p_value(
         mean is at least the observed absolute mean. NaN for no subjects or no
         draws.
     """
-    vals = np.asarray(differences, dtype=float)
+    vals = as_real_array(differences, "differences")
     if vals.ndim != 1:
         raise ValueError("Sign-flip inference requires a 1-D vector of subject differences.")
     if not np.isfinite(vals).all():
@@ -336,7 +337,9 @@ def _validate_predictions(predictions: pd.DataFrame, function: str) -> None:
     if predictions["subject_id"].isna().any():
         raise ValueError(f"{function} needs a subject_id label for every trial.")
     for column in ("y_true", "y_pred"):
-        values = pd.to_numeric(predictions[column], errors="coerce").to_numpy(dtype=float)
+        values = as_real_array(
+            pd.to_numeric(predictions[column], errors="coerce").to_numpy(), column
+        )
         if not np.isfinite(values).all():
             raise ValueError(f"{function} needs finite targets and predictions for every trial.")
 
@@ -507,8 +510,8 @@ class _SubjectRScorer:
         y: npt.NDArray[np.float64],
         groups: npt.NDArray[np.object_],
     ) -> float:
-        y_pred = np.asarray(estimator.predict(X), dtype=np.float64)  # type: ignore[attr-defined]
-        y_true = np.asarray(y, dtype=np.float64)
+        y_pred = as_real_array(estimator.predict(X), "y_pred")  # type: ignore[attr-defined]
+        y_true = as_real_array(y, "y")
         frame = pd.DataFrame({"subject_id": groups, "y_true": y_true, "y_pred": y_pred})
         sizes = frame.groupby("subject_id", observed=True).size()
         if (sizes < 3).any():

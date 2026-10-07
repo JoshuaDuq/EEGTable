@@ -8,6 +8,15 @@ from sklearn.linear_model import LinearRegression
 from eegtable.model.scoring import _selection_pearsonr, pearsonr_scorer, safe_pearsonr, scoring_dict
 
 
+@pytest.mark.parametrize("score", [safe_pearsonr, _selection_pearsonr])
+@pytest.mark.parametrize("argument", [0, 1])
+def test_correlations_reject_complex_values(score, argument) -> None:
+    inputs = [np.arange(4.0), np.arange(4.0)]
+    inputs[argument] = inputs[argument].astype(complex) + 1j
+    with pytest.raises(ValueError, match="real"):
+        score(*inputs)
+
+
 def test_perfect_correlation_is_one() -> None:
     r, _ = safe_pearsonr(np.arange(5.0), 2.0 * np.arange(5.0))
     assert r == pytest.approx(1.0)

@@ -8,6 +8,8 @@ import numpy.typing as npt
 from scipy.stats import pearsonr
 from sklearn.metrics import make_scorer
 
+from eegtable._validation import as_real_array
+
 __all__ = [
     "pearsonr_scorer",
     "safe_pearsonr",
@@ -41,8 +43,8 @@ def safe_pearsonr(
     -------
     r, p : float
     """
-    x_arr = np.asarray(x, dtype=float)
-    y_arr = np.asarray(y, dtype=float)
+    x_arr = as_real_array(x, "x")
+    y_arr = as_real_array(y, "y")
 
     if len(x_arr) != len(y_arr) or len(x_arr) < 2:
         return np.nan, np.nan
@@ -68,8 +70,8 @@ def safe_pearsonr(
 
 
 def _selection_pearsonr(y_true: npt.NDArray[np.float64], y_pred: npt.NDArray[np.float64]) -> float:
-    yt = np.asarray(y_true, dtype=float)
-    yp = np.asarray(y_pred, dtype=float)
+    yt = as_real_array(y_true, "y_true")
+    yp = as_real_array(y_pred, "y_pred")
     if not np.isfinite(yt).all() or not np.isfinite(yp).all():
         raise ValueError("Model selection requires finite targets and predictions for every trial.")
     r, _ = safe_pearsonr(yt, yp)

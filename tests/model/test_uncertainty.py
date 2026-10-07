@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.feature_selection import RFECV
@@ -18,6 +19,42 @@ from eegtable.model.uncertainty import (
 )
 
 PIPE = Pipeline([("regressor", DummyRegressor(strategy="mean"))])
+
+
+class InvalidPredictionRegressor(RegressorMixin, BaseEstimator):
+    def __init__(self, kind):
+        self.kind = kind
+
+    def fit(self, X, y):
+        self.fitted_ = True
+        return self
+
+    def predict(self, X):
+        outputs = {
+            "complex": np.arange(len(X)) + 10j,
+            "scalar": np.asarray(0.0),
+            "multicolumn": np.zeros((len(X), 2)),
+        }
+        return outputs[self.kind]
+
+
+@pytest.mark.parametrize("method", ["split", "cv_plus"])
+@pytest.mark.parametrize("kind", ["complex", "scalar", "multicolumn"])
+def test_intervals_reject_invalid_regression_predictions(method, kind) -> None:
+    values = np.arange(40.0).reshape(-1, 1)
+    model = Pipeline([("regressor", InvalidPredictionRegressor(kind))])
+    with pytest.raises(ValueError, match="predictions.*aligned"):
+        prediction_intervals(model, values, values[:, 0], values[:5], method=method)
+
+
+@pytest.mark.parametrize("method", ["split", "cv_plus", "quantile"])
+@pytest.mark.parametrize("argument", ["X_train", "y_train", "X_test"])
+def test_intervals_reject_complex_data_before_conversion(method, argument) -> None:
+    values = np.arange(40.0).reshape(-1, 1)
+    inputs = {"X_train": values, "y_train": values[:, 0], "X_test": values[:5]}
+    inputs[argument] = inputs[argument].astype(complex) + 1j
+    with pytest.raises(ValueError, match="real"):
+        prediction_intervals(PIPE, **inputs, method=method)
 
 
 @pytest.mark.parametrize("method", ["split", "cv_plus", "quantile"])

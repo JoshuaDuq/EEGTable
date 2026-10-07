@@ -11,6 +11,53 @@ from eegtable.model.metrics import (
 )
 
 
+@pytest.mark.parametrize("argument", ["y_true", "y_pred", "y_prob", "y_score"])
+def test_classification_metrics_reject_complex_inputs(argument) -> None:
+    inputs = {
+        "y_true": np.array([0, 1]),
+        "y_pred": np.array([0, 1]),
+        "y_prob": np.array([0.2, 0.8]),
+        "y_score": np.array([-1.0, 1.0]),
+    }
+    # Even zero imaginary components must not be silently cast to class labels.
+    inputs[argument] = inputs[argument].astype(complex)
+    with pytest.raises(ValueError, match="real"):
+        classification_metrics(**inputs)
+
+
+@pytest.mark.parametrize("argument", ["y_true", "y_pred"])
+def test_regression_metrics_reject_complex_inputs(argument) -> None:
+    inputs = {"y_true": np.arange(4.0), "y_pred": np.arange(4.0)}
+    inputs[argument] = inputs[argument].astype(complex) + 1j
+    with pytest.raises(ValueError, match="real"):
+        regression_metrics(**inputs)
+
+
+@pytest.mark.parametrize("measure", [within_subject_centered_metrics, within_condition_metrics])
+@pytest.mark.parametrize("argument", ["target", "full_prediction", "nuisance_prediction"])
+def test_centered_metrics_reject_complex_inputs(measure, argument) -> None:
+    inputs = {
+        "target": np.arange(4.0),
+        "full_prediction": np.arange(4.0),
+        "nuisance_prediction": np.arange(4.0),
+        "groups": np.array(["s1"] * 4),
+    }
+    inputs[argument] = inputs[argument].astype(complex) + 1j
+    if measure is within_condition_metrics:
+        inputs["conditions"] = np.array(["c1"] * 4)
+    with pytest.raises(ValueError, match="real"):
+        measure(**inputs)
+
+
+@pytest.mark.parametrize(
+    "probabilities",
+    [np.array([-0.2, 1.2]), np.array([[0.9, 0.9], [0.1, 0.1]])],
+)
+def test_classification_metrics_refuse_invalid_probabilities(probabilities) -> None:
+    with pytest.raises(ValueError, match="y_prob"):
+        classification_metrics(np.array([0, 1]), np.array([0, 1]), y_prob=probabilities)
+
+
 def test_a_single_class_fold_does_not_report_a_balanced_accuracy() -> None:
     # One class in the held-out subject makes balanced accuracy undefined. Reporting NaN
     # keeps the fold visible as unscored; reporting 0.5 would invent a chance result.

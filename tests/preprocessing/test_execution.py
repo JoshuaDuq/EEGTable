@@ -225,6 +225,24 @@ def test_rerun_of_a_finished_recording_deserializes_nothing(raw, tmp_path, monke
     assert run_until(workflow).state == "completed"
 
 
+def test_rerun_refuses_a_valid_export_from_another_run(raw, tmp_path):
+    from eegtable.preprocessing import open_workflow, preprocess, run_until
+    from eegtable.preprocessing.io import write_result
+
+    workflow = open_workflow(config_for(raw, tmp_path))
+    assert run_until(workflow).state == "completed"
+    foreign = raw.copy().apply_function(lambda values: values * 2, picks="eeg")
+    write_result(
+        preprocess(foreign, workflow.config.processing), workflow.config.output, overwrite=True
+    )
+    with pytest.raises(ValueError, match="export.*provenance.*checkpoint"):
+        run_until(workflow)
+    assert run_until(workflow, overwrite=True).state == "completed"
+    exported = mne.read_epochs(workflow.config.output.directory / "subject_epo.fif", proj=False)
+    expected = preprocess(raw, workflow.config.processing)
+    np.testing.assert_allclose(exported.get_data(), expected.epochs.get_data(), rtol=1e-14, atol=0)
+
+
 def test_missing_payload_names_the_reset(raw, tmp_path):
     import shutil
 

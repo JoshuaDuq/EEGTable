@@ -10,6 +10,7 @@ import numpy.typing as npt
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
+from eegtable._validation import as_real_array
 from eegtable.model import _ridge_null
 from eegtable.model.aggregate import AggregationConfig, subject_level_r
 from eegtable.model.crossfit import (
@@ -120,7 +121,7 @@ def is_permutation_valid_run(retained: npt.NDArray[np.intp], min_retained: int =
     """Whether a run retains at least ``min_retained`` trials, all with finite indices."""
     # Cast to float, not int: an int cast turns NaN into a large negative integer, which then
     # passes any finiteness test and reports a run of missing counts as usable.
-    arr = np.asarray(retained, dtype=np.float64)
+    arr = as_real_array(retained, "retained")
     return bool(arr.size >= min_retained and np.all(np.isfinite(arr)))
 
 
@@ -144,8 +145,8 @@ def changed_fraction(
     Positions where either value is non-finite are ignored; 0.0 when none remain.
     Arrays of different shapes raise.
     """
-    orig = np.asarray(y_original, dtype=np.float64)
-    perm = np.asarray(y_permuted, dtype=np.float64)
+    orig = as_real_array(y_original, "y_original")
+    perm = as_real_array(y_permuted, "y_permuted")
     if orig.shape != perm.shape:
         msg = f"y_original and y_permuted shape mismatch: {orig.shape} vs {perm.shape}."
         raise ValueError(msg)
@@ -192,7 +193,7 @@ def permute(
         ``y`` rearranged within the scheme's blocks. A run of one trial stays in
         place, and a circular shift can draw the identity.
     """
-    values = np.asarray(y, dtype=np.float64)
+    values = as_real_array(y, "y")
     groups_arr = np.asarray(groups, dtype=object)
     if len(values) != len(groups_arr):
         msg = "Permutation values and groups must have the same length."
@@ -226,7 +227,7 @@ def permute(
         if trial_indices is None:
             msg = "circular_shift_within_run requires within-run trial indices."
             raise ValueError(msg)
-        trial_arr = np.asarray(trial_indices, dtype=float)
+        trial_arr = as_real_array(trial_indices, "trial_indices")
         if len(trial_arr) != len(values):
             msg = (
                 "Permutation trial indices must have the same length as y "
@@ -471,7 +472,7 @@ def permutation_test(
     """
     rng = np.random.default_rng(seed)
     groups_arr = np.asarray(groups, dtype=object)
-    target = np.asarray(y, dtype=np.float64)
+    target = as_real_array(y, "y")
     # Each draw needs only the point estimate, so no interval is computed for it.
     null_aggregation = replace(aggregation, ci_method="none")
     # Drawn as source rows, in the random stream permuting y itself would use.

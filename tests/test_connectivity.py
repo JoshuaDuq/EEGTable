@@ -460,6 +460,48 @@ def _pair_table(
     )
 
 
+@pytest.mark.parametrize("measure", ["efficiency", "clustering"])
+def test_graph_summaries_preserve_input_quality_per_estimator(measure) -> None:
+    from eegtable.quality import QualityPolicy, apply_quality
+
+    suspect = replace(
+        _pair_table("aec", 0.8),
+        coverage=np.array([[1.0, 0.4, 0.8]]),
+        support=np.array([[0.9, 0.7, 0.5]]),
+        flags={"artifact": np.array([[False, True, False]])},
+    )
+    clean = _pair_table("wpli", 0.2)
+    pairs = ef.concat([suspect, clean])
+    summary = (
+        global_efficiency(pairs)
+        if measure == "efficiency"
+        else clustering_coefficient(pairs, threshold=0.1)
+    )
+    np.testing.assert_allclose(summary.values, [[0.8, 0.2]] if measure == "efficiency" else 1.0)
+    np.testing.assert_allclose(summary.coverage, [[0.4, 1.0]])
+    np.testing.assert_allclose(summary.support, [[0.5, 1.0]])
+    np.testing.assert_array_equal(summary.flags["artifact"], [[True, False]])
+    assert summary.row_labels == pairs.row_labels
+    for policy in (
+        QualityPolicy(min_coverage=0.6),
+        QualityPolicy(min_support=0.6),
+        QualityPolicy(rejected_flags=("artifact",)),
+    ):
+        filtered = apply_quality(summary, policy).table
+        assert np.isnan(filtered.values[0, 0])
+        assert np.isfinite(filtered.values[0, 1])
+
+
+def test_graph_summary_of_an_undefined_edge_has_zero_coverage() -> None:
+    pairs = _pair_table("aec", 0.8)
+    values = pairs.values.copy()
+    values[0, 0] = np.nan
+    summary = global_efficiency(replace(pairs, values=values))
+    assert np.isnan(summary.values[0, 0])
+    assert summary.coverage[0, 0] == 0.0
+    assert summary.support is None
+
+
 @pytest.mark.parametrize("order", [("aec", "wpli"), ("wpli", "aec")])
 def test_concatenated_estimators_yield_separate_graphs(order: tuple[str, str]) -> None:
     # Grouping on band and window alone collapsed these into one graph whose edges

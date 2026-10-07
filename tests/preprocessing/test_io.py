@@ -6,6 +6,29 @@ from eegtable.preprocessing.config import FixedEpochSettings, OutputSettings, Pr
 from eegtable.preprocessing.pipeline import preprocess
 
 
+@pytest.mark.parametrize(
+    "missing", ["_epo.fif", "_events.tsv", "_report.html", "_repairs.tsv", "all"]
+)
+def test_bundle_requires_its_complete_payload_inventory(tmp_path, missing):
+    import json
+
+    from eegtable.preprocessing.io import validate_bundle
+    from eegtable.preprocessing.provenance import file_hash
+
+    suffixes = ("_epo.fif", "_events.tsv", "_report.html", "_repairs.tsv")
+    files = {}
+    for suffix in suffixes:
+        if missing not in (suffix, "all"):
+            payload = tmp_path / f"subject{suffix}"
+            payload.write_bytes(b"payload")
+            files[payload.name] = file_hash(payload)
+    provenance = {"repair": {}} if missing == "_repairs.tsv" else {}
+    manifest = tmp_path / "subject_preprocessing.json"
+    manifest.write_text(json.dumps({"schema": 1, "files": files, "provenance": provenance}))
+    with pytest.raises(ValueError, match="required payload"):
+        validate_bundle(manifest)
+
+
 def test_export_bundle(raw, tmp_path):
     from eegtable.preprocessing.io import validate_bundle, write_result
 

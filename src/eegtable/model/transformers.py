@@ -14,6 +14,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, StandardScaler
 
+from eegtable._validation import as_real_array, validate_real_array
 from eegtable.model._nuisance import fit_coefficients
 
 __all__ = [
@@ -101,7 +102,7 @@ def validate_subject_missingness(
     maximum : float
         Largest allowed fraction of NaN over all of a group's cells.
     """
-    x_arr = np.asarray(values, dtype=float)
+    x_arr = as_real_array(values, "values")
     groups_arr = np.asarray(groups)
 
     if x_arr.shape[1] == 0:
@@ -121,6 +122,7 @@ def _record_inputs(transformer: BaseEstimator, X: Any) -> None:
     # What scikit-learn's own transformers record in fit, so get_feature_names_out() can
     # fall back to the fitted column names, or x0..x{n-1} after a plain array. Written here
     # because scikit-learn's helpers for it are private.
+    validate_real_array(X, "X")
     transformer.n_features_in_ = np.shape(X)[1]
     columns = getattr(X, "columns", None)
     if columns is not None and all(isinstance(name, str) for name in columns):
@@ -147,7 +149,7 @@ class ReplaceInfWithNaN(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         return self
 
     def transform(self, X: Any) -> npt.NDArray[np.float64]:
-        out = np.asarray(X, dtype=float).copy()
+        out = as_real_array(X, "X").copy()
         out[np.isinf(out)] = np.nan
         return out
 
@@ -172,13 +174,13 @@ class DropAllNaNColumns(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     def fit(self, X: Any, y: Any = None) -> DropAllNaNColumns:
         _ = y
         _record_inputs(self, X)
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         finite_counts = np.sum(np.isfinite(x_arr), axis=0)
         self.support_mask_ = finite_counts >= self.min_finite
         return self
 
     def transform(self, X: Any) -> npt.NDArray[np.float64]:
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         return x_arr[:, self.support_mask_]
 
     def get_support(self, indices: bool = False) -> npt.NDArray[Any]:
@@ -210,7 +212,7 @@ class VarianceThreshold(TransformerMixin, BaseEstimator):  # type: ignore[misc]
     def fit(self, X: Any, y: Any = None) -> VarianceThreshold:
         _ = y
         _record_inputs(self, X)
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         self.variances_ = np.nanvar(x_arr, axis=0)
         if self.threshold == 0.0:
             # A constant decimal can acquire a positive variance through mean rounding.
@@ -220,7 +222,7 @@ class VarianceThreshold(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         return self
 
     def transform(self, X: Any) -> npt.NDArray[np.float64]:
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         return x_arr[:, self.support_mask_]
 
     def get_support(self, indices: bool = False) -> npt.NDArray[Any]:
@@ -257,7 +259,7 @@ class MissingnessThreshold(TransformerMixin, BaseEstimator):  # type: ignore[mis
     def fit(self, X: Any, y: Any = None, groups: Any = None) -> MissingnessThreshold:
         _ = y
         _record_inputs(self, X)
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         feat_missingness = np.isnan(x_arr).mean(axis=0)
         self.support_mask_ = feat_missingness <= self.max_feature_missingness
         if groups is not None and np.any(self.support_mask_):
@@ -269,7 +271,7 @@ class MissingnessThreshold(TransformerMixin, BaseEstimator):  # type: ignore[mis
         return self
 
     def transform(self, X: Any) -> npt.NDArray[np.float64]:
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         return x_arr[:, self.support_mask_]
 
     def get_support(self, indices: bool = False) -> npt.NDArray[Any]:
@@ -310,7 +312,7 @@ class SpatialFeatureSelector(TransformerMixin, BaseEstimator):  # type: ignore[m
     def fit(self, X: Any, y: Any = None) -> SpatialFeatureSelector:
         _ = y
         _record_inputs(self, X)
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         n_features = x_arr.shape[1]
 
         if not self.allowed_regions:
@@ -338,7 +340,7 @@ class SpatialFeatureSelector(TransformerMixin, BaseEstimator):  # type: ignore[m
         return self
 
     def transform(self, X: Any) -> npt.NDArray[np.float64]:
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         return x_arr[:, self.support_mask_]
 
     def get_support(self, indices: bool = False) -> npt.NDArray[Any]:
@@ -375,7 +377,7 @@ class Deconfounder(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         if self.n_covariates <= 0:
             return self
 
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         n_features = x_arr.shape[1] - self.n_covariates
         if n_features <= 0:
             raise ValueError(
@@ -390,7 +392,7 @@ class Deconfounder(TransformerMixin, BaseEstimator):  # type: ignore[misc]
         return self
 
     def transform(self, X: Any) -> npt.NDArray[np.float64]:
-        x_arr = np.asarray(X, dtype=float)
+        x_arr = as_real_array(X, "X")
         if self.n_covariates <= 0:
             return x_arr
 
@@ -414,7 +416,7 @@ class _CovariateImputer(SimpleImputer):  # type: ignore[misc]
     """Impute covariates without silently removing their fixed trailing columns."""
 
     def fit(self, X: Any, y: Any = None) -> _CovariateImputer:
-        missing = np.flatnonzero(~np.isfinite(np.asarray(X, dtype=float)).any(axis=0))
+        missing = np.flatnonzero(~np.isfinite(as_real_array(X, "X")).any(axis=0))
         if missing.size:
             raise ValueError(
                 f"Covariate columns {missing.tolist()} have no finite training values."

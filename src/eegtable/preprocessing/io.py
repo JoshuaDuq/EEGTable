@@ -26,6 +26,13 @@ def validate_bundle(manifest_path: Path) -> dict[str, Any]:
     manifest: dict[str, Any] = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("schema") != 1:
         raise ValueError("export: unsupported manifest schema")
+    name = manifest_path.name.removesuffix("_preprocessing.json")
+    required = {f"{name}{suffix}" for suffix in ("_epo.fif", "_events.tsv", "_report.html")}
+    if manifest["provenance"].get("repair") is not None:
+        required.add(f"{name}_repairs.tsv")
+    missing = required - set(manifest["files"])
+    if missing:
+        raise ValueError(f"export: required payloads missing from manifest: {sorted(missing)}")
     for name, digest in manifest["files"].items():
         if Path(name).name != name:
             raise ValueError("export: invalid artifact path")

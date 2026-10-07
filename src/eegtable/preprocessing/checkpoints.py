@@ -19,8 +19,8 @@ from ._validation import validate_sampling_precision
 from .artifacts import ArtifactModel, review_artifact
 from .epochs import validate_metadata_precision
 from .events import EventData
-from .pipeline import StageData
-from .provenance import canonical_json, file_hash, serializable
+from .pipeline import StageData, result_from_state
+from .provenance import canonical_json, file_hash, identity, serializable
 from .rejection import RejectionModel
 
 
@@ -172,6 +172,8 @@ def verify_manifest(path: Path) -> dict[str, Any]:
     manifest: dict[str, Any] = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("schema") != 1:
         raise ValueError(f"{path}: unsupported checkpoint schema")
+    if manifest["stage"] == "export" and not isinstance(manifest.get("export_provenance_id"), str):
+        raise ValueError(f"{path}: export provenance identity missing; explicit reset required")
     for name, expected in manifest["files"].items():
         if Path(name).name != name:
             raise ValueError(f"{path}: invalid payload path {name}")
@@ -236,6 +238,8 @@ def publish_checkpoint(
                 "settings": serializable(settings),
                 "files": {item.name: file_hash(item) for item in payload_files(staged)},
             }
+            if stage == "export":
+                manifest["export_provenance_id"] = identity(result_from_state(state).provenance)
             write_json(staged / "manifest.json", manifest)
             verify_manifest(staged)
             os.rename(staged, destination)

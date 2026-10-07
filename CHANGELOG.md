@@ -9,6 +9,9 @@ behaviour, and every such change is listed here.
 
 ### Changed
 
+- Export checkpoints now record the exported provenance identity. Existing export
+  checkpoints require `reset CONFIG --from export` before republishing; upstream
+  preprocessing checkpoints remain reusable.
 - Feature metadata canonicalizes time-window bounds as floats, so equivalent
   integer and float bounds identify the same column and round-trip through files.
   Custom features previously constructed with integer bounds have new identifiers.
@@ -172,6 +175,20 @@ behaviour, and every such change is listed here.
 
 ### Fixed
 
+- Graph summaries preserve the minimum edge coverage and support, and any input
+  flags, so derived networks cannot bypass the quality policy applied to their
+  connectivity estimates.
+- Modeling and scoring reject complex inputs before converting them to real
+  arrays. Classification metrics reject out-of-range probabilities and class
+  probabilities that do not sum to one.
+- Prediction intervals validate that model predictions are finite, real, and
+  aligned with the requested rows, preventing broadcasting or truncated complex
+  values from producing misleading bounds.
+- Resuming preprocessing refuses a valid export whose provenance differs from
+  its checkpoint, instead of reporting another run's output as complete.
+- Preprocessing bundle validation requires the epochs, event ledger, report and
+  any recorded repair ledger in its manifest. An empty or incomplete inventory
+  can no longer report missing outputs as a finished export.
 - Univariate screening rescales centered observations before computing Pearson
   correlations, preventing extreme input units from producing spurious perfect
   or zero correlations through floating-point underflow or overflow.

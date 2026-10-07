@@ -14,7 +14,12 @@ from sklearn.inspection import permutation_importance as sklearn_perm_importance
 from sklearn.metrics import check_scoring
 from sklearn.pipeline import FeatureUnion, Pipeline
 
-from eegtable._validation import blank_non_finite, validate_names
+from eegtable._validation import (
+    as_real_array,
+    blank_non_finite,
+    validate_names,
+    validate_real_array,
+)
 from eegtable.model._deps import require_shap
 from eegtable.model.aggregate import _SubjectRScorer
 from eegtable.model.crossfit import (
@@ -158,7 +163,7 @@ def permutation_importance(
     Importance
         With an empty ``per_fold``.
     """
-    X_arr = np.asarray(X, dtype=np.float64)
+    X_arr = as_real_array(X, "X")
     y_arr = np.asarray(y)
     if X_arr.ndim != 2:
         raise ValueError("X must be a 2-D array of samples and features.")
@@ -249,7 +254,7 @@ def shap_importance(
     require_shap()
     import shap
 
-    X_arr = np.array(X, dtype=np.float64, copy=True)
+    X_arr = as_real_array(X, "X").copy()
     steps = list(model.steps)
     _, final_estimator = steps[-1]
     X_trans = X_arr
@@ -349,6 +354,7 @@ def _fold_fitter(
     # was evaluated rather than one tuned or trained differently. That includes the fold
     # checks: importance is an entry point of its own, and folds reaching it never passed
     # through cross_fit_*.
+    validate_real_array(X, "X")
     _validate_outer_folds(folds, len(X), groups, runs)
     _validate_row_aligned(len(X), y, covariates)
     _validate_residualize_within(residualize_within, residualize_on)

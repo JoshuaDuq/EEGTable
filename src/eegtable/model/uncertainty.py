@@ -11,6 +11,8 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.model_selection import GroupShuffleSplit, KFold, LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
 
+from eegtable._validation import as_real_array
+from eegtable.model.crossfit import _regression_predictions
 from eegtable.model.splits import _GroupKFold
 from eegtable.model.tuning import _validate_grouped_estimator, fit_untuned
 
@@ -123,12 +125,12 @@ def _split_conformal(
 
     model_proper = fit_untuned(model, X_train[train_idx], y_train[train_idx], seed=seed)
 
-    residuals = np.abs(y_train[cal_idx] - model_proper.predict(X_train[cal_idx]))
+    residuals = np.abs(
+        y_train[cal_idx] - _regression_predictions(model_proper, X_train[cal_idx], 1)
+    )
     q_hat = _compute_conformal_quantile(residuals, alpha)
 
-    y_test_pred = np.asarray(model_proper.predict(X_test.copy()), dtype=np.float64)
-    if not np.all(np.isfinite(y_test_pred)):
-        raise ValueError("Test predictions must be finite.")
+    y_test_pred = _regression_predictions(model_proper, X_test.copy(), 1)
     return y_test_pred - q_hat, y_test_pred + q_hat
 
 
@@ -180,9 +182,9 @@ def _conformal_cv_plus(
             model, X_train[train_idx], y_train[train_idx], seed=seed, fold=fold
         )
 
-        val_preds = np.asarray(model_fold.predict(X_train[val_idx]), dtype=np.float64)
+        val_preds = _regression_predictions(model_fold, X_train[val_idx], fold)
         residuals = np.abs(y_train[val_idx] - val_preds)
-        test_preds = np.asarray(model_fold.predict(X_test.copy()), dtype=np.float64)
+        test_preds = _regression_predictions(model_fold, X_test.copy(), fold)
         lower_chunks.append(test_preds[:, None] - residuals[None, :])
         upper_chunks.append(test_preds[:, None] + residuals[None, :])
 
@@ -257,14 +259,14 @@ def _conformal_quantile(
 
         y_val = y_train[val_idx]
         scores = np.maximum(
-            np.asarray(low.predict(X_train[val_idx]), dtype=np.float64) - y_val,
-            y_val - np.asarray(high.predict(X_train[val_idx]), dtype=np.float64),
+            _regression_predictions(low, X_train[val_idx], fold) - y_val,
+            y_val - _regression_predictions(high, X_train[val_idx], fold),
         )
         lower_chunks.append(
-            np.asarray(low.predict(X_test.copy()), dtype=np.float64)[:, None] - scores[None, :]
+            _regression_predictions(low, X_test.copy(), fold)[:, None] - scores[None, :]
         )
         upper_chunks.append(
-            np.asarray(high.predict(X_test.copy()), dtype=np.float64)[:, None] + scores[None, :]
+            _regression_predictions(high, X_test.copy(), fold)[:, None] + scores[None, :]
         )
 
     return _cv_plus_bounds(lower_chunks, upper_chunks, alpha, len(X_test))
@@ -298,9 +300,9 @@ def prediction_intervals(
         function does not tune; choose hyperparameters without the calibration or
         test outcomes.
     X_train, y_train : ndarray
-        Rows used for fitting and calibration; ``y_train`` is finite.
+        Real rows used for fitting and calibration; ``y_train`` is finite.
     X_test : ndarray
-        Rows to bound; they are only predicted.
+        Real rows to bound; they are only predicted.
     alpha : float, default 0.1
         Miscoverage level, in ``(0, 1)``.
     method : {"split", "cv_plus", "quantile"}, default "cv_plus"
@@ -332,9 +334,9 @@ def prediction_intervals(
         msg = f"Unknown method {method!r}. Expected one of: {valid_methods}."
         raise ValueError(msg)
 
-    X_tr = np.asarray(X_train, dtype=np.float64)
-    y_tr = np.asarray(y_train, dtype=np.float64)
-    X_te = np.asarray(X_test, dtype=np.float64)
+    X_tr = as_real_array(X_train, "X_train")
+    y_tr = as_real_array(y_train, "y_train")
+    X_te = as_real_array(X_test, "X_test")
 
     if y_tr.ndim != 1 or not np.all(np.isfinite(y_tr)):
         raise ValueError("y_train must be a finite 1-D array.")

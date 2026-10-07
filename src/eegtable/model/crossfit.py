@@ -14,6 +14,7 @@ from sklearn.metrics import check_scoring
 from sklearn.model_selection import ParameterGrid
 from sklearn.pipeline import Pipeline
 
+from eegtable._validation import validate_real_array
 from eegtable.model import _deps as _deps
 from eegtable.model.aggregate import _SubjectRScorer, subject_r_scorer
 from eegtable.model.design import harmonize_fold
@@ -630,6 +631,7 @@ def _cross_fit_engine(
     warn_at_grid_edges: bool = True,
     fold_targets: Callable[[Fold], npt.NDArray[np.float64]] | None = None,
 ) -> list[FoldPrediction] | list[FoldClassification]:
+    validate_real_array(X, "X")
     _validate_outer_folds(folds, len(X), groups, runs)
     _validate_row_aligned(len(X), y, covariates)
     _validate_residualize_within(residualize_within, residualize_on)
