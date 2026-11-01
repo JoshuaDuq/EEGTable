@@ -30,11 +30,11 @@ jobs:
             extras: "dev,model,connectivity,microstates,spectral-model,irasa,complexity,preprocessing,preprocessing-auto"
             pytest_args: ""
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: mne_data
           key: mne-datasets-${{ hashFiles('tests/validation/loaders.py') }}
@@ -50,7 +50,7 @@ jobs:
         run: python -c "import yaml, sklearn, h5io, h5py, filelock, pyprep, autoreject"
       - run: pytest tests/validation -ra --durations=10 ${{ matrix.pytest_args }}
       # The suite rewrites docs/validation from what it observed; keep each run's copy.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: validation-results-${{ strategy.job-index }}
